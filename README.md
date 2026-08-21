@@ -288,6 +288,7 @@ src/server/       本地 HTTP 服务 + 沙箱预览
 web/              Vue 3 工作台
 test/             八组测试，全部跑真实进程 / 真实 git / 真实 HTTP
 docs/STORAGE.md   存储设计与 Git 冲突面分析
+docs/ROADMAP.md   产品升级路线图
 ```
 
 ### 浏览器工作台
@@ -369,9 +370,24 @@ docs/STORAGE.md   存储设计与 Git 冲突面分析
 
 ---
 
+## 角色模型
+
+产品经理写，研发和测试读。在「本地 + Git」的形态下，**角色就是 Git 仓库权限的投影**：
+
+| 角色 | Git 权限 | 在 protohub 里 |
+|---|---|---|
+| 产品经理 | write | `protohub sync` 能推送 |
+| 研发 / 测试 | read | 能 clone、能 pull，推不上去 |
+
+好处是权限设施已经存在——GitHub/GitLab 的 collaborator 权限、公司的 LDAP 集成、离职时的权限回收，都不用重做一遍。
+
+当前版本还是用「地点」近似角色（局域网只读、本机可写），把 Git 权限如实反映到界面上是下一步的第一优先级，见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+
+---
+
 ## 不做
 
-截图 diff / 源码 diff · 角色权限 · 多人实时协同 · 需求池 API 对接 · 云端托管 · 桌面客户端
+截图 diff / 源码 diff · 自建账号体系 · 多人实时协同 · 需求池 API 对接 · 云端托管 · 桌面客户端
 
 需求池只存编号 + URL 做跳转，标题是录入时的快照，不与外部系统同步。
 
