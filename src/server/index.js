@@ -1,0 +1,235 @@
+import http from 'node:http'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { Hub } from '../core/service.js'
+import * as store from '../core/store.js'
+import * as offline from '../core/offline.js'
+import * as net from '../core/net.js'
+import { buildApi } from './routes.js'
+import { sendJson, sendError } from './router.js'
+
+const WEB_DIST = fileURLToPath(new URL('../../web/dist/', import.meta.url))
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2'
+}
+
+/**
+ * 启动本地服务。
+ *
+ * 两个端口而不是一个：工作台在 port，原型预览在 previewPort。
+ * 端口不同即不同源，浏览器的同源策略把原型里的脚本和工作台彻底隔开 ——
+ * 原型可以随便跑 JS，但读不到工作台的 localStorage、发不出带凭据的请求。
+ *
+ * 开放局域网时，写操作按来源拦截：只有 127.0.0.1 能写。详见 core/net.js。
+ */
+export async function startServer(root, { port, previewPort, lan, host } = {}) {
+  const hub = new Hub(root)
+  const s = hub.settings
+
+  // 用 ?? 而不是 ||：端口 0 是「让内核分配一个空闲端口」的合法值，
+  // 被当成假值忽略掉的话，调用方以为拿到了随机端口，实际却去抢固定端口。
+  const mainPort = port ?? s.server.port
+  const pvPort = previewPort ?? (port ? port + 1 : s.server.previewPort)
+  const lanEnabled = lan !== undefined ? lan : s.server.lan
+  const readonlyFromLan = s.server.readonlyFromLan
+  const bind = host || net.bindHost(lanEnabled)
+
+  // 0 表示各自随机分配，不算撞车
+  if (mainPort !== 0 && mainPort === pvPort) {
+    throw new Error(`工作台端口与预览端口不能相同（都是 ${mainPort}）—— 同源之后沙箱隔离就失效了`)
+  }
+
+  let api  // 在 previewServer 建好之后再构造，见下方说明
+
+  const mainServer = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
+    try {
+      // 主端口拒绝 /p/ —— 否则原型可以被同源加载，隔离就白做了
+      if (url.pathname.startsWith('/p/')) {
+        const a = previewServer.address()
+        return sendJson(res, 404, {
+          code: 'WRONG_PORT',
+          message: `原型预览请走 ${a ? a.port : pvPort} 端口`
+        })
+      }
+
+      // 局域网只读闸门。放在路由之前，避免任何一条新路由忘了加校验。
+      if (net.shouldBlockWrite({
+        lan: lanEnabled,
+        readonlyFromLan,
+        isLocal: net.isLocalRequest(req),
+        method: req.method
+      })) {
+        return sendJson(res, 403, {
+          code: 'READONLY_FROM_LAN',
+          message: '局域网访问为只读模式，无法修改数据',
+          hint: '请在运行 protohub 的那台机器上操作；或关闭只读保护（protohub config server.readonlyFromLan false）'
+        })
+      }
+
+      const hit = api.match(req.method, url.pathname)
+      if (hit) return await hit.handler(req, res, hit.params, url)
+
+      if (url.pathname.startsWith('/api/')) {
+        return sendJson(res, 404, { code: 'NO_ROUTE', message: `没有这个接口：${url.pathname}` })
+      }
+
+      serveStatic(res, url.pathname)
+    } catch (e) {
+      sendError(res, e)
+    }
+  })
+
+  const previewServer = http.createServer((req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
+    const m = /^\/p\/([^/]+)\/([^/]+)$/.exec(url.pathname)
+    if (!m) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+      return res.end('此端口只提供原型文件：/p/<项目>/<版本号>')
+    }
+    const slug = decodeURIComponent(m[1])
+    const no = decodeURIComponent(m[2])
+    const wantOffline = url.searchParams.get('offline') === '1'
+
+    let buf = null
+    try {
+      buf = wantOffline ? offline.readOffline(root, slug, no) : null
+      if (!buf) buf = store.readHtml(root, slug, no)
+    } catch {
+      buf = null
+    }
+    if (!buf) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return res.end(missingHtml(slug, no))
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-store'
+    })
+    res.end(buf)
+  })
+
+  // previewPort 传 0 时真实端口要等 listen 之后才知道，所以用取值函数延迟解析，
+  // 保证 health 下发的一定是浏览器能连上的那个端口。
+  // 必须放在 previewServer 声明之后：buildApi 解构参数时会立刻求值。
+  api = buildApi(hub, {
+    previewPort: () => {
+      const a = previewServer.address()
+      return a ? a.port : pvPort
+    },
+    runtime: { lan: lanEnabled, readonlyFromLan }
+  })
+
+  await Promise.all([
+    listen(mainServer, mainPort, bind, '工作台'),
+    listen(previewServer, pvPort, bind, '预览服务')
+  ])
+
+  // 端口传 0 时内核才决定实际端口，要回填后再对外报告
+  const actualPort = mainServer.address().port
+  const actualPreviewPort = previewServer.address().port
+
+  const close = () =>
+    Promise.all([
+      new Promise((r) => mainServer.close(r)),
+      new Promise((r) => previewServer.close(r))
+    ])
+
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.on(sig, () => { close().then(() => process.exit(0)) })
+  }
+
+  const localHost = bind === '0.0.0.0' ? 'localhost' : bind
+  const lanIp = lanEnabled ? net.primaryLanAddress() : null
+
+  return {
+    url: `http://${localHost}:${actualPort}`,
+    previewUrl: `http://${localHost}:${actualPreviewPort}`,
+    lanUrl: lanIp ? `http://${lanIp}:${actualPort}` : null,
+    lanAddresses: lanEnabled ? net.lanAddresses() : [],
+    lan: lanEnabled,
+    readonlyFromLan,
+    bind,
+    port: actualPort,
+    previewPort: actualPreviewPort,
+    close
+  }
+}
+
+function listen(server, port, host, label) {
+  return new Promise((resolve, reject) => {
+    server.once('error', (e) => {
+      if (e.code === 'EADDRINUSE') {
+        reject(new Error(
+          `${label}端口 ${port} 已被占用。` +
+          `可能是另一个 protohub 已在运行；换端口：protohub serve --port ${port + 10}`
+        ))
+      } else if (e.code === 'EACCES') {
+        reject(new Error(`${label}端口 ${port} 需要更高权限，换一个 1024 以上的端口`))
+      } else reject(e)
+    })
+    server.listen(port, host, resolve)
+  })
+}
+
+function serveStatic(res, pathname) {
+  if (!fs.existsSync(WEB_DIST)) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    return res.end(noWebHtml())
+  }
+  const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
+  let file = path.join(WEB_DIST, rel)
+
+  // 纵深防御：任何越出 dist 的路径一律回落到首页
+  if (!path.resolve(file).startsWith(path.resolve(WEB_DIST))) {
+    file = path.join(WEB_DIST, 'index.html')
+  }
+  // hash 路由，未命中静态文件时交给前端处理
+  if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    file = path.join(WEB_DIST, 'index.html')
+  }
+  const buf = fs.readFileSync(file)
+  res.writeHead(200, {
+    'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
+    'Content-Length': buf.length
+  })
+  res.end(buf)
+}
+
+function missingHtml(slug, no) {
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>文件缺失</title>
+<style>body{font-family:-apple-system,'PingFang SC',sans-serif;display:flex;align-items:center;
+justify-content:center;height:100vh;margin:0;background:#fafafa;color:#8c8c8c;text-align:center;line-height:1.9}</style>
+</head><body><div><div style="font-size:32px">📄</div>
+<div style="font-size:15px;color:#595959;margin-top:8px">原型文件不存在</div>
+<div style="font-size:13px">${escapeHtml(slug)} / ${escapeHtml(no)}</div>
+<div style="font-size:12px;margin-top:8px">用 <code>protohub ls ${escapeHtml(slug)}</code> 确认版本号</div>
+</div></body></html>`
+}
+
+function noWebHtml() {
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>工作台未构建</title>
+<style>body{font-family:-apple-system,'PingFang SC',sans-serif;display:flex;align-items:center;
+justify-content:center;height:100vh;margin:0;background:#fafafa;color:#595959;text-align:center;line-height:2}
+code{background:#f0f0f0;padding:2px 8px;border-radius:4px;font-size:13px}</style>
+</head><body><div><div style="font-size:32px">🛠️</div>
+<div style="font-size:16px;margin-top:8px">浏览器工作台还没构建</div>
+<div style="font-size:13px;color:#8c8c8c">在 protohub 源码目录执行 <code>npm run build:web</code></div>
+<div style="font-size:13px;color:#8c8c8c">API 已经可用，CLI 的所有功能不受影响</div>
+</div></body></html>`
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
+}
