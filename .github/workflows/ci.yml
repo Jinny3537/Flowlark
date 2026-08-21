@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 测试 (Node ${{ matrix.node }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 18.17 是声明的最低版本，必须真的验证；20 / 22 覆盖常用与最新
+        node: ['18.17', '20', '22']
+        os: [ubuntu-latest]
+        include:
+          # macOS 是主要使用场景（start.sh / 启动.command 都是给 mac 写的）
+          - node: '22'
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 配置 git 身份
+        # 测试会真的跑 git commit / merge，runner 上默认没有身份
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.com"
+          git config --global init.defaultBranch main
+
+      - name: 运行时零依赖自检
+        # 这是产品的一条硬约束，退化了要立刻发现，而不是等用户装完才知道
+        run: |
+          DEPS=$(node -p "JSON.stringify(require('./package.json').dependencies || {})")
+          echo "dependencies: $DEPS"
+          test "$DEPS" = "{}" || { echo "::error::运行时依赖不再为空"; exit 1; }
+
+      - name: 跑测试
+        run: npm test
+
+  build-web:
+    name: 构建浏览器工作台
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+        working-directory: web
+
+      - run: npm run build
+        working-directory: web
+
+      - name: 确认产物存在
+        run: |
+          test -f web/dist/index.html || { echo "::error::工作台构建产物缺失"; exit 1; }
+          du -sh web/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 7
+
+  smoke:
+    name: 端到端冒烟
+    runs-on: ubuntu-latest
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: 配置 git 身份
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.com"
+
+      - name: CLI → 服务 → 推送 全链路
+        run: |
+          set -euo pipefail
+          export NO_COLOR=1
+          PH="$PWD/bin/protohub.js"
+          W=$(mktemp -d); cd "$W"
+
+          printf '<!DOCTYPE html><html><body>v1.0</body></html>' > proto.html
+          node "$PH" init
+          node "$PH" new "订单中心" --code ord
+          node "$PH" add proto.html -n v1.0 -t "首版"
+          node "$PH" baseline ord v1.0
+          printf '# PRD\n内容' > 需求.md
+          node "$PH" attach ord v1.0 需求.md
+
+          # 起服务并验证关键端点
+          node "$PH" serve --port 7788 &
+          SERVER_PID=$!
+          sleep 4
+          for path in / /api/health /api/config /api/lan; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:7788$path")
+            echo "  $path -> $code"
+            test "$code" = "200" || { echo "::error::$path 返回 $code"; exit 1; }
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7789/p/ord/v1.0)
+          test "$code" = "200" || { echo "::error::预览端口返回 $code"; exit 1; }
+          kill $SERVER_PID
+
+          # 推到本地裸仓库，验证附件确实随 Git 走
+          git init -q .
+          BARE=$(mktemp -d)/remote.git
+          git init --bare -q "$BARE"
+          node "$PH" remote "$BARE"
+          node "$PH" sync -m "CI 冒烟"
+          git --git-dir="$BARE" ls-tree -r -z --name-only HEAD | tr '\0' '\n' | grep '需求.md'
+          echo "✅ 端到端通过"

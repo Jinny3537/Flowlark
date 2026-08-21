@@ -1,0 +1,35 @@
+name: 功能建议
+description: 想让它多做一件事
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的实际问题
+      description: |
+        请先描述问题，而不是直接描述方案 —— 同一个问题往往有更便宜的解法。
+        比如「我记不住哪版是最新的」比「请加一个版本号自动递增功能」更有用。
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: 现在你是怎么绕过去的
+      description: 有没有用 CLI 拼凑出临时方案？这能说明问题有多痛
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你设想的解法（可选）
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 这件事该在哪里做
+      options:
+        - label: CLI
+        - label: 浏览器工作台
+        - label: 两边都要（这是默认期望：命令行能做的事网页也该能做）
