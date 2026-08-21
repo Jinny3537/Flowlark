@@ -289,6 +289,7 @@ web/              Vue 3 工作台
 test/             八组测试，全部跑真实进程 / 真实 git / 真实 HTTP
 docs/STORAGE.md   存储设计与 Git 冲突面分析
 docs/ROADMAP.md   产品升级路线图
+docs/V2-BLUEPRINT.md  v2.0 蓝图：需求驱动的全链路
 ```
 
 ### 浏览器工作台
