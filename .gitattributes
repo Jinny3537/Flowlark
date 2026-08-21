@@ -1,0 +1,19 @@
+# 这是 protohub 源码仓库自己的 Git 配置。
+# 注意：用户执行 protohub init 时会在**数据仓库**里生成另一份 .gitattributes，
+# 那份负责把原型 HTML 标为 binary、给操作日志设 union 合并策略，与本文件无关。
+
+# 统一换行，避免 Windows 协作者提交出整文件 diff
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.vue   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.sh    text eol=lf
+*.command text eol=lf
+
+# GitHub 语言统计里忽略构建产物与锁文件，免得项目被识别成前端仓库
+web/package-lock.json linguist-generated=true
+web/dist/**           linguist-generated=true

@@ -1,0 +1,19 @@
+# 依赖
+node_modules/
+
+# 构建产物：由 npm run build:web 生成，不进版本库
+# （否则每次前端改动都会在 diff 里多出 1.5MB 压缩代码）
+web/dist/
+
+# Vite 偶尔留下的临时配置
+web/vite.config.js.timestamp-*
+
+# 本地调试产生的原型仓库
+data/
+*.log
+
+# 编辑器与系统
+.DS_Store
+.idea/
+.vscode/
+*.swp

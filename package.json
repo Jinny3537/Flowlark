@@ -1,0 +1,49 @@
+{
+  "name": "protohub",
+  "version": "1.0.0",
+  "description": "本地原型版本库：CLI 管数据，浏览器看原型，数据是纯文本文件直接进 Git",
+  "type": "module",
+  "license": "MIT",
+  "author": "protohub contributors",
+  "homepage": "https://github.com/OWNER/protohub#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/protohub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OWNER/protohub/issues"
+  },
+  "bin": {
+    "protohub": "bin/protohub.js",
+    "ph": "bin/protohub.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "web/dist/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "docs/"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "build:web": "cd web && npm install && npm run build",
+    "start": "node bin/protohub.js serve",
+    "prepublishOnly": "npm run build:web && npm test"
+  },
+  "keywords": [
+    "prototype",
+    "version-control",
+    "html",
+    "local-first",
+    "cli",
+    "git",
+    "原型",
+    "版本管理"
+  ],
+  "dependencies": {}
+}
