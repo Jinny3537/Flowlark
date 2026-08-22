@@ -1,7 +1,7 @@
 <template>
-  <div class="page-pad">
-    <h2 style="margin:0 0 4px;font-size:20px">设置</h2>
-    <div class="text-secondary" style="margin-bottom:20px">
+  <div :class="['settings-panel', { 'page-pad': !embedded, 'settings-panel-embedded': embedded }]">
+    <h2 v-if="!embedded" style="margin:0 0 4px;font-size:20px">设置</h2>
+    <div class="text-secondary" :style="{ marginBottom: embedded ? '16px' : '20px' }">
       配置存在仓库根目录的 <span class="mono">flowlark.json</span> 里，随 Git 一起提交，团队共用同一份。
     </div>
 
@@ -144,6 +144,10 @@ import CliHint from '../components/CliHint.vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
 
+defineProps({
+  embedded: { type: Boolean, default: false }
+})
+
 const app = useAppStore()
 const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 
@@ -264,6 +268,9 @@ onMounted(load)
 </script>
 
 <style>
+.settings-panel-embedded {
+  padding: 0 2px 2px;
+}
 .cfg-row {
   display: flex; align-items: flex-start; gap: 20px;
   padding: 14px 0; border-bottom: 1px solid #fafafa;

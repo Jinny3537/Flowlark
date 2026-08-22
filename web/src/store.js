@@ -11,6 +11,8 @@ export const useAppStore = defineStore('app', {
     // 局域网只读模式下为 false，界面据此隐藏写操作 ——
     // 让用户点了按钮再收到 403 是很差的体验
     canWrite: true,
+    readonlyReason: null,
+    gitPermission: null,
     lan: false,
     requirementUrlTemplate: '',
     defaultTags: [],
@@ -37,6 +39,8 @@ export const useAppStore = defineStore('app', {
         this.previewPort = h.previewPort
         this.maxFileBytes = h.maxFileBytes
         this.canWrite = h.canWrite !== false
+        this.readonlyReason = h.readonlyReason || null
+        this.gitPermission = h.gitPermission || null
         this.lan = !!h.lan
         this.requirementUrlTemplate = h.requirementUrlTemplate || ''
         this.defaultTags = h.defaultTags || []

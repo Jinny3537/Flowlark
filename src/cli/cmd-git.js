@@ -246,6 +246,35 @@ export async function doctor(pos, values) {
   console.log(c.dim('  想让 AI 助理代劳：') + 'flowlark git brief')
 }
 
+export async function permission(pos, values) {
+  const h = hub()
+  const p = values.refresh ? h.refreshWritePermission() : h.writePermission()
+
+  if (values.json) return void console.log(JSON.stringify(p, null, 2))
+
+  if (p.mode === 'readonly') {
+    warn('当前仓库按 Git 只读处理')
+    console.log(kv([
+      ['原因', p.reason],
+      ['来源', p.source],
+      ['探测时间', p.checkedAt ? fmtTime(p.checkedAt) : '—']
+    ]))
+    next('flowlark git permission --refresh   ' + c.dim('远端权限变更后刷新一次'))
+    return
+  }
+
+  const label = p.mode === 'writable' ? '可写' : '未确认，暂按可写'
+  ok(`Git 写权限：${label}`)
+  console.log(kv([
+    ['原因', p.reason],
+    ['来源', p.source],
+    ['探测时间', p.checkedAt ? fmtTime(p.checkedAt) : '—']
+  ]))
+  if (p.mode === 'unknown') {
+    next('flowlark git permission --refresh   ' + c.dim('联网探测远端是否可写'))
+  }
+}
+
 /** 一条命令把仓库纳入 Git：init + 配置 + 身份 + 首次提交 */
 export async function setup(pos, values) {
   const h = hub()

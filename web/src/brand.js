@@ -29,12 +29,44 @@ export const BRAND = {
   bgSofter: '#F2FBF9'
 }
 
-/** 传给 a-config-provider 的主题。只覆盖主色相关 token，其余留给 Ant 默认值 */
+/** 传给 a-config-provider 的主题。与 web/src/style.css 的 --fl-* 保持同一套语义值 */
 export const antdTheme = {
   token: {
     colorPrimary: BRAND.primary,
     colorLink: BRAND.primary,
     colorInfo: BRAND.primary,
-    borderRadius: 6
+    colorText: '#16211F',
+    colorTextSecondary: '#5B6866',
+    colorTextTertiary: '#8C9997',
+    colorBorder: '#DDE5E3',
+    colorBgLayout: '#F4F7F6',
+    colorBgContainer: '#FFFFFF',
+    colorError: '#D92D20',
+    colorWarning: '#DC6803',
+    borderRadius: 6,
+    fontSize: 13,
+    controlHeight: 32
+  },
+  components: {
+    Card: {
+      borderRadiusLG: 8,
+      paddingLG: 18
+    },
+    Layout: {
+      headerBg: '#FFFFFF',
+      siderBg: '#FFFFFF'
+    },
+    Tag: {
+      borderRadiusSM: 4
+    },
+    Modal: {
+      borderRadiusLG: 12
+    },
+    Drawer: {
+      borderRadiusLG: 12
+    },
+    Tabs: {
+      horizontalMargin: '0'
+    }
   }
 }

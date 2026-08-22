@@ -1,25 +1,28 @@
 <template>
   <a-config-provider :locale="zhCN" :theme="theme">
-    <a-layout style="height:100%">
-      <a-layout-header style="height:56px;line-height:56px;background:#fff;border-bottom:1px solid #f0f0f0;padding:0 24px;display:flex;align-items:center;gap:16px">
-        <div style="display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;cursor:pointer"
-             @click="$router.push('/projects')">
-          <BrandMark :size="30" />
-          <span>Flowlark</span>
-          <span class="slogan">Where prototypes flow</span>
-        </div>
+    <a-layout class="app-shell">
+      <a-layout-header class="app-header">
+        <button class="app-brand" type="button" @click="$router.push('/projects')" aria-label="回到项目列表">
+          <span class="brand-emblem" aria-hidden="true">
+            <BrandMark :size="28" />
+          </span>
+          <span class="brand-copy">
+            <span class="brand-name">Flowlark</span>
+            <span class="slogan">Where prototypes flow</span>
+          </span>
+        </button>
         <a-divider type="vertical" />
         <a-tooltip :title="app.repo">
-          <span class="text-secondary mono" style="font-size:12px">{{ shortRepo }}</span>
+          <span class="repo-path text-secondary mono code-sm">{{ shortRepo }}</span>
         </a-tooltip>
 
-        <div style="flex:1"></div>
+        <div class="spacer"></div>
 
-        <div class="search-trigger" @click="searchOpen = true">
+        <button class="search-trigger" type="button" @click="searchOpen = true">
           <SearchOutlined />
           <span>搜索</span>
           <kbd>{{ isMac ? '⌘' : 'Ctrl' }}K</kbd>
-        </div>
+        </button>
 
         <a-tooltip :title="gitTooltip">
           <a-badge :count="gitBadge" :offset="[-4, 4]" :number-style="gitBadgeStyle">
@@ -32,8 +35,8 @@
 
         <!-- 只读时必须显式告诉用户，否则会以为是功能坏了 -->
         <a-tooltip v-if="!app.canWrite"
-                   title="这是别人共享出来的视图。写操作仅限运行 Flowlark 的那台机器。">
-          <a-tag color="orange"><EyeOutlined /> 只读</a-tag>
+                   :title="readonlyTooltip">
+          <a-tag color="orange"><EyeOutlined /> {{ readonlyLabel }}</a-tag>
         </a-tooltip>
         <a-tag v-else-if="app.lan" color="cyan">局域网已开放</a-tag>
         <a-tag v-if="app.connected" color="green">运行中</a-tag>
@@ -41,23 +44,26 @@
       </a-layout-header>
 
       <a-layout>
-        <a-layout-sider :width="188" theme="light" style="border-right:1px solid #f0f0f0">
-          <a-menu mode="inline" :selected-keys="[activeKey]" style="border:0" @click="({ key }) => $router.push('/' + key)">
+        <a-layout-sider :width="188" theme="light" class="app-sidebar">
+          <a-menu mode="inline" :selected-keys="activeKey ? [activeKey] : []" class="app-menu" @click="({ key }) => $router.push('/' + key)">
             <a-menu-item key="projects"><template #icon><FolderOutlined /></template>项目</a-menu-item>
             <a-menu-item key="oplog"><template #icon><HistoryOutlined /></template>操作日志</a-menu-item>
             <a-menu-item key="trash"><template #icon><DeleteOutlined /></template>回收站</a-menu-item>
-            <a-menu-item key="settings"><template #icon><SettingOutlined /></template>设置</a-menu-item>
           </a-menu>
 
-          <div style="position:absolute;bottom:16px;left:12px;right:12px">
-            <div class="text-secondary" style="font-size:11px;line-height:1.8">
+          <div class="app-sidebar-footer">
+            <a-button class="app-settings-button" block @click="settingsOpen = true">
+              <template #icon><SettingOutlined /></template>
+              设置
+            </a-button>
+            <div class="text-secondary app-sidebar-note">
               数据是纯文本文件，直接进 Git。<br>
               CLI 能做的事这里都能做。
             </div>
           </div>
         </a-layout-sider>
 
-        <a-layout-content style="overflow:hidden;display:flex;flex-direction:column">
+        <a-layout-content class="app-content">
           <router-view />
         </a-layout-content>
       </a-layout>
@@ -65,6 +71,14 @@
 
     <SearchPalette v-model:open="searchOpen" />
     <GitPanel v-model:open="gitOpen" @changed="loadGit" />
+    <a-modal v-model:open="settingsOpen"
+             title="设置"
+             width="860px"
+             :footer="null"
+             class="settings-modal"
+             destroy-on-close>
+      <SettingsView embedded />
+    </a-modal>
   </a-config-provider>
 </template>
 
@@ -79,6 +93,7 @@ import {
 import SearchPalette from './components/SearchPalette.vue'
 import GitPanel from './components/GitPanel.vue'
 import BrandMark from './components/BrandMark.vue'
+import SettingsView from './views/Settings.vue'
 import { antdTheme } from './brand'
 import { useAppStore } from './store'
 
@@ -90,6 +105,7 @@ const route = useRoute()
 
 const searchOpen = ref(false)
 const gitOpen = ref(false)
+const settingsOpen = ref(false)
 const git = ref({ tracked: false, clean: true, files: [], conflicts: [] })
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
@@ -97,7 +113,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 const activeKey = computed(() => {
   if (route.path.startsWith('/oplog')) return 'oplog'
   if (route.path.startsWith('/trash')) return 'trash'
-  if (route.path.startsWith('/settings')) return 'settings'
+  if (route.path.startsWith('/settings')) return ''
   return 'projects'
 })
 
@@ -114,20 +130,41 @@ const gitBadge = computed(() => {
   return git.value.files.length
 })
 const gitBadgeStyle = computed(() => ({
-  backgroundColor: git.value.conflicts.length ? '#ff4d4f' : '#faad14'
+  backgroundColor: git.value.conflicts.length ? 'var(--fl-danger)' : 'var(--fl-draft)'
 }))
 const gitTooltip = computed(() => {
   if (!git.value.tracked) return '未纳入 Git'
   if (git.value.conflicts.length) return `${git.value.conflicts.length} 个冲突待解决`
-  if (!git.value.clean) return `${git.value.files.length} 处未提交改动`
-  return '工作区干净'
+  const source = git.value.cached ? '缓存状态，后台会刷新' : (git.value.fast ? '快速状态，仅统计 Flowlark 文件' : '完整状态')
+  if (!git.value.clean) return `${git.value.files.length} 处未提交改动（${source}）`
+  return `工作区干净（${source}）`
 })
+const readonlyLabel = computed(() => app.readonlyReason === 'git' ? 'Git 只读' : '只读')
+const readonlyTooltip = computed(() => app.readonlyReason === 'git'
+  ? '当前 Git 身份没有远端写权限。Flowlark 已隐藏写操作，避免产生推不上去的本地改动。'
+  : '这是别人共享出来的视图。写操作仅限运行 Flowlark 的那台机器。')
 
 async function loadGit() {
   try {
-    git.value = await api.gitStatus()
+    git.value = await api.gitStatus({ fast: true })
   } catch {
     git.value = { tracked: false, clean: true, files: [], conflicts: [] }
+  }
+}
+
+async function loadGitCached() {
+  try {
+    git.value = await api.gitStatus({ fast: true, cache: true })
+  } catch {
+    /* 没有缓存时静默走后台刷新 */
+  }
+}
+
+function scheduleGitLoad() {
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(loadGit, { timeout: 1200 })
+  } else {
+    window.setTimeout(loadGit, 200)
   }
 }
 
@@ -140,28 +177,115 @@ function onKey(e) {
 
 onMounted(async () => {
   await app.load()
-  loadGit()
+  await loadGitCached()
+  scheduleGitLoad()
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <style>
-/* Slogan 只在够宽的屏上显示，窄屏优先保证功能区 */
-.slogan {
-  font-size: 12px; font-weight: 400; color: #0E9384; opacity: .72;
-  letter-spacing: .3px; white-space: nowrap;
-}
-@media (max-width: 1100px) { .slogan { display: none; } }
-
 .search-trigger {
-  display: flex; align-items: center; gap: 8px; cursor: pointer;
-  height: 30px; padding: 0 10px; border: 1px solid #f0f0f0; border-radius: 6px;
-  color: rgba(0,0,0,.45); font-size: 13px; background: #fafafa; transition: all .2s;
+  display: flex; align-items: center; gap: var(--fl-s-2); cursor: pointer;
+  height: 32px; padding: 0 11px; border: 1px solid var(--fl-line); border-radius: var(--fl-r-2);
+  color: var(--fl-text-2); font-size: var(--fl-fs-3); background: var(--fl-surface-2);
+  transition: all .2s var(--fl-ease);
+  line-height: 1;
+  box-sizing: border-box;
+  font-family: inherit;
+  white-space: nowrap;
 }
-.search-trigger:hover { border-color: #7FD8CA; color: #0E9384; background: #fff; }
+.search-trigger .anticon,
+.search-trigger span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+.repo-path {
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.search-trigger:hover { border-color: var(--fl-line-strong); color: var(--fl-primary); background: var(--fl-surface); box-shadow: var(--fl-shadow-1); }
 .search-trigger kbd {
-  font-family: inherit; font-size: 11px; background: #fff; border: 1px solid #e8e8e8;
-  border-radius: 4px; padding: 1px 5px; color: rgba(0,0,0,.35);
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  line-height: 1;
+  font-family: inherit; font-size: var(--fl-fs-1); background: var(--fl-surface); border: 1px solid var(--fl-line);
+  border-radius: var(--fl-r-1); padding: 0 5px; color: var(--fl-text-3);
+  box-sizing: border-box;
+}
+.app-menu {
+  border: 0;
+  background: transparent;
+  color: var(--fl-text-2);
+  padding-top: var(--fl-s-3);
+}
+.app-menu .ant-menu-item {
+  position: relative;
+  border-radius: var(--fl-r-2);
+  margin-inline: var(--fl-s-2);
+  width: calc(100% - 16px);
+  color: var(--fl-text-2);
+  transition: background-color .18s var(--fl-ease), color .18s var(--fl-ease);
+}
+.app-menu .ant-menu-item:hover {
+  color: var(--fl-primary-deep);
+  background: var(--fl-surface-3);
+}
+.app-menu .ant-menu-item-selected {
+  background: #F3FAF8;
+  color: var(--fl-ink);
+  font-weight: 650;
+  box-shadow: inset 0 0 0 1px rgba(14,147,132,.12);
+}
+.app-menu .ant-menu-item-selected:hover {
+  background: #EDF8F5;
+  color: var(--fl-ink);
+}
+.app-menu .ant-menu-item-selected::after { display: none; }
+.app-menu .ant-menu-item .anticon { color: var(--fl-text-3); }
+.app-menu .ant-menu-item-selected .anticon { color: var(--fl-primary); }
+.app-sidebar-footer {
+  position: absolute;
+  bottom: var(--fl-s-4);
+  left: var(--fl-s-3);
+  right: var(--fl-s-3);
+}
+.app-settings-button {
+  justify-content: flex-start;
+  color: var(--fl-text-2);
+  border-color: var(--fl-line);
+  background: var(--fl-surface);
+  box-shadow: var(--fl-shadow-1);
+}
+.app-settings-button:hover {
+  color: var(--fl-primary-deep);
+  border-color: var(--fl-line-strong);
+  background: #F6FAF9;
+}
+.app-sidebar-footer .app-sidebar-note {
+  position: static;
+  margin-top: var(--fl-s-3);
+}
+.settings-modal .ant-modal-body {
+  max-height: min(72vh, 760px);
+  overflow-y: auto;
+  padding: 0;
+}
+
+@media (max-width: 900px) {
+  .repo-path { max-width: 160px; }
+}
+
+@media (max-width: 768px) {
+  .search-trigger span,
+  .search-trigger kbd {
+    display: none;
+  }
 }
 </style>

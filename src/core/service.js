@@ -7,6 +7,7 @@ import * as gitx from './git.js'
 import * as assistant from './assistant.js'
 import * as readstate from './readstate.js'
 import * as offline from './offline.js'
+import * as permissions from './permissions.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -44,6 +45,7 @@ export class Hub {
   }
 
   createProject({ name, code, description = '' }) {
+    this.#assertWritable('创建项目')
     const trimmedName = String(name || '').trim()
     if (!trimmedName) throw err.bad('NAME_REQUIRED', '请填写项目名称')
 
@@ -74,6 +76,7 @@ export class Hub {
   }
 
   updateProject(slug, { name, description }) {
+    this.#assertWritable('编辑项目')
     const p = store.readProject(this.root, slug)
     if (name !== undefined) p.name = String(name).trim() || p.name
     if (description !== undefined) p.description = String(description)
@@ -119,6 +122,7 @@ export class Hub {
    * CLI 走后者（避免把文件读进内存再传一遍），HTTP 走前者。
    */
   addVersion(slug, { versionNo, title, note = '', html = null, sourcePath = null, changes = [], requirements = [], tags = [], status = 'DRAFT' }) {
+    this.#assertWritable('新增版本')
     store.readProject(this.root, slug)
     store.assertVersionNo(versionNo)
 
@@ -177,6 +181,7 @@ export class Hub {
   }
 
   updateVersion(slug, versionNo, { title, note }) {
+    this.#assertWritable('编辑版本信息')
     const baselineNo = store.readBaseline(this.root, slug)
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertEditable(v, baselineNo, '版本信息', { enabled: this.settings.rules.lockBaseline })
@@ -189,6 +194,7 @@ export class Hub {
   }
 
   replaceHtml(slug, versionNo, { html = null, sourcePath = null }) {
+    this.#assertWritable('替换原型文件')
     const baselineNo = store.readBaseline(this.root, slug)
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertEditable(v, baselineNo, '原型文件', { enabled: this.settings.rules.lockBaseline })
@@ -213,6 +219,7 @@ export class Hub {
 
   /** R4 的另一半：规格书不受基线锁定 */
   setSpec(slug, versionNo, markdown) {
+    this.#assertWritable('编辑规格书')
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertSpecEditable(v)
     store.writeSpec(this.root, slug, versionNo, markdown)
@@ -224,6 +231,7 @@ export class Hub {
   }
 
   setChanges(slug, versionNo, items) {
+    this.#assertWritable('编辑变更日志')
     const baselineNo = store.readBaseline(this.root, slug)
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertEditable(v, baselineNo, '变更日志', { enabled: this.settings.rules.lockBaseline })
@@ -240,6 +248,7 @@ export class Hub {
   }
 
   setRequirements(slug, versionNo, items) {
+    this.#assertWritable('编辑关联需求')
     const baselineNo = store.readBaseline(this.root, slug)
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertEditable(v, baselineNo, '关联需求', { enabled: this.settings.rules.lockBaseline })
@@ -259,6 +268,7 @@ export class Hub {
    * 现在基线是一个文件指针，整个操作就是一次原子写入，物理上不存在两个基线。
    */
   setBaseline(slug, versionNo) {
+    this.#assertWritable('设置基线')
     const baselineNo = store.readBaseline(this.root, slug)
     const v = store.readVersion(this.root, slug, versionNo)
 
@@ -316,6 +326,7 @@ export class Hub {
   // ==================== 生命周期 ====================
 
   voidVersion(slug, versionNo) {
+    this.#assertWritable('废弃版本')
     const baselineNo = store.readBaseline(this.root, slug)
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertNotBaseline(v, baselineNo, '废弃')
@@ -327,6 +338,7 @@ export class Hub {
   }
 
   reopenVersion(slug, versionNo) {
+    this.#assertWritable('恢复版本')
     const v = store.readVersion(this.root, slug, versionNo)
     if (v.status !== 'VOID') throw err.bad('NOT_VOID', `${versionNo} 不是已废弃状态`)
     v.status = 'DRAFT'
@@ -337,6 +349,7 @@ export class Hub {
   }
 
   removeVersion(slug, versionNo) {
+    this.#assertWritable('删除版本')
     const baselineNo = store.readBaseline(this.root, slug)
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertNotBaseline(v, baselineNo, '删除')
@@ -350,6 +363,7 @@ export class Hub {
   }
 
   restoreVersion(slug, versionNo) {
+    this.#assertWritable('恢复版本')
     const entry = store.listTrash(this.root, slug).find((t) => t.versionNo === versionNo)
     if (!entry) throw err.notFound(`回收站中的版本「${versionNo}」`)
     if (store.versionExists(this.root, slug, versionNo)) {
@@ -409,6 +423,7 @@ export class Hub {
    * 和「这一版原型长什么样」这个事实无关，锁死它没有道理。
    */
   setTags(slug, versionNo, tags) {
+    this.#assertWritable('编辑标签')
     const v = store.readVersion(this.root, slug, versionNo)
     const clean = [...new Set(
       (tags || [])
@@ -499,6 +514,7 @@ export class Hub {
   // ==================== 离线版本 ====================
 
   async buildOffline(slug, versionNo) {
+    this.#assertWritable('生成离线版本')
     offline.assertFetchAvailable()
     const v = store.readVersion(this.root, slug, versionNo)
     const html = store.readHtml(this.root, slug, versionNo)
@@ -527,6 +543,7 @@ export class Hub {
   }
 
   clearOffline(slug, versionNo) {
+    this.#assertWritable('清理离线版本')
     offline.clearOffline(this.root, slug, versionNo)
   }
 
@@ -540,6 +557,7 @@ export class Hub {
    * 锁死会逼产品为了加个附件去发一个假版本。
    */
   addAttachment(slug, versionNo, { name, content = null, sourcePath = null, contentType = '' }) {
+    this.#assertWritable('添加附件')
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertSpecEditable(v)
 
@@ -594,6 +612,7 @@ export class Hub {
   }
 
   removeAttachment(slug, versionNo, name) {
+    this.#assertWritable('删除附件')
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertSpecEditable(v)
     const safe = store.safeAttachmentName(name)
@@ -620,6 +639,7 @@ export class Hub {
    * 而不是让用户改完发现没反应。
    */
   setConfig(key, rawValue) {
+    this.#assertWritable('修改配置')
     const { settings, value, problems } = cfg.set(this.settings, key, rawValue)
     this.config.settings = settings
     writeConfig(this.root, this.config)
@@ -664,8 +684,8 @@ export class Hub {
 
   // ==================== Git ====================
 
-  gitStatus() {
-    return gitx.status(this.root)
+  gitStatus(options) {
+    return gitx.status(this.root, options)
   }
 
   gitRemote() {
@@ -673,6 +693,7 @@ export class Hub {
   }
 
   gitSetRemote(url) {
+    this.#assertWritable('设置远端')
     const msg = gitx.setRemote(this.root, url)
     this.config.settings.git.remote = url
     writeConfig(this.root, this.config)
@@ -681,6 +702,7 @@ export class Hub {
   }
 
   gitRemoveRemote() {
+    this.#assertWritable('移除远端')
     gitx.removeRemote(this.root)
     this.config.settings.git.remote = ''
     writeConfig(this.root, this.config)
@@ -689,6 +711,7 @@ export class Hub {
   }
 
   gitSync(options) {
+    this.#assertWritable('同步 Git')
     return gitx.sync(this.root, options)
   }
 
@@ -718,6 +741,7 @@ export class Hub {
   }
 
   gitResolveBaseline(slug, versionNo) {
+    this.#assertWritable('解决基线冲突')
     const r = gitx.resolveBaselineConflict(this.root, slug, versionNo)
     this.#log(slug, versionNo, 'CONFLICT_RESOLVE', `解决基线冲突，保留 ${versionNo}`)
     return r
@@ -738,6 +762,7 @@ export class Hub {
   }
 
   gitInit({ name, email, message, remote } = {}) {
+    this.#assertWritable('纳入 Git 管理')
     const r = gitx.initRepo(this.root, { name, email, message })
     if (remote && String(remote).trim()) {
       gitx.setRemote(this.root, String(remote).trim())
@@ -754,6 +779,7 @@ export class Hub {
   }
 
   gitSetIdentity({ name, email, global: isGlobal } = {}) {
+    this.#assertWritable('设置提交身份')
     const r = gitx.setIdentity(this.root, { name, email, global: isGlobal })
     // 同步到 Flowlark 自己的配置，两处身份保持一致，用户只需要填一次
     if (name) this.config.settings.git.userName = String(name).trim()
@@ -768,18 +794,21 @@ export class Hub {
   }
 
   gitMarkResolved(paths) {
+    this.#assertWritable('标记冲突已解决')
     const r = gitx.markResolved(this.root, paths)
     this.#log(null, null, 'CONFLICT_RESOLVE', `标记 ${r.files.length} 个文件已解决`)
     return r
   }
 
   gitContinue() {
+    this.#assertWritable('继续同步')
     const r = gitx.continueInProgress(this.root)
     if (r.done) this.#log(null, null, 'GIT_CONTINUE', '完成中断的同步')
     return r
   }
 
   gitAbort() {
+    this.#assertWritable('放弃同步')
     const r = gitx.abortInProgress(this.root)
     if (r.aborted) this.#log(null, null, 'GIT_ABORT', '放弃中断的同步')
     return r
@@ -801,6 +830,14 @@ export class Hub {
 
   gitChangeSummary() {
     return assistant.changeSummary(this.root)
+  }
+
+  writePermission() {
+    return permissions.status(this.root)
+  }
+
+  refreshWritePermission() {
+    return permissions.refresh(this.root)
   }
 
   // ==================== 内部 ====================
@@ -857,6 +894,10 @@ export class Hub {
       detail,
       ...extra
     })
+  }
+
+  #assertWritable(action) {
+    return permissions.assertWritable(this.root, action)
   }
 }
 

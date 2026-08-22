@@ -1,16 +1,16 @@
 <template>
   <div class="page-pad">
-    <a-breadcrumb style="margin-bottom:12px">
+    <a-breadcrumb class="timeline-breadcrumb">
       <a-breadcrumb-item><a @click="$router.push('/projects')">项目</a></a-breadcrumb-item>
       <a-breadcrumb-item>{{ project ? project.name : '' }}</a-breadcrumb-item>
     </a-breadcrumb>
 
-    <div style="display:flex;align-items:flex-start;margin-bottom:20px">
+    <div class="page-head">
       <div>
-        <h2 style="margin:0;font-size:20px">{{ project ? project.name : '' }}</h2>
+        <h2 class="page-title">{{ project ? project.name : '' }}</h2>
         <div class="mono text-secondary">{{ slug }}</div>
       </div>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <div class="page-actions">
         <a-checkbox v-model:checked="includeVoid" @change="load">显示已废弃</a-checkbox>
         <a-divider type="vertical" />
         <a-button :disabled="versions.length < 2" @click="goCompare()">
@@ -19,98 +19,105 @@
         <a-button :disabled="versions.length < 2" @click="cumOpen = true">
           <template #icon><BarChartOutlined /></template>累计变更
         </a-button>
-        <a-button type="primary" @click="newOpen = true">
+        <a-button type="primary" :disabled="!app.canWrite" @click="newOpen = true">
           <template #icon><PlusOutlined /></template>新建版本
         </a-button>
       </div>
     </div>
 
+    <a-alert v-if="!app.canWrite" type="info" show-icon class="timeline-alert"
+             message="当前是只读模式"
+             description="可以查看时间线、标记已读、下载和对比；上传版本、设置基线、废弃和删除需要写权限。" />
+
     <!-- 「自我上次看过之后有什么新东西」—— 研发进来第一眼想知道的 -->
-    <a-alert v-if="newCount > 0" type="success" show-icon style="margin-bottom:16px">
+    <a-alert v-if="newCount > 0" type="success" show-icon class="timeline-alert">
       <template #message>
         自你上次看过 <b class="mono">{{ readState.versionNo }}</b> 之后，新增了
         <b>{{ newCount }}</b> 个版本
-        <a style="margin-left:12px" @click="cumOpen = true">看看改了什么</a>
-        <a style="margin-left:12px" @click="markReadLatest">标记为已读</a>
+        <a class="link-gap" @click="cumOpen = true">看看改了什么</a>
+        <a class="link-gap" @click="markReadLatest">标记为已读</a>
       </template>
     </a-alert>
 
     <div v-if="baseline" class="baseline-banner">
-      <div style="flex:1">
-        <div style="font-size:12px;color:#0958d9;font-weight:600;letter-spacing:.5px">
-          ▎当前基线 · 研发按这版开发
-        </div>
-        <div class="mono" style="font-size:24px;font-weight:600;margin-top:2px">{{ baseline.versionNo }}</div>
-        <div class="text-secondary" style="margin-top:2px">{{ baseline.title }}</div>
+      <div class="spacer">
+        <div class="baseline-kicker">当前基线 · 研发按这版开发</div>
+        <div class="mono baseline-no">{{ baseline.versionNo }}</div>
+        <div class="text-secondary stack-sm">{{ baseline.title }}</div>
       </div>
-      <div style="text-align:right">
-        <div class="text-secondary" style="font-size:12px">
+      <div class="baseline-side">
+        <div class="text-secondary code-sm">
           {{ baseline.createdBy }} · {{ fmtAbsolute(baseline.baselineAt || baseline.createdAt) }}<br>
           {{ baseline.changeCount }} 条变更 · {{ baseline.requirementCount }} 条需求
         </div>
-        <a-space style="margin-top:10px">
-          <a-button v-if="canRollback" @click="doRollback">回滚上一版</a-button>
-          <a-button type="primary" @click="openWb(baseline.versionNo)">打开工作台 →</a-button>
+        <a-space class="stack-sm">
+          <a-button v-if="canRollback" :disabled="!app.canWrite" @click="doRollback">回滚上一版</a-button>
+          <a-button type="primary" @click="openWb(baseline.versionNo)">
+            打开工作台
+          </a-button>
         </a-space>
       </div>
     </div>
 
-    <a-alert v-else-if="!loading && versions.length > 0" type="warning" show-icon style="margin-bottom:20px"
+    <a-alert v-else-if="!loading && versions.length > 0" type="warning" show-icon class="timeline-alert"
              message="本项目还没有基线版本"
              description="研发不知道该按哪一版开发。选一个版本点「设为基线」。" />
 
-    <div class="text-secondary" style="margin:0 0 12px 4px;font-size:13px">版本时间线</div>
+    <div class="section-label">版本时间线</div>
 
     <a-spin :spinning="loading">
       <a-empty v-if="!loading && versions.length === 0" description="还没有版本">
-        <a-button type="primary" @click="newOpen = true">上传第一版原型</a-button>
+        <a-button type="primary" :disabled="!app.canWrite" @click="newOpen = true">上传第一版原型</a-button>
       </a-empty>
 
-      <div v-for="v in versions" :key="v.versionNo" class="ver-row"
-           :class="{ 'is-baseline': v.isBaseline, 'is-void': v.display.key === 'VOID' }"
-           @click="openWb(v.versionNo)">
-        <div class="ver-no mono">{{ v.versionNo }}</div>
+      <div v-if="versions.length" class="timeline-list">
+        <div v-for="v in versions" :key="v.versionNo" class="ver-row"
+             :class="{ 'is-baseline': v.isBaseline, 'is-void': v.display.key === 'VOID' }"
+             @click="openWb(v.versionNo)">
+          <div class="ver-no mono">{{ v.versionNo }}</div>
 
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:500;margin-bottom:4px">
-            {{ v.title }}
-            <a-tag v-if="v.isNew" color="green" style="margin-left:8px">新</a-tag>
-            <a-tag v-else-if="v.isLastRead" style="margin-left:8px">上次看到这里</a-tag>
-            <a-tag v-if="v.display.key === 'DRAFT'" color="gold" style="margin-left:8px">
-              ⚠️ 草稿，勿据此开发
-            </a-tag>
-            <a-tag v-for="t in v.tags" :key="t" color="purple" style="margin-left:4px">{{ t }}</a-tag>
+          <div class="spacer">
+            <div class="ver-title">
+              {{ v.title }}
+              <a-tag v-if="v.isNew" color="green" class="tag-gap">新</a-tag>
+              <a-tag v-else-if="v.isLastRead" class="tag-gap">上次看到这里</a-tag>
+              <a-tag v-if="v.display.key === 'DRAFT'" color="gold" class="tag-gap">
+                草稿，勿据此开发
+              </a-tag>
+              <a-tag v-for="t in v.tags" :key="t" color="cyan" class="tag-gap-sm">{{ t }}</a-tag>
+            </div>
+            <div class="inline-meta">
+              <span>{{ v.createdBy }}</span>
+              <span>{{ fmtTime(v.createdAt) }}</span>
+              <span><FileTextOutlined /> {{ v.changeCount }} 条变更</span>
+              <span><LinkOutlined /> {{ v.requirementCount }} 条需求</span>
+              <span v-if="v.externalRefs.length" class="warning-text"><ThunderboltOutlined /> {{ v.externalRefs.length }} 个外部依赖</span>
+            </div>
           </div>
-          <div class="text-secondary" style="font-size:12px;display:flex;gap:12px;flex-wrap:wrap">
-            <span>{{ v.createdBy }}</span>
-            <span>{{ fmtTime(v.createdAt) }}</span>
-            <span>📝 {{ v.changeCount }} 条变更</span>
-            <span>🔗 {{ v.requirementCount }} 条需求</span>
-            <span v-if="v.externalRefs.length" style="color:#faad14">⚡ {{ v.externalRefs.length }} 个外部依赖</span>
+
+          <a-tag :color="v.display.color">{{ v.display.label }}</a-tag>
+
+          <div class="row-actions" @click.stop>
+            <a-button v-if="!v.isBaseline && v.display.key !== 'VOID'" size="small"
+                      :disabled="!app.canWrite" @click="askBaseline(v)">
+              {{ v.display.key === 'HISTORY' ? '回滚为基线' : '设为基线' }}
+            </a-button>
+            <a-dropdown :trigger="['click']">
+              <a-button type="text" size="small" aria-label="更多操作"><MoreOutlined /></a-button>
+              <template #overlay>
+                <a-menu @click="({ key }) => onAction(key, v)">
+                  <a-menu-item key="open">打开工作台</a-menu-item>
+                  <a-menu-item key="compare">与基线并排对比</a-menu-item>
+                  <a-menu-item key="read">标记为已读</a-menu-item>
+                  <a-menu-item key="download">下载 HTML</a-menu-item>
+                  <a-menu-divider />
+                  <a-menu-item v-if="v.display.key === 'VOID'" key="reopen" :disabled="!app.canWrite">恢复为编辑中</a-menu-item>
+                  <a-menu-item v-else key="void" :disabled="!app.canWrite || v.isBaseline">废弃</a-menu-item>
+                  <a-menu-item key="remove" danger :disabled="!app.canWrite || v.isBaseline">删除</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
           </div>
-        </div>
-
-        <a-tag :color="v.display.color">{{ v.display.label }}</a-tag>
-
-        <div style="display:flex;gap:4px" @click.stop>
-          <a-button v-if="!v.isBaseline && v.display.key !== 'VOID'" size="small" @click="askBaseline(v)">
-            {{ v.display.key === 'HISTORY' ? '回滚为基线' : '设为基线' }}
-          </a-button>
-          <a-dropdown :trigger="['click']">
-            <a-button type="text" size="small"><MoreOutlined /></a-button>
-            <template #overlay>
-              <a-menu @click="({ key }) => onAction(key, v)">
-                <a-menu-item key="open">打开工作台</a-menu-item>
-                <a-menu-item key="compare">与基线并排对比</a-menu-item>
-                <a-menu-item key="read">标记为已读</a-menu-item>
-                <a-menu-item key="download">下载 HTML</a-menu-item>
-                <a-menu-divider />
-                <a-menu-item v-if="v.display.key === 'VOID'" key="reopen">恢复为编辑中</a-menu-item>
-                <a-menu-item v-else key="void" :disabled="v.isBaseline">废弃</a-menu-item>
-                <a-menu-item key="remove" danger :disabled="v.isBaseline">删除</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
         </div>
       </div>
     </a-spin>
@@ -128,15 +135,20 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
-import { PlusOutlined, MoreOutlined, BarChartOutlined, ColumnWidthOutlined } from '@ant-design/icons-vue'
+import {
+  PlusOutlined, MoreOutlined, BarChartOutlined, ColumnWidthOutlined,
+  FileTextOutlined, LinkOutlined, ThunderboltOutlined
+} from '@ant-design/icons-vue'
 import NewVersionModal from '../components/NewVersionModal.vue'
 import BaselineModal from '../components/BaselineModal.vue'
 import CumulativeModal from '../components/CumulativeModal.vue'
 import { api } from '../api'
+import { useAppStore } from '../store'
 import { fmtTime, fmtAbsolute } from '../utils'
 
 const props = defineProps({ slug: String })
 const router = useRouter()
+const app = useAppStore()
 
 const project = ref(null)
 const versions = ref([])
@@ -187,11 +199,13 @@ async function markReadLatest() {
 const openWb = (no) => router.push(`/projects/${props.slug}/versions/${no}`)
 
 function askBaseline(v) {
+  if (!app.canWrite) return message.info('当前是只读模式，不能设置基线')
   blTarget.value = v
   blOpen.value = true
 }
 
 async function doRollback() {
+  if (!app.canWrite) return message.info('当前是只读模式，不能回滚基线')
   const v = await api.rollback(props.slug)
   message.success(`已回滚到 ${v.versionNo}`)
   load()
@@ -214,9 +228,11 @@ function onAction(key, v) {
   }
 
   if (key === 'reopen') {
+    if (!app.canWrite) return message.info('当前是只读模式，不能恢复版本')
     return api.reopenVersion(props.slug, v.versionNo).then(() => { message.success('已恢复为编辑中'); load() })
   }
   if (key === 'void') {
+    if (!app.canWrite) return message.info('当前是只读模式，不能废弃版本')
     return Modal.confirm({
       title: `废弃版本 ${v.versionNo}？`,
       content: '废弃后默认不在时间线显示，记录保留，可随时恢复。',
@@ -225,6 +241,7 @@ function onAction(key, v) {
     })
   }
   if (key === 'remove') {
+    if (!app.canWrite) return message.info('当前是只读模式，不能删除版本')
     return Modal.confirm({
       title: `删除版本 ${v.versionNo}？`,
       content: '文件会移入 .flowlark/trash，可在回收站恢复。',
@@ -237,3 +254,27 @@ function onAction(key, v) {
 watch(() => props.slug, load)
 onMounted(load)
 </script>
+
+<style scoped>
+.timeline-breadcrumb { margin-bottom: var(--fl-s-3); }
+.timeline-alert { margin-bottom: var(--fl-s-4); }
+.baseline-side { text-align: right; }
+.row-actions { display: flex; gap: var(--fl-s-1); }
+.timeline-list {
+  position: relative;
+  margin-left: 18px;
+}
+.timeline-list::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 8px;
+  bottom: 14px;
+  width: 1px;
+  background: var(--fl-line-strong);
+}
+@media (max-width: 768px) {
+  .baseline-banner { align-items: flex-start; flex-direction: column; }
+  .baseline-side { text-align: left; }
+}
+</style>

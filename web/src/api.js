@@ -23,9 +23,11 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
   const data = text ? JSON.parse(text) : null
 
   if (!res.ok) {
-    // 局域网只读被拦时给一句更直白的话，用户多半是在别人的机器上操作
-    if (data && data.code === 'READONLY_FROM_LAN') {
-      message.warning('这是别人共享出来的只读视图，只能查看不能修改')
+    // 只读被拦时给一句更直白的话，用户多半是在别人的机器上操作或远端没有写权限
+    if (data && (data.code === 'READONLY_FROM_LAN' || data.code === 'GIT_READONLY')) {
+      message.warning(data.code === 'READONLY_FROM_LAN'
+        ? '这是别人共享出来的只读视图，只能查看不能修改'
+        : '当前 Git 身份没有远端写权限，Flowlark 已进入只读模式')
       const e = new Error(data.message)
       e.code = data.code
       throw e
@@ -104,7 +106,15 @@ export const api = {
   clearOffline: (slug, no) => del(`/api/versions/${enc(slug)}/${enc(no)}/offline`),
 
   // ---- Git ----
-  gitStatus: () => get('/api/git/status'),
+  gitStatus: ({ fast = false, cache = false } = {}) => {
+    const q = new URLSearchParams()
+    if (fast) q.set('fast', '1')
+    if (cache) q.set('cache', '1')
+    const s = q.toString()
+    return get(`/api/git/status${s ? '?' + s : ''}`)
+  },
+  gitPermission: () => get('/api/git/permission'),
+  refreshGitPermission: () => post('/api/git/permission/refresh', {}),
   gitSync: (message) => post('/api/git/sync', { message }),
   gitConflicts: () => get('/api/git/conflicts'),
   gitResolve: (slug, versionNo) => post(`/api/git/resolve/${enc(slug)}`, { versionNo }),

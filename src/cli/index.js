@@ -85,6 +85,9 @@ const GIT_SUB = {
   cancel: cmdGit.abort,
   brief: cmdGit.brief,
   ai: cmdGit.brief,
+  permission: cmdGit.permission,
+  permissions: cmdGit.permission,
+  readonly: cmdGit.permission,
   doctor: cmdGit.doctor,
   status: cmdGit.doctor
 }
@@ -133,6 +136,7 @@ const OPTIONS = {
   remote: { type: 'string', multiple: true },
   intent: { type: 'string', multiple: true },
   global: { type: 'boolean' },
+  refresh: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' }
 }
 

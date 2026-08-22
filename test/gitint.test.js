@@ -37,13 +37,15 @@ function repo({ commit = true } = {}) {
 
 describe('Git 状态解析', { skip: hasGit ? false : '环境无 git' }, () => {
   test('分支名的四种 porcelain 形态都要认', (t) => {
-    // 曾经的 bug：「## No commits yet on master」被正则截成了分支名 "No"
+    // 曾经的 bug：「## No commits yet on <branch>」被正则截成了分支名 "No"。
+    // Git 默认分支名取决于本机配置，测试只验证解析逻辑，不绑定 master/main。
     const { root } = repo({ commit: false })
-    t.assert.strictEqual(gitx.status(root).branch, 'master', '尚无提交时也要拿到分支名')
+    const branch = git(root, 'branch', '--show-current').stdout.trim()
+    t.assert.strictEqual(gitx.status(root).branch, branch, '尚无提交时也要拿到分支名')
 
     git(root, 'add', '.')
     git(root, 'commit', '-q', '-m', 'x')
-    t.assert.strictEqual(gitx.status(root).branch, 'master')
+    t.assert.strictEqual(gitx.status(root).branch, branch)
 
     git(root, 'checkout', '-q', '--detach', 'HEAD')
     t.assert.strictEqual(gitx.status(root).branch, null, '游离 HEAD 不该编造分支名')

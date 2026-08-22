@@ -1,13 +1,13 @@
 <template>
-  <div style="height:100%;display:flex;flex-direction:column;overflow:hidden">
-    <div style="height:52px;flex-shrink:0;background:#fff;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;padding:0 16px;gap:12px">
+  <div class="wb-page">
+    <div class="wb-toolbar">
       <a-button type="text" @click="$router.push(`/projects/${slug}`)">
         <template #icon><LeftOutlined /></template>返回
       </a-button>
       <a-divider type="vertical" />
       <strong v-if="project">{{ project.name }}</strong>
 
-      <a-select :value="versionNo" style="width:280px" @change="(no) => $router.push(`/projects/${slug}/versions/${no}`)">
+      <a-select :value="versionNo" class="version-select" @change="(no) => $router.push(`/projects/${slug}/versions/${no}`)">
         <a-select-option v-for="v in siblings" :key="v.versionNo" :value="v.versionNo">
           {{ v.versionNo }} — {{ v.title }}
         </a-select-option>
@@ -15,7 +15,7 @@
 
       <a-tag v-if="version" :color="version.display.color">{{ version.display.label }}</a-tag>
 
-      <div style="flex:1"></div>
+      <div class="spacer"></div>
 
       <a-button size="small" @click="historyOpen = true">
         <template #icon><HistoryOutlined /></template>历史
@@ -26,7 +26,7 @@
       <a-button size="small" @click="download">下载</a-button>
       <a-divider type="vertical" />
       <a-button v-if="version && !version.isBaseline && version.display.key !== 'VOID'"
-                size="small" type="primary" @click="blOpen = true">
+                size="small" type="primary" :disabled="!app.canWrite" @click="blOpen = true">
         {{ version.display.key === 'HISTORY' ? '回滚为基线' : '设为当前基线' }}
       </a-button>
       <a-button v-else-if="version && version.isBaseline" size="small" disabled>✓ 当前基线</a-button>
@@ -38,10 +38,10 @@
       <div class="wb" ref="wbRef">
         <div class="wb-left" :class="{ 'is-full': docsCollapsed }"
              :style="docsCollapsed ? null : { width: leftPct + '%' }">
-          <div style="height:40px;flex-shrink:0;border-bottom:1px solid #f0f0f0;background:#fafafa;display:flex;align-items:center;padding:0 12px;gap:8px;font-size:12px">
-            <span class="text-secondary">🖥️ 原型预览</span>
+          <div class="wb-subbar">
+            <span class="text-secondary"><DesktopOutlined /> 原型预览</span>
             <span class="mono text-secondary" v-if="version">{{ version.file }} · {{ fmtSize(version.fileSize) }}</span>
-            <div style="flex:1"></div>
+            <div class="spacer"></div>
             <a-tooltip v-if="version && version.externalRefs.length"
                        title="用已内联 CDN 资源的离线版渲染，断网也不掉样式">
               <a-checkbox v-model:checked="useOffline" :disabled="!version.hasOffline" @change="onOfflineToggle">
@@ -49,17 +49,22 @@
               </a-checkbox>
             </a-tooltip>
             <a-tooltip title="原型由独立端口提供，与工作台不同源；里面的脚本读不到工作台的任何数据">
-              <a-tag>🔒 沙箱隔离</a-tag>
+              <a-tag><LockOutlined /> 沙箱隔离</a-tag>
             </a-tooltip>
-            <a-divider type="vertical" style="margin:0 2px" />
+            <a-divider type="vertical" class="compact-divider" />
             <a-tooltip :title="docsCollapsed ? '恢复分屏' : '收起右侧文档，预览占满'">
-              <a-button type="text" size="small" @click="docsCollapsed = !docsCollapsed">
-                {{ docsCollapsed ? '⇥ 分屏' : '⇤ 全宽' }}
+              <a-button type="text" size="small" :aria-label="docsCollapsed ? '恢复分屏' : '全宽预览'"
+                        @click="docsCollapsed = !docsCollapsed">
+                <template #icon>
+                  <ColumnWidthOutlined v-if="docsCollapsed" />
+                  <FullscreenOutlined v-else />
+                </template>
+                {{ docsCollapsed ? '分屏' : '全宽' }}
               </a-button>
             </a-tooltip>
           </div>
 
-          <div v-if="version && version.externalRefs.length" style="padding:10px 12px 0">
+          <div v-if="version && version.externalRefs.length" class="preview-alert">
             <a-alert :type="version.hasOffline ? 'info' : 'warning'" show-icon closable>
               <template #message>
                 本原型依赖 <b>{{ version.externalRefs.length }} 个外部资源</b>。
@@ -68,14 +73,14 @@
                 </template>
                 <template v-else>
                   断网或代理拦截时样式异常属正常现象。
-                  <a-button size="small" type="link" :loading="buildingOffline" @click="buildOffline">
+                  <a-button size="small" type="link" :loading="buildingOffline"
+                            :disabled="!app.canWrite" @click="buildOffline">
                     生成离线版
                   </a-button>
                 </template>
                 <a @click="refsOpen = !refsOpen">{{ refsOpen ? '收起' : '查看清单' }}</a>
-                <div v-if="refsOpen" style="margin-top:6px">
-                  <div v-for="r in version.externalRefs" :key="r" class="mono"
-                       style="font-size:11px;color:rgba(0,0,0,.45);word-break:break-all">{{ r }}</div>
+                <div v-if="refsOpen" class="stack-sm">
+                  <div v-for="r in version.externalRefs" :key="r" class="mono text-secondary ref-line">{{ r }}</div>
                 </div>
               </template>
             </a-alert>
@@ -93,7 +98,7 @@
         </a-tooltip>
 
         <div v-show="!docsCollapsed" class="wb-right">
-          <a-tabs v-model:activeKey="tab" style="flex-shrink:0" :tab-bar-style="{ padding: '0 16px' }">
+          <a-tabs v-model:activeKey="tab" class="wb-tabs" :tab-bar-style="{ padding: '0 16px' }">
             <a-tab-pane key="spec" tab="规格书" />
             <a-tab-pane key="changes" :tab="`变更日志 ${version ? version.changeCount : 0}`" />
             <a-tab-pane key="reqs" :tab="`关联需求 ${version ? version.requirementCount : 0}`" />
@@ -101,40 +106,42 @@
             <a-tab-pane key="info" tab="版本信息" />
           </a-tabs>
 
-          <div style="flex:1;overflow-y:auto;padding:20px">
+          <div class="wb-panel-body">
             <template v-if="tab === 'spec'">
-              <div style="display:flex;align-items:center;margin-bottom:14px;gap:6px">
-                <div class="text-secondary" style="font-size:12px" v-if="version && version.specUpdatedAt">
+              <div class="panel-tools">
+                <div class="text-secondary code-sm" v-if="version && version.specUpdatedAt">
                   最后编辑 {{ fmtTime(version.specUpdatedAt) }}
                 </div>
-                <div style="flex:1"></div>
+                <div class="spacer"></div>
                 <a-select v-if="specCommits.length" v-model:value="specRef" size="small"
-                          style="width:190px" placeholder="回看历史版本" allow-clear
+                          class="history-select" placeholder="回看历史版本" allow-clear
                           @change="loadSpecAt">
                   <a-select-option v-for="cm in specCommits" :key="cm.hash" :value="cm.hash">
                     {{ cm.short }} · {{ fmtTime(cm.date) }}
                   </a-select-option>
                 </a-select>
-                <a-button v-if="!specEditing" size="small" @click="startEditSpec">✏️ 编辑</a-button>
+                <a-button v-if="!specEditing" size="small" :disabled="!app.canWrite" @click="startEditSpec">
+                  <template #icon><EditOutlined /></template>编辑
+                </a-button>
                 <template v-else>
                   <a-button size="small" @click="specEditing = false">取消</a-button>
-                  <a-button size="small" type="primary" :loading="saving" @click="saveSpec">保存</a-button>
+                  <a-button size="small" type="primary" :loading="saving" :disabled="!app.canWrite" @click="saveSpec">保存</a-button>
                 </template>
               </div>
 
               <!-- 回看历史时明确标出「这不是当前内容」，否则很容易误读 -->
               <a-alert v-if="specRef && specAtContent !== null" type="warning" show-icon
-                       style="margin-bottom:12px">
+                       class="panel-alert">
                 <template #message>
                   正在查看 <span class="mono">{{ specRef.slice(0, 7) }}</span> 时的内容，非当前版本
-                  <a style="margin-left:12px" @click="specRef = null; specAtContent = null">回到当前</a>
+                  <a class="link-gap" @click="specRef = null; specAtContent = null">回到当前</a>
                 </template>
               </a-alert>
 
-              <a-alert type="info" show-icon style="margin-bottom:16px">
+              <a-alert type="info" show-icon class="panel-alert">
                 <template #message>
                   规格书是活文档，版本确认后仍可编辑；原型文件与变更日志则已锁定。
-                  <div style="margin-top:8px"><CliHint :command="cliFor('spec', slug, versionNo)" /></div>
+                  <div class="stack-sm"><CliHint :command="cliFor('spec', slug, versionNo)" /></div>
                 </template>
               </a-alert>
 
@@ -143,14 +150,14 @@
               <div v-else-if="specAtContent !== null" class="md" v-html="renderMarkdown(specAtContent)"></div>
               <div v-else-if="version && version.spec" class="md" v-html="specHtml"></div>
               <a-empty v-else description="本版本尚未编写规格书">
-                <a-button type="primary" @click="startEditSpec">开始编写</a-button>
+                <a-button type="primary" :disabled="!app.canWrite" @click="startEditSpec">开始编写</a-button>
               </a-empty>
             </template>
 
             <template v-else-if="tab === 'changes'">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-                <span class="text-secondary" style="font-size:13px;white-space:nowrap">对比起点</span>
-                <a-select v-model:value="cumFrom" style="flex:1" allow-clear placeholder="仅看本版" @change="loadChanges">
+              <div class="panel-tools">
+                <span class="text-secondary no-wrap">对比起点</span>
+                <a-select v-model:value="cumFrom" class="flex-select" allow-clear placeholder="仅看本版" @change="loadChanges">
                   <a-select-option v-for="v in olderSiblings" :key="v.versionNo" :value="v.versionNo">
                     {{ v.versionNo }} — {{ v.title }}
                   </a-select-option>
@@ -162,14 +169,14 @@
 
               <template v-if="changesEditing">
                 <ChangeEditor v-model="changeDraft" />
-                <a-button type="primary" block style="margin-top:12px" :loading="saving" @click="saveChanges">
+                <a-button type="primary" block class="stack-md" :loading="saving" @click="saveChanges">
                   保存变更日志
                 </a-button>
               </template>
               <template v-else>
-                <div v-if="!editable && version" style="margin-bottom:12px">
+                <div v-if="!editable && version" class="panel-alert">
                   <a-tag color="default">{{ version.display.label }}·已锁定</a-tag>
-                  <span class="text-secondary" style="font-size:12px">如需修改请新建版本</span>
+                  <span class="text-secondary code-sm">如需修改请新建版本</span>
                 </div>
                 <ChangeList :items="changeItems" :location-counts="changeLocCounts" :show-hot="!!cumFrom"
                             @open-req="openReqByCode" />
@@ -177,8 +184,8 @@
             </template>
 
             <template v-else-if="tab === 'reqs'">
-              <div style="display:flex;margin-bottom:12px">
-                <div style="flex:1"></div>
+              <div class="panel-tools">
+                <div class="spacer"></div>
                 <a-button v-if="editable" size="small" @click="toggleReqEdit">
                   {{ reqsEditing ? '取消' : '编辑' }}
                 </a-button>
@@ -186,18 +193,20 @@
 
               <template v-if="reqsEditing">
                 <RequirementEditor v-model="reqDraft" />
-                <a-button type="primary" block style="margin-top:12px" :loading="saving" @click="saveReqs">
+                <a-button type="primary" block class="stack-md" :loading="saving" @click="saveReqs">
                   保存关联需求
                 </a-button>
               </template>
               <template v-else>
                 <a-empty v-if="!version || version.requirements.length === 0" description="未关联需求" />
                 <div v-for="(r, i) in (version ? version.requirements : [])" :key="i"
-                     style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #f0f0f0;border-radius:6px;margin-bottom:8px">
+                     class="req-row">
                   <a-tag color="blue" class="mono">{{ r.code }}</a-tag>
-                  <span style="flex:1;font-size:13.5px">{{ r.title || '—' }}</span>
+                  <span class="req-title">{{ r.title || '—' }}</span>
                   <a-button size="small" :disabled="!app.requirementUrl(r.code, r.url)"
-                            @click="openUrl(app.requirementUrl(r.code, r.url))">打开 ↗</a-button>
+                            @click="openUrl(app.requirementUrl(r.code, r.url))">
+                    <template #icon><ExportOutlined /></template>打开
+                  </a-button>
                 </div>
               </template>
             </template>
@@ -216,28 +225,28 @@
                 </a-descriptions-item>
                 <a-descriptions-item label="标签">
                   <!-- 标签不受基线锁定：它是事后追加的组织信息，和「这一版长什么样」无关 -->
-                  <a-select v-model:value="tagDraft" mode="tags" size="small" style="width:100%"
+                  <a-select v-model:value="tagDraft" mode="tags" size="small" class="full-width"
                             placeholder="加个标签，比如 已评审 / 已交付"
-                            :options="tagOptions" @change="saveTags" />
+                            :options="tagOptions" :disabled="!app.canWrite" @change="saveTags" />
                 </a-descriptions-item>
                 <a-descriptions-item label="文件">
                   <span class="mono">{{ version.file }}</span>
                   <span class="text-secondary"> · {{ fmtSize(version.fileSize) }}</span>
                 </a-descriptions-item>
                 <a-descriptions-item label="磁盘路径">
-                  <span class="mono" style="font-size:12px">projects/{{ slug }}/versions/{{ version.file }}</span>
+                  <span class="mono code-sm">projects/{{ slug }}/versions/{{ version.file }}</span>
                 </a-descriptions-item>
                 <a-descriptions-item label="来源">
-                  <span class="mono" style="font-size:12px">{{ version.sourcePath || '—' }}</span>
+                  <span class="mono code-sm">{{ version.sourcePath || '—' }}</span>
                 </a-descriptions-item>
                 <a-descriptions-item label="外部依赖">
-                  <span v-if="version.externalRefs.length" style="color:#faad14">{{ version.externalRefs.length }} 项</span>
+                  <span v-if="version.externalRefs.length" class="warning-text">{{ version.externalRefs.length }} 项</span>
                   <span v-else>无</span>
                 </a-descriptions-item>
                 <a-descriptions-item label="创建">{{ fmtAbsolute(version.createdAt) }} · {{ version.createdBy }}</a-descriptions-item>
                 <a-descriptions-item label="首次成为基线">{{ fmtAbsolute(version.baselineAt) }}</a-descriptions-item>
                 <a-descriptions-item label="预览直链">
-                  <span class="mono" style="font-size:12px;word-break:break-all">{{ previewSrc }}</span>
+                  <span class="mono code-sm break-all">{{ previewSrc }}</span>
                 </a-descriptions-item>
               </a-descriptions>
             </template>
@@ -251,20 +260,20 @@
 
     <a-drawer v-model:open="historyOpen" title="这一版的演进历史" placement="right" :width="520">
       <a-empty v-if="commits.length === 0" description="还没有 Git 提交记录">
-        <div class="text-secondary" style="font-size:12px">把仓库纳入 Git 并提交后，这里会显示每次改动</div>
+        <div class="text-secondary code-sm">把仓库纳入 Git 并提交后，这里会显示每次改动</div>
       </a-empty>
       <a-timeline v-else>
         <a-timeline-item v-for="cm in commits" :key="cm.hash">
-          <div style="font-size:13.5px">{{ cm.subject }}</div>
-          <div class="text-secondary" style="font-size:12px">
+          <div class="history-subject">{{ cm.subject }}</div>
+          <div class="text-secondary code-sm">
             <span class="mono">{{ cm.short }}</span> · {{ cm.author }} · {{ fmtTime(cm.date) }}
           </div>
-          <div style="margin-top:4px">
+          <div class="stack-sm">
             <a-tag v-for="k in cm.kinds" :key="k" color="cyan">{{ k }}</a-tag>
           </div>
         </a-timeline-item>
       </a-timeline>
-      <div style="margin-top:16px"><CliHint :command="`flowlark history ${slug} ${versionNo}`" /></div>
+      <div class="stack-md"><CliHint :command="`flowlark history ${slug} ${versionNo}`" /></div>
     </a-drawer>
   </div>
 </template>
@@ -273,7 +282,10 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { LeftOutlined, LinkOutlined, HistoryOutlined } from '@ant-design/icons-vue'
+import {
+  LeftOutlined, LinkOutlined, HistoryOutlined, DesktopOutlined, LockOutlined,
+  ColumnWidthOutlined, FullscreenOutlined, EditOutlined, ExportOutlined
+} from '@ant-design/icons-vue'
 import ChangeList from '../components/ChangeList.vue'
 import ChangeEditor from '../components/ChangeEditor.vue'
 import RequirementEditor from '../components/RequirementEditor.vue'
@@ -331,8 +343,8 @@ const currentBaselineNo = computed(() => {
   const b = siblings.value.find((v) => v.isBaseline)
   return b ? b.versionNo : null
 })
-/** R4：只有「编辑中」能改结构性内容 */
-const editable = computed(() => !!version.value && version.value.display.key === 'DRAFT')
+/** R4：只有「编辑中」且当前请求可写时，才能改结构性内容 */
+const editable = computed(() => app.canWrite && !!version.value && version.value.display.key === 'DRAFT')
 const olderSiblings = computed(() => {
   const i = siblings.value.findIndex((v) => v.versionNo === props.versionNo)
   return i < 0 ? [] : siblings.value.slice(i + 1)
@@ -417,6 +429,7 @@ function goCompare() {
 }
 
 async function buildOffline() {
+  if (!app.canWrite) return message.info('当前是只读模式，不能生成离线版本')
   buildingOffline.value = true
   try {
     const r = await api.buildOffline(props.slug, props.versionNo)
@@ -446,11 +459,13 @@ async function loadSpecAt(ref) {
 }
 
 async function saveTags(tags) {
+  if (!app.canWrite) return message.info('当前是只读模式，不能编辑标签')
   version.value = await api.setTags(props.slug, props.versionNo, tags)
   allTags.value = await api.allTags()
 }
 
 function startEditSpec() {
+  if (!app.canWrite) return message.info('当前是只读模式，不能编辑规格书')
   specDraft.value = (version.value && version.value.spec) || ''
   specEditing.value = true
   specRef.value = null
@@ -458,6 +473,7 @@ function startEditSpec() {
 }
 
 async function saveSpec() {
+  if (!app.canWrite) return message.info('当前是只读模式，不能保存规格书')
   saving.value = true
   try {
     version.value = await api.setSpec(props.slug, props.versionNo, specDraft.value)
@@ -469,11 +485,13 @@ async function saveSpec() {
 }
 
 function toggleChangeEdit() {
+  if (!app.canWrite) return message.info('当前是只读模式，不能编辑变更日志')
   changesEditing.value = !changesEditing.value
   if (changesEditing.value) changeDraft.value = version.value.changes.map((c) => ({ ...c }))
 }
 
 async function saveChanges() {
+  if (!app.canWrite) return message.info('当前是只读模式，不能保存变更日志')
   saving.value = true
   try {
     version.value = await api.setChanges(props.slug, props.versionNo,
@@ -487,11 +505,13 @@ async function saveChanges() {
 }
 
 function toggleReqEdit() {
+  if (!app.canWrite) return message.info('当前是只读模式，不能编辑关联需求')
   reqsEditing.value = !reqsEditing.value
   if (reqsEditing.value) reqDraft.value = version.value.requirements.map((r) => ({ ...r }))
 }
 
 async function saveReqs() {
+  if (!app.canWrite) return message.info('当前是只读模式，不能保存关联需求')
   saving.value = true
   try {
     version.value = await api.setRequirements(props.slug, props.versionNo,
@@ -534,3 +554,27 @@ onBeforeUnmount(stopDrag)
 watch(() => [props.slug, props.versionNo], reload)
 onMounted(reload)
 </script>
+
+<style scoped>
+.version-select { width: 280px; }
+.compact-divider { margin: 0 2px; }
+.preview-alert { padding: 10px 12px 0; }
+.ref-line {
+  font-size: var(--fl-fs-1);
+  word-break: break-all;
+}
+.wb-tabs { flex-shrink: 0; }
+.panel-tools {
+  display: flex; align-items: center; gap: var(--fl-s-2); margin-bottom: 14px;
+}
+.panel-alert { margin-bottom: var(--fl-s-3); }
+.history-select { width: 190px; }
+.flex-select { flex: 1; }
+.full-width { width: 100%; }
+.break-all { word-break: break-all; }
+.no-wrap { white-space: nowrap; }
+.history-subject { font-size: var(--fl-fs-3); color: var(--fl-text); }
+@media (max-width: 900px) {
+  .version-select { width: 220px; }
+}
+</style>

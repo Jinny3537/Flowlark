@@ -433,6 +433,22 @@ describe('Git 远端配置', { skip: hasGit ? false : '环境无 git' }, () => {
     t.assert.strictEqual(hub.gitStatus().clean, true, '同步按钮不该因为旁边的草稿一直亮着')
   })
 
+  test('快速 Git 状态会写入并复用本地缓存', (t) => {
+    const { root, hub } = gitRepo()
+    hub.gitSync({ message: 'init' })
+    hub.addAttachment('ord', 'v1.0', { name: '缓存验证.md', content: 'x' })
+
+    const fresh = hub.gitStatus({ includeForeign: false })
+    t.assert.strictEqual(fresh.fast, true)
+    t.assert.strictEqual(fresh.cached, false)
+    t.assert.ok(fresh.files.some((f) => f.path.includes('缓存验证.md')))
+
+    const cached = hub.gitStatus({ includeForeign: false, preferCache: true })
+    t.assert.strictEqual(cached.cached, true)
+    t.assert.strictEqual(cached.cacheOnly, true)
+    t.assert.ok(cached.files.some((f) => f.path.includes('缓存验证.md')))
+  })
+
   test('附件确实被推到了远端', (t) => {
     const { root, hub } = gitRepo()
     const bare = root + '-remote2.git'

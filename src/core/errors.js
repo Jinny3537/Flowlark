@@ -16,6 +16,7 @@ export class PhError extends Error {
 export const err = {
   notFound: (what, hint) => new PhError('NOT_FOUND', `${what}不存在`, { status: 404, hint }),
   bad: (code, message, hint) => new PhError(code, message, { status: 400, hint }),
+  forbidden: (code, message, hint) => new PhError(code, message, { status: 403, hint }),
   conflict: (code, message, hint) => new PhError(code, message, { status: 409, hint }),
   noRepo: () =>
     new PhError('NO_REPO', '当前目录及其上级目录中没有找到 Flowlark 仓库', {

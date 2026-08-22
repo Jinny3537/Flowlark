@@ -33,7 +33,7 @@ ${c.bold('Git')}
   ${c.cyan('history')} <项目> <版本>  这一版都谁改过、改了哪部分
   ${c.cyan('blame')} <项目>        基线变迁史：什么时候切到了哪一版、谁切的
   ${c.cyan('resolve')}             查看冲突；基线冲突可辅助解决
-  ${c.cyan('git')}                 Git 助手：体检、纳入管理、继续/放弃、交给 AI 助理
+  ${c.cyan('git')}                 Git 助手：体检、纳入管理、权限探测、继续/放弃、交给 AI 助理
 
 ${c.bold('系统')}
   ${c.cyan('config')}              查看 / 修改配置（服务、Git、业务规则、外观）
@@ -261,6 +261,7 @@ JSON 和 Markdown 的冲突需要手工处理，但因为键序稳定、行粒�
                 --name / --email / --remote / -m
   whoami      查看或设置提交身份（--name --email，加 --global 写全局）
   resolved    在编辑器里改好冲突文件后，登记为已解决（不填则登记全部）
+  permission  查看 / 刷新远端写权限探测结果（--refresh）
   continue    冲突都解决了，让这次同步走完
   abort       放弃这次同步，回到操作之前
   brief       生成一段交给 AI 助理的说明（含仓库处境与必须遵守的约定）
@@ -270,6 +271,13 @@ ${c.bold('为什么有这一组命令')}
 因为你不该为了用这个软件去学 Git。以前遇到「没纳入 Git」「rebase 卡住了」，
 产品只会印一行命令让你自己去终端敲 —— 那是在最需要帮忙的时刻把人推开。
 现在每种处境都有对应的动作，记不住就敲 ${c.cyan('flowlark git')}。
+
+${c.bold('Git 只读模式')}
+
+v0.2.0 起，Flowlark 会缓存一次远端写权限探测结果。
+明确探测到远端拒绝写入时，CLI 与工作台都会进入 Git 只读模式，提前拦截写操作。
+探测失败或离线时默认按可写处理，避免本地办公被误锁。
+远端权限变更后执行 ${c.cyan('flowlark git permission --refresh')} 刷新。
 
 ${c.bold('关于 AI 助理')}
 

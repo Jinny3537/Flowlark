@@ -25,6 +25,23 @@
         </div>
       </div>
 
+      <a-alert v-if="permission && permission.mode === 'readonly'" type="warning" show-icon
+        message="当前 Git 身份是只读"
+        description="Flowlark 已提前隐藏或拦截写操作，避免产生推不上去的本地改动。">
+        <template #action>
+          <a-button size="small" :loading="busy" @click="refreshPermission">
+            <template #icon><SyncOutlined /></template>刷新
+          </a-button>
+        </template>
+      </a-alert>
+      <div v-else-if="permission" class="permission-line">
+        <span class="text-secondary">Git 写权限：</span>
+        <a-tag :color="permission.mode === 'writable' ? 'green' : 'default'">
+          {{ permission.mode === 'writable' ? '可写' : '未探测，暂按可写' }}
+        </a-tag>
+        <a-button size="small" type="link" :loading="busy" @click="refreshPermission">刷新探测</a-button>
+      </div>
+
       <!-- ① 还没纳入 Git -->
       <template v-if="stage === 'no-git'">
         <a-alert type="error" show-icon message="系统里没有找到 Git"
@@ -46,7 +63,7 @@
             <a-input v-model:value="form.remote" placeholder="可留空，之后在设置里配也行" />
           </a-form-item>
         </a-form>
-        <a-button type="primary" block :loading="busy" @click="doInit">纳入 Git 管理</a-button>
+        <a-button type="primary" block :loading="busy" :disabled="!canWrite" @click="doInit">纳入 Git 管理</a-button>
       </template>
 
       <!-- ② 缺提交身份：Git 会直接拒绝提交，先解决它 -->
@@ -57,7 +74,7 @@
           <a-form-item label="你的名字"><a-input v-model:value="form.name" /></a-form-item>
           <a-form-item label="你的邮箱"><a-input v-model:value="form.email" /></a-form-item>
         </a-form>
-        <a-button type="primary" block :loading="busy" @click="doIdentity">保存身份</a-button>
+        <a-button type="primary" block :loading="busy" :disabled="!canWrite" @click="doIdentity">保存身份</a-button>
       </template>
 
       <!-- ③ 卡在冲突上 -->
@@ -75,11 +92,11 @@
               <b>{{ con.project }}</b> 的基线两边指向了不同版本
             </div>
             <a-space>
-              <a-button @click="pickBaseline(con.project, con.choices.mine)">
+              <a-button :disabled="!canWrite" @click="pickBaseline(con.project, con.choices.mine)">
                 保留 <b class="mono">{{ con.choices.mine }}</b>
                 <span class="text-secondary">（你这边）</span>
               </a-button>
-              <a-button @click="pickBaseline(con.project, con.choices.others)">
+              <a-button :disabled="!canWrite" @click="pickBaseline(con.project, con.choices.others)">
                 保留 <b class="mono">{{ con.choices.others }}</b>
                 <span class="text-secondary">（对方）</span>
               </a-button>
@@ -90,18 +107,18 @@
             <div class="text-secondary" style="font-size:12px;margin-bottom:6px">
               {{ con.kind }} 冲突，用编辑器打开，把不要的那一半连同分隔标记删掉
             </div>
-            <a-button size="small" :loading="busy" @click="markResolved(con.path)">我改好了</a-button>
+            <a-button size="small" :loading="busy" :disabled="!canWrite" @click="markResolved(con.path)">我改好了</a-button>
           </template>
         </div>
 
         <a-divider />
         <a-space direction="vertical" style="width:100%">
-          <a-button type="primary" block :disabled="conflicts.length > 0" :loading="busy" @click="doContinue">
+          <a-button type="primary" block :disabled="!canWrite || conflicts.length > 0" :loading="busy" @click="doContinue">
             继续完成同步
           </a-button>
           <a-button block @click="copyBrief('conflict')">复制给 AI 助理</a-button>
           <a-popconfirm title="回到同步之前的状态？本地已提交的内容不会丢。" ok-text="放弃" cancel-text="再想想" @confirm="doAbort">
-            <a-button block danger type="text">放弃这次同步</a-button>
+            <a-button block danger type="text" :disabled="!canWrite">放弃这次同步</a-button>
           </a-popconfirm>
         </a-space>
       </template>
@@ -127,12 +144,14 @@
           </div>
         </div>
 
-        <a-input v-model:value="message" placeholder="提交说明（留空则自动生成）" style="margin-bottom:8px" @press-enter="doSync" />
+        <a-input v-model:value="message" placeholder="提交说明（留空则自动生成）" style="margin-bottom:8px"
+                 :disabled="!canWrite" @press-enter="doSync" />
         <a-button size="small" type="link" style="padding:0;margin-bottom:10px" :disabled="status.clean" @click="fillSuggestion">
           帮我写一条
         </a-button>
 
-        <a-button type="primary" block :loading="busy" :disabled="status.clean && !status.ahead && !status.behind" @click="doSync">
+        <a-button type="primary" block :loading="busy"
+                  :disabled="!canWrite || (status.clean && !status.ahead && !status.behind)" @click="doSync">
           {{ syncLabel }}
         </a-button>
 
@@ -161,15 +180,18 @@
 import { ref, computed, watch } from 'vue'
 import { message as msg } from 'ant-design-vue'
 import {
-  CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined
+  CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, SyncOutlined
 } from '@ant-design/icons-vue'
 import { api } from '../api'
+import { useAppStore } from '../store'
 
 const props = defineProps({ open: Boolean })
 const emit = defineEmits(['update:open', 'changed'])
+const app = useAppStore()
 
 const doctor = ref(null)
 const status = ref({ tracked: false, clean: true, files: [] })
+const permission = ref(null)
 const conflicts = ref([])
 const loading = ref(false)
 const busy = ref(false)
@@ -178,6 +200,7 @@ const steps = ref([])
 const form = ref({ name: '', email: '', remote: '' })
 
 const stage = computed(() => (doctor.value ? doctor.value.stage : null))
+const canWrite = computed(() => app.canWrite && (!permission.value || permission.value.mode !== 'readonly'))
 const needIdentity = computed(() =>
   !!doctor.value && stage.value !== 'no-repo' && stage.value !== 'no-git' &&
   !!doctor.value.identity && !doctor.value.identity.complete)
@@ -197,22 +220,36 @@ async function load() {
   try {
     doctor.value = await api.gitDoctor()
     if (doctor.value.stage !== 'no-git' && doctor.value.stage !== 'no-repo') {
-      const [st, cf] = await Promise.all([api.gitStatus(), api.gitConflicts()])
+      const [st, cf, perm] = await Promise.all([api.gitStatus({ fast: true }), api.gitConflicts(), api.gitPermission()])
       status.value = st
       conflicts.value = cf
+      permission.value = perm
       if (doctor.value.identity) {
         form.value.name = form.value.name || doctor.value.identity.name
         form.value.email = form.value.email || doctor.value.identity.email
       }
     } else {
       conflicts.value = []
+      permission.value = null
     }
   } finally {
     loading.value = false
   }
 }
 
-async function guard(fn, okMsg) {
+const refreshPermission = () => guard(
+  () => api.refreshGitPermission().then((p) => {
+    permission.value = p
+    return p
+  }),
+  (p) => p.mode === 'readonly' ? '已刷新：当前身份只读' : '已刷新 Git 写权限',
+  { allowReadonly: true })
+
+async function guard(fn, okMsg, { allowReadonly = false } = {}) {
+  if (!allowReadonly && !canWrite.value) {
+    msg.info('当前是只读模式，不能执行 Git 写操作')
+    return null
+  }
   busy.value = true
   try {
     const r = await fn()
@@ -285,5 +322,9 @@ async function copyBrief(intent) {
 .git-check {
   display: flex; gap: 10px; align-items: flex-start;
   padding: 7px 0; font-size: 13px; line-height: 1.5;
+}
+.permission-line {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0 4px;
 }
 </style>

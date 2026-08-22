@@ -3,6 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { err } from './errors.js'
 import { paths } from './store.js'
+import { INTERNAL_DIR } from './repo.js'
 
 /**
  * Git 集成。
@@ -58,6 +59,49 @@ function requireRepo(root) {
  */
 export const OWNED_PATHS = ['projects', 'flowlark.json', '.flowlark', '.gitattributes', '.gitignore']
 
+const STATUS_CACHE_FILE = 'git-status.json'
+
+function statusCacheFile(root) {
+  return path.join(root, INTERNAL_DIR, 'cache', STATUS_CACHE_FILE)
+}
+
+function readStatusCache(root, mode = 'fast') {
+  try {
+    const raw = JSON.parse(fs.readFileSync(statusCacheFile(root), 'utf8'))
+    const cached = raw && raw[mode]
+    if (!cached || !cached.status) return null
+    return {
+      ...cached.status,
+      source: 'cache',
+      cached: true,
+      cachedAt: cached.checkedAt,
+      cacheAgeMs: Date.now() - Date.parse(cached.checkedAt)
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeStatusCache(root, mode, status) {
+  const file = statusCacheFile(root)
+  let raw = {}
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    raw = {}
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  raw[mode] = {
+    checkedAt: new Date().toISOString(),
+    status: {
+      ...status,
+      source: 'git',
+      cached: false
+    }
+  }
+  fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n', 'utf8')
+}
+
 export function isOwnedPath(p) {
   return OWNED_PATHS.some((own) => p === own || p.startsWith(own + '/'))
 }
@@ -67,14 +111,40 @@ const XY = {
   'MM': '部分暂存', 'D ': '已删除', ' D': '已删除', 'R ': '重命名', 'UU': '冲突'
 }
 
-export function status(root) {
+export function status(root, { includeForeign = true, preferCache = false } = {}) {
+  const mode = includeForeign ? 'full' : 'fast'
+  if (preferCache) {
+    const cached = readStatusCache(root, mode) || (!includeForeign ? readStatusCache(root, 'full') : null)
+    if (cached) {
+      return {
+        ...cached,
+        fast: !includeForeign,
+        truncated: !includeForeign,
+        cacheOnly: true
+      }
+    }
+  }
   if (!available() || !isRepo(root)) {
-    return { tracked: false, clean: true, files: [], branch: null, ahead: 0, behind: 0, conflicted: [] }
+    return {
+      tracked: false,
+      clean: true,
+      files: [],
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      conflicted: [],
+      source: 'computed',
+      cached: false,
+      fast: !includeForeign,
+      truncated: false
+    }
   }
   // -uall：让 git 逐个列出未跟踪文件，而不是把整个目录折叠成一行 "projects/"。
   // 折叠版本会让「这次改了哪些项目的哪些版本」无从判断 ——
   // 新建一个项目时改动全在未跟踪目录里，恰恰是最需要看清楚的时候。
-  const porcelain = git(root, ['status', '--porcelain=v1', '--branch', '-uall'])
+  const args = ['status', '--porcelain=v1', '--branch', '-uall']
+  if (!includeForeign) args.push('--', ...OWNED_PATHS)
+  const porcelain = git(root, args)
   const lines = porcelain.out.split('\n').filter(Boolean)
 
   let branch = null
@@ -111,9 +181,9 @@ export function status(root) {
 
   // -uall 之后基本都是具体文件了，但空目录等边角情况仍可能带尾部斜杠
   const own = files.filter((f) => isOwnedPath(f.path.replace(/\/$/, '')))
-  const foreign = files.filter((f) => !isOwnedPath(f.path.replace(/\/$/, '')))
+  const foreign = includeForeign ? files.filter((f) => !isOwnedPath(f.path.replace(/\/$/, ''))) : []
 
-  return {
+  const result = {
     tracked: true,
     // clean 只看 Flowlark 自己的文件 —— 用户放在旁边的草稿不该让「同步」按钮一直亮着
     clean: own.length === 0,
@@ -124,8 +194,14 @@ export function status(root) {
     foreignFiles: foreign,
     allFiles: files,
     conflicted: files.filter((f) => f.code === 'UU' || f.code.includes('U')).map((f) => f.path),
-    hasRemote: !!git(root, ['remote']).out
+    hasRemote: !!git(root, ['remote']).out,
+    source: 'git',
+    cached: false,
+    fast: !includeForeign,
+    truncated: !includeForeign
   }
+  writeStatusCache(root, mode, result)
+  return result
 }
 
 /**

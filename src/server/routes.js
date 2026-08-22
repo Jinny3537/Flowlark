@@ -23,7 +23,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     const readonly = runtime.readonlyFromLan !== undefined ? runtime.readonlyFromLan : s.server.readonlyFromLan
     // 这个请求自己有没有写权限。前端据此隐藏写操作按钮 ——
     // 让局域网用户点了按钮再收到 403，是很差的体验。
-    const canWrite = net.allowWrite({ lan: lanActive, readonlyFromLan: readonly, isLocal: net.isLocalRequest(req) })
+    const requestCanWrite = net.allowWrite({ lan: lanActive, readonlyFromLan: readonly, isLocal: net.isLocalRequest(req) })
+    const gitPermission = hub.writePermission()
+    const canWrite = requestCanWrite && gitPermission.canWrite
     sendJson(res, 200, {
       ok: true,
       app: 'flowlark',
@@ -34,6 +36,8 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
       maxFileBytes: s.server.maxFileBytes,
       canWrite,
       readonly: !canWrite,
+      readonlyReason: !requestCanWrite ? 'lan' : !gitPermission.canWrite ? 'git' : null,
+      gitPermission,
       lan: lanActive,
       requirementUrlTemplate: s.ui.requirementUrlTemplate,
       defaultTags: s.ui.defaultTags,
@@ -188,8 +192,21 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   })
 
   // ---- Git ----
-  r.get('/api/git/status', async (req, res) =>
-    sendJson(res, 200, { ...hub.gitStatus(), conflicts: hub.gitConflicts() }))
+  r.get('/api/git/status', async (req, res, p, url) =>
+    sendJson(res, 200, {
+      ...hub.gitStatus({
+        includeForeign: url.searchParams.get('fast') !== '1',
+        preferCache: url.searchParams.get('cache') === '1'
+      }),
+      conflicts: hub.gitConflicts(),
+      permission: hub.writePermission()
+    }))
+
+  r.get('/api/git/permission', async (req, res) =>
+    sendJson(res, 200, hub.writePermission()))
+
+  r.post('/api/git/permission/refresh', async (req, res) =>
+    sendJson(res, 200, hub.refreshWritePermission()))
 
   r.post('/api/git/sync', async (req, res) => {
     const body = await readJson(req, maxBody)
