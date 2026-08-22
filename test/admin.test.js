@@ -1,8 +1,10 @@
 import { test, describe, after } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { newHub, html, throwsCode, cleanup } from './helpers.js'
+import { findRepoRoot } from '../src/core/repo.js'
 import * as cfg from '../src/core/config.js'
 import * as net from '../src/core/net.js'
 import * as store from '../src/core/store.js'
@@ -75,7 +77,7 @@ describe('配置中心', () => {
     t.assert.strictEqual(r.value, 50 * 1024 * 1024)
     t.assert.strictEqual(r.needsRestart, true, '服务类配置要提示重启')
 
-    const onDisk = JSON.parse(fs.readFileSync(path.join(root, 'protohub.json'), 'utf8'))
+    const onDisk = JSON.parse(fs.readFileSync(path.join(root, 'flowlark.json'), 'utf8'))
     t.assert.strictEqual(onDisk.settings.server.maxFileBytes, 50 * 1024 * 1024)
   })
 
@@ -85,6 +87,62 @@ describe('配置中心', () => {
     t.assert.strictEqual(hub.getConfig('ui.dateStyle'), 'absolute')
     hub.resetConfig('ui.dateStyle')
     t.assert.strictEqual(hub.getConfig('ui.dateStyle'), 'relative')
+  })
+})
+
+// ============================================================
+describe('更名后的老仓库', () => {
+  test('自动识别 protohub.json 并改名，数据完整保留', (t) => {
+    // 产品从 protohub 改名为 Flowlark。老仓库直接报「不是仓库」的话，
+    // 用户完全不知道发生了什么
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-legacy-'))
+    dirs.push(dir)
+    fs.mkdirSync(path.join(dir, '.protohub', 'cache'), { recursive: true })
+    fs.mkdirSync(path.join(dir, 'projects'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'protohub.json'), JSON.stringify({
+      schemaVersion: 1,
+      name: '老仓库',
+      createdAt: new Date().toISOString(),
+      settings: { port: 9001, previewPort: 9002, maxFileBytes: 5242880 }
+    }, null, 2))
+    fs.writeFileSync(path.join(dir, '.protohub', 'oplog.ndjson'), '{"action":"X"}\n')
+
+    const root = findRepoRoot(dir)
+    t.assert.strictEqual(root, dir, '应能识别老仓库')
+    t.assert.ok(fs.existsSync(path.join(dir, 'flowlark.json')), '配置文件应已改名')
+    t.assert.ok(fs.existsSync(path.join(dir, '.flowlark')), '内部目录应已改名')
+    t.assert.ok(!fs.existsSync(path.join(dir, 'protohub.json')), '老文件不该还在')
+
+    // 内容一字不改地搬过去
+    const conf = JSON.parse(fs.readFileSync(path.join(dir, 'flowlark.json'), 'utf8'))
+    t.assert.strictEqual(conf.name, '老仓库')
+    t.assert.strictEqual(conf.settings.port, 9001)
+    t.assert.match(fs.readFileSync(path.join(dir, '.flowlark/oplog.ndjson'), 'utf8'), /"X"/)
+  })
+
+  test('新旧名并存时保留新的，不静默覆盖', (t) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-legacy-'))
+    dirs.push(dir)
+    fs.writeFileSync(path.join(dir, 'flowlark.json'), '{"name":"新的","schemaVersion":1}')
+    fs.writeFileSync(path.join(dir, 'protohub.json'), '{"name":"老的","schemaVersion":1}')
+
+    findRepoRoot(dir)
+    t.assert.strictEqual(
+      JSON.parse(fs.readFileSync(path.join(dir, 'flowlark.json'), 'utf8')).name, '新的')
+    t.assert.ok(fs.existsSync(path.join(dir, 'protohub.json')), '老文件原地保留，交给用户处置')
+  })
+
+  test('老的环境变量仍然生效', (t) => {
+    const { root } = repo()
+    const saved = process.env.FLOWLARK_REPO
+    delete process.env.FLOWLARK_REPO
+    process.env.PROTOHUB_REPO = root
+    try {
+      t.assert.strictEqual(findRepoRoot('/tmp'), root)
+    } finally {
+      delete process.env.PROTOHUB_REPO
+      if (saved !== undefined) process.env.FLOWLARK_REPO = saved
+    }
   })
 })
 
@@ -281,7 +339,7 @@ describe('Git 远端配置', { skip: hasGit ? false : '环境无 git' }, () => {
     hub.gitSetRemote('https://example.com/team/proto.git')
     t.assert.strictEqual(hub.gitRemote().url, 'https://example.com/team/proto.git')
     t.assert.strictEqual(hub.getConfig('git.remote'), 'https://example.com/team/proto.git',
-      '同时要写进 protohub 配置，设置页才看得到')
+      '同时要写进 Flowlark 配置，设置页才看得到')
 
     // 再设一次是改地址，不是报错
     hub.gitSetRemote('git@example.com:team/proto.git')
@@ -350,20 +408,20 @@ describe('Git 远端配置', { skip: hasGit ? false : '环境无 git' }, () => {
     t.assert.strictEqual(log2.stdout.trim().split('\n').length, 2)
   })
 
-  test('sync 只提交 protohub 自己的文件，不卷走用户放在旁边的草稿', (t) => {
+  test('sync 只提交 Flowlark 自己的文件，不卷走用户放在旁边的草稿', (t) => {
     // 用户常在同一个文件夹里放正在改的原型源文件、临时截图，
     // git add -A 会把它们一并提交 —— 这是意料之外的行为
     const { root, hub } = gitRepo()
     fs.writeFileSync(path.join(root, '我正在改的原型.html'), '<html>草稿</html>')
     fs.writeFileSync(path.join(root, '临时截图.png'), 'x')
 
-    const r = hub.gitSync({ message: '只提交 protohub 数据' })
+    const r = hub.gitSync({ message: '只提交 Flowlark 数据' })
     t.assert.ok(r.steps.every((s) => s.ok), JSON.stringify(r.steps))
     t.assert.ok(r.steps.some((s) => s.name === '跳过'), '应告知用户跳过了哪些文件')
 
     const tracked = spawnSync('git', ['ls-tree', '-r', '-z', '--name-only', 'HEAD'],
       { cwd: root, encoding: 'utf8' }).stdout
-    t.assert.ok(tracked.includes('projects/ord/versions/v1.0.json'), 'protohub 数据要提交')
+    t.assert.ok(tracked.includes('projects/ord/versions/v1.0.json'), 'Flowlark 数据要提交')
     t.assert.ok(!tracked.includes('我正在改的原型.html'), '用户的草稿不该被提交')
     t.assert.ok(!tracked.includes('临时截图.png'))
   })

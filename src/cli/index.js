@@ -111,7 +111,7 @@ export async function run(argv) {
   if (!handler) {
     console.error(c.red('✗') + ` 未知命令：${argv[0]}`)
     console.error(c.dim('  可用命令：') + Object.keys(COMMANDS).join('、'))
-    console.error(c.dim('  查看帮助：protohub help'))
+    console.error(c.dim('  查看帮助：flowlark help'))
     process.exitCode = 127
     return
   }
@@ -141,8 +141,8 @@ export async function run(argv) {
       process.exitCode = 1
     } else {
       console.error(c.red('✗') + ' ' + (e && e.message ? e.message : String(e)))
-      if (process.env.PROTOHUB_DEBUG) console.error(e)
-      else console.error(c.dim('  设 PROTOHUB_DEBUG=1 查看完整堆栈'))
+      if (process.env.FLOWLARK_DEBUG || process.env.PROTOHUB_DEBUG) console.error(e)
+      else console.error(c.dim('  设 FLOWLARK_DEBUG=1 查看完整堆栈'))
       process.exitCode = 1
     }
   }

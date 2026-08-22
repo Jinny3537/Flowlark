@@ -4,8 +4,9 @@
       <a-layout-header style="height:56px;line-height:56px;background:#fff;border-bottom:1px solid #f0f0f0;padding:0 24px;display:flex;align-items:center;gap:16px">
         <div style="display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;cursor:pointer"
              @click="$router.push('/projects')">
-          <div style="width:28px;height:28px;border-radius:6px;background:#1677ff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">P</div>
-          protohub
+          <div style="width:28px;height:28px;border-radius:6px;background:#1677ff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">F</div>
+          <span>Flowlark</span>
+          <span class="slogan">Where prototypes flow</span>
         </div>
         <a-divider type="vertical" />
         <a-tooltip :title="app.repo">
@@ -31,7 +32,7 @@
 
         <!-- 只读时必须显式告诉用户，否则会以为是功能坏了 -->
         <a-tooltip v-if="!app.canWrite"
-                   title="这是别人共享出来的视图。写操作仅限运行 protohub 的那台机器。">
+                   title="这是别人共享出来的视图。写操作仅限运行 Flowlark 的那台机器。">
           <a-tag color="orange"><EyeOutlined /> 只读</a-tag>
         </a-tooltip>
         <a-tag v-else-if="app.lan" color="cyan">局域网已开放</a-tag>
@@ -142,6 +143,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <style>
+/* Slogan 只在够宽的屏上显示，窄屏优先保证功能区 */
+.slogan {
+  font-size: 12px; font-weight: 400; color: rgba(0,0,0,.35);
+  letter-spacing: .3px; white-space: nowrap;
+}
+@media (max-width: 1100px) { .slogan { display: none; } }
+
 .search-trigger {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
   height: 30px; padding: 0 10px; border: 1px solid #f0f0f0; border-radius: 6px;

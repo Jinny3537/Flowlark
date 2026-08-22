@@ -47,8 +47,8 @@ export const paths = {
   versionHtml: (root, slug, no) => path.join(root, 'projects', slug, 'versions', `${no}.html`),
   versionSpec: (root, slug, no) => path.join(root, 'projects', slug, 'versions', `${no}.spec.md`),
   attachments: (root, slug, no) => path.join(root, 'projects', slug, 'versions', `${no}.files`),
-  trash: (root) => path.join(root, '.protohub', 'trash'),
-  oplog: (root) => path.join(root, '.protohub', 'oplog.ndjson')
+  trash: (root) => path.join(root, '.flowlark', 'trash'),
+  oplog: (root) => path.join(root, '.flowlark', 'oplog.ndjson')
 }
 
 // ---------- 附件 ----------
@@ -130,7 +130,7 @@ export function listProjectSlugs(root) {
 
 export function readProject(root, slug) {
   const f = paths.projectFile(root, slug)
-  if (!fs.existsSync(f)) throw err.notFound(`项目「${slug}」`, '用 `protohub ls` 看看有哪些项目')
+  if (!fs.existsSync(f)) throw err.notFound(`项目「${slug}」`, '用 `flowlark ls` 看看有哪些项目')
   const p = parse(fs.readFileSync(f, 'utf8'), `${slug}/project.json`)
   p.slug = slug
   return p
@@ -186,7 +186,7 @@ export function versionExists(root, slug, no) {
 export function readVersion(root, slug, no) {
   const f = paths.versionJson(root, slug, no)
   if (!fs.existsSync(f)) {
-    throw err.notFound(`版本「${no}」`, `用 \`protohub ls ${slug}\` 看看有哪些版本`)
+    throw err.notFound(`版本「${no}」`, `用 \`flowlark ls ${slug}\` 看看有哪些版本`)
   }
   const v = parse(fs.readFileSync(f, 'utf8'), `${slug}/versions/${no}.json`)
   v.versionNo = no
@@ -233,7 +233,7 @@ export function writeSpec(root, slug, no, markdown) {
 // ---------- 回收站 ----------
 
 /**
- * R7 逻辑删除 = 把版本的三个文件移进 .protohub/trash。
+ * R7 逻辑删除 = 把版本的三个文件移进 .flowlark/trash。
  *
  * 比字段标记好在：主目录里看到的就是真实存在的版本，
  * 不需要每个查询都记得带 `WHERE deleted_at IS NULL` —— 那个条件漏写一次就是一个 bug。

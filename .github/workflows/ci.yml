@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           export NO_COLOR=1
-          PH="$PWD/bin/protohub.js"
+          PH="$PWD/bin/flowlark.js"
           W=$(mktemp -d); cd "$W"
 
           printf '<!DOCTYPE html><html><body>v1.0</body></html>' > proto.html

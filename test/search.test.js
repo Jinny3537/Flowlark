@@ -170,8 +170,8 @@ describe('已读标记', () => {
     // 已读是每个人自己的，提交上去会变成「张三把李四标成已读」这种荒唐冲突
     const { root, hub } = seeded()
     hub.markRead('ord', 'v1.0')
-    t.assert.ok(fs.existsSync(path.join(root, '.protohub/cache/read-state.json')))
-    t.assert.match(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), /\.protohub\/cache\//)
+    t.assert.ok(fs.existsSync(path.join(root, '.flowlark/cache/read-state.json')))
+    t.assert.match(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), /\.flowlark\/cache\//)
   })
 
   test('清除标记', (t) => {

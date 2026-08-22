@@ -43,11 +43,11 @@ describe('watch 自动归档', () => {
     dirs.push(root)
     hub.createProject({ name: '订单', code: 'ord' })
 
-    const watchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'protohub-watch-'))
+    const watchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-watch-'))
     dirs.push(watchDir)
 
     const child = spawn(process.execPath, [CLI, 'watch', 'ord', '-d', watchDir], {
-      env: { ...process.env, NO_COLOR: '1', PROTOHUB_REPO: root },
+      env: { ...process.env, NO_COLOR: '1', FLOWLARK_REPO: root },
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let out = ''
@@ -74,13 +74,13 @@ describe('watch 自动归档', () => {
     dirs.push(root)
     hub.createProject({ name: '订单', code: 'ord' })
 
-    const watchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'protohub-watch-'))
+    const watchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-watch-'))
     dirs.push(watchDir)
     // 启动前就放一个文件
     fs.writeFileSync(path.join(watchDir, '已存在_v1.0.html'), html('旧文件'))
 
     const child = spawn(process.execPath, [CLI, 'watch', 'ord', '-d', watchDir], {
-      env: { ...process.env, NO_COLOR: '1', PROTOHUB_REPO: root },
+      env: { ...process.env, NO_COLOR: '1', FLOWLARK_REPO: root },
       stdio: ['ignore', 'pipe', 'pipe']
     })
 
@@ -100,7 +100,7 @@ describe('watch 自动归档', () => {
 
     const r = await new Promise((resolve) => {
       const child = spawn(process.execPath, [CLI, 'watch', 'ord', '-d', '/no/such/dir'], {
-        env: { ...process.env, NO_COLOR: '1', PROTOHUB_REPO: root },
+        env: { ...process.env, NO_COLOR: '1', FLOWLARK_REPO: root },
         stdio: ['ignore', 'pipe', 'pipe']
       })
       let err = ''

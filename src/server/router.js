@@ -55,8 +55,8 @@ export function sendError(res, e) {
     return sendJson(res, e.status, { code: e.code, message: e.message, hint: e.hint })
   }
   // 未预期异常：给前端一个稳定结构，细节留在服务端控制台
-  console.error('[protohub] 未预期的服务端异常：', e)
-  sendJson(res, 500, { code: 'INTERNAL_ERROR', message: '服务端异常，请查看运行 protohub 的终端' })
+  console.error('[flowlark] 未预期的服务端异常：', e)
+  sendJson(res, 500, { code: 'INTERNAL_ERROR', message: '服务端异常，请查看运行 Flowlark 的终端' })
 }
 
 /** 请求体解析。带上限，避免一个手滑的大文件把本地进程撑爆。 */

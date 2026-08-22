@@ -97,7 +97,7 @@ export function assertChangelogReady(version, totalVersionCount, { enabled = tru
     throw err.bad(
       'CHANGELOG_REQUIRED',
       `${version.versionNo} 的变更日志为空，不能设为基线`,
-      `补一条：protohub add-change <项目> ${version.versionNo} -m "修改:位置:改了什么"`
+      `补一条：flowlark add-change <项目> ${version.versionNo} -m "修改:位置:改了什么"`
     )
   }
 }
@@ -108,7 +108,7 @@ export function assertNotBaseline(version, baselineNo, action) {
     throw err.bad(
       'BASELINE_PROTECTED',
       `${version.versionNo} 是当前基线，不能${action}`,
-      '先把其他版本设为基线：protohub baseline <项目> <版本号>'
+      '先把其他版本设为基线：flowlark baseline <项目> <版本号>'
     )
   }
 }

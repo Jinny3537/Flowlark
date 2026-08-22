@@ -62,7 +62,7 @@ export function resolveProject(h, given) {
   if (given) return given
   const list = store.listProjectSlugs(h.root)
   if (list.length === 1) return list[0]
-  if (list.length === 0) throw err.bad('NO_PROJECT', '仓库里还没有项目', '先建一个：protohub new "项目名"')
+  if (list.length === 0) throw err.bad('NO_PROJECT', '仓库里还没有项目', '先建一个：flowlark new "项目名"')
   throw err.bad('PROJECT_REQUIRED', `仓库里有 ${list.length} 个项目，需要指定`, `用 -p <标识>，可选：${list.join('、')}`)
 }
 
@@ -85,7 +85,7 @@ export async function init(pos, values) {
   const dir = pos[0] || process.cwd()
   const existing = findRepoRoot(dir)
   if (existing && path.resolve(existing) !== path.resolve(dir)) {
-    warn(`上级目录 ${existing} 已经是一个 protohub 仓库`)
+    warn(`上级目录 ${existing} 已经是一个 Flowlark 仓库`)
   }
   const { root, config } = initRepo(dir, { name: values.desc })
   ok(`已创建仓库 ${c.bold(config.name)}`)
@@ -95,7 +95,7 @@ export async function init(pos, values) {
     ['预览端口', String(config.settings.server.previewPort)]
   ]))
   next(
-    `protohub new "项目名"     ${c.dim('创建第一个项目')}`,
+    `flowlark new "项目名"     ${c.dim('创建第一个项目')}`,
     `git init && git add . && git commit -m "init"   ${c.dim('纳入版本控制')}`
   )
 }
@@ -103,16 +103,16 @@ export async function init(pos, values) {
 export async function newProject(pos, values) {
   const h = hub()
   const name = pos[0]
-  if (!name) throw err.bad('NAME_REQUIRED', '请提供项目名称', 'protohub new "订单中心重构" --code order-center')
+  if (!name) throw err.bad('NAME_REQUIRED', '请提供项目名称', 'flowlark new "订单中心重构" --code order-center')
   const p = h.createProject({ name, code: values.code, description: values.desc })
   ok(`已创建项目 ${c.bold(p.name)}（${c.cyan(p.slug)}）`)
-  next(`protohub add <原型.html> -p ${p.slug} -n v1.0 -t "首版原型"`)
+  next(`flowlark add <原型.html> -p ${p.slug} -n v1.0 -t "首版原型"`)
 }
 
 export async function add(pos, values) {
   const h = hub()
   const file = pos[0]
-  if (!file) throw err.bad('FILE_REQUIRED', '请提供要归档的 HTML 文件', 'protohub add ./原型.html -t "标题"')
+  if (!file) throw err.bad('FILE_REQUIRED', '请提供要归档的 HTML 文件', 'flowlark add ./原型.html -t "标题"')
 
   const slug = resolveProject(h, values.project)
   const versionNo = values.version || inferVersionNo(file)
@@ -148,8 +148,8 @@ export async function add(pos, values) {
     ok(`已设为当前基线：${c.bold(b.versionNo)}`)
   } else {
     next(
-      `protohub baseline ${slug} ${v.versionNo}   ${c.dim('确认为研发要开发的版本')}`,
-      `protohub open ${slug} ${v.versionNo}       ${c.dim('在浏览器里看')}`
+      `flowlark baseline ${slug} ${v.versionNo}   ${c.dim('确认为研发要开发的版本')}`,
+      `flowlark open ${slug} ${v.versionNo}       ${c.dim('在浏览器里看')}`
     )
   }
 }
@@ -163,7 +163,7 @@ export async function ls(pos, values) {
     if (values.json) return void console.log(JSON.stringify(projects, null, 2))
     if (projects.length === 0) {
       info('仓库里还没有项目')
-      return next('protohub new "项目名"')
+      return next('flowlark new "项目名"')
     }
     console.log(table(
       ['项目', '标识', '当前基线', '版本数', '更新'],
@@ -192,7 +192,7 @@ export async function ls(pos, values) {
 
   if (versions.length === 0) {
     info('还没有版本')
-    return next(`protohub add <原型.html> -p ${slug} -n v1.0 -t "首版"`)
+    return next(`flowlark add <原型.html> -p ${slug} -n v1.0 -t "首版"`)
   }
 
   const readState = h.getRead(slug)
@@ -218,9 +218,9 @@ export async function ls(pos, values) {
     hints.push('已隐藏废弃版本，加 -a 显示')
   }
   if (showNew) {
-    hints.push(`标「新」的是你上次看过 ${readState.versionNo} 之后新增的，protohub diff ${slug} 看改了什么`)
+    hints.push(`标「新」的是你上次看过 ${readState.versionNo} 之后新增的，flowlark diff ${slug} 看改了什么`)
   } else if (!readState) {
-    hints.push(`protohub read ${slug} <版本号> 标记已读后，可以只看之后的变更`)
+    hints.push(`flowlark read ${slug} <版本号> 标记已读后，可以只看之后的变更`)
   }
   if (hints.length) console.log('\n' + hints.map((x) => c.dim('  ' + x)).join('\n'))
 }
@@ -229,7 +229,7 @@ export async function show(pos, values) {
   const h = hub()
   const slug = resolveProject(h, pos[0])
   const versionNo = pos[1] || h.getProject(slug).baselineVersionNo
-  if (!versionNo) throw err.bad('VERSION_REQUIRED', '请指定版本号', `protohub ls ${slug} 看看有哪些`)
+  if (!versionNo) throw err.bad('VERSION_REQUIRED', '请指定版本号', `flowlark ls ${slug} 看看有哪些`)
 
   const v = h.getVersion(slug, versionNo)
   if (values.json) return void console.log(JSON.stringify(v, null, 2))
@@ -243,7 +243,7 @@ export async function show(pos, values) {
     ['创建', `${fmtTime(v.createdAt)} · ${v.createdBy || '—'}`],
     ['成为基线', v.baselineAt ? fmtTime(v.baselineAt) : '—'],
     ['外部依赖', v.externalRefs.length
-      ? c.yellow(`${v.externalRefs.length} 项`) + (v.hasOffline ? c.green('（已生成离线版）') : c.dim(`  protohub offline ${slug} ${v.versionNo}`))
+      ? c.yellow(`${v.externalRefs.length} 项`) + (v.hasOffline ? c.green('（已生成离线版）') : c.dim(`  flowlark offline ${slug} ${v.versionNo}`))
       : '无'],
     ['规格书', v.spec ? `${v.spec.split('\n').length} 行` : c.dim('未编写')]
   ]))
@@ -284,7 +284,7 @@ export async function show(pos, values) {
     }
   }
 
-  next(`protohub open ${slug} ${v.versionNo}   ${c.dim('在浏览器里看原型')}`)
+  next(`flowlark open ${slug} ${v.versionNo}   ${c.dim('在浏览器里看原型')}`)
 }
 
 export async function baseline(pos, values) {
@@ -343,7 +343,7 @@ export async function spec(pos, values) {
     if (values.json) return void console.log(JSON.stringify(commits, null, 2))
     if (commits.length === 0) {
       info(`${versionNo} 的规格书还没有 Git 提交记录`)
-      return next('protohub sync   ' + c.dim('提交当前改动'))
+      return next('flowlark sync   ' + c.dim('提交当前改动'))
     }
     console.log(c.bold(`${slug} / ${versionNo}`) + c.dim('  规格书修改史'))
     console.log('')
@@ -351,7 +351,7 @@ export async function spec(pos, values) {
       ['提交', '时间', '作者', '说明'],
       commits.map((x) => [c.yellow(x.short), c.dim(fmtTime(x.date)), x.author, x.subject])
     ))
-    next(`protohub spec ${slug} ${versionNo} --at ${commits[commits.length - 1].short}   ${c.dim('看最早那版')}`)
+    next(`flowlark spec ${slug} ${versionNo} --at ${commits[commits.length - 1].short}   ${c.dim('看最早那版')}`)
     return
   }
 
@@ -367,7 +367,7 @@ export async function spec(pos, values) {
 
   if (values.edit) {
     const current = h.getVersion(slug, versionNo).spec
-    const tmp = path.join(os.tmpdir(), `protohub-${slug}-${versionNo}.md`)
+    const tmp = path.join(os.tmpdir(), `flowlark-${slug}-${versionNo}.md`)
     fs.writeFileSync(tmp, current || `# ${versionNo} 规格说明\n\n`, 'utf8')
     const editor = process.env.VISUAL || process.env.EDITOR || 'vi'
     const r = spawnSync(editor, [tmp], { stdio: 'inherit' })
@@ -381,7 +381,7 @@ export async function spec(pos, values) {
   if (values.json) return void console.log(JSON.stringify({ spec: v.spec }, null, 2))
   if (!v.spec) {
     info(`${versionNo} 还没有规格书`)
-    return next(`protohub spec ${slug} ${versionNo} --edit`)
+    return next(`flowlark spec ${slug} ${versionNo} --edit`)
   }
   console.log(v.spec)
 }
@@ -494,7 +494,7 @@ export async function status(pos, values) {
   if (conflicts.length) {
     console.log('')
     warn(`${conflicts.length} 个文件处于冲突状态`)
-    next('protohub resolve   ' + c.dim('查看并辅助解决'))
+    next('flowlark resolve   ' + c.dim('查看并辅助解决'))
     return
   }
 
@@ -508,12 +508,12 @@ export async function status(pos, values) {
     console.log('')
     info(`${unread.length} 个项目有你没看过的新版本`)
     for (const u of unread) console.log(`  ${c.cyan(u.slug)} ${c.green(`+${u.count}`)}`)
-    next(`protohub diff ${unread[0].slug}   ${c.dim('看看改了什么')}`)
+    next(`flowlark diff ${unread[0].slug}   ${c.dim('看看改了什么')}`)
     return
   }
 
   if (git.tracked && (!git.clean || git.ahead > 0)) {
-    next('protohub sync   ' + c.dim('提交并同步给团队'))
+    next('flowlark sync   ' + c.dim('提交并同步给团队'))
   }
 }
 
@@ -536,7 +536,7 @@ export async function rm(pos, values) {
   if (!versionNo) throw err.bad('VERSION_REQUIRED', '请指定要删除的版本号')
   const r = h.removeVersion(slug, versionNo)
   ok(`已删除 ${c.bold(versionNo)}，移入回收站`)
-  next(`protohub restore ${slug} ${versionNo}   ${c.dim('随时恢复')}`)
+  next(`flowlark restore ${slug} ${versionNo}   ${c.dim('随时恢复')}`)
 }
 
 export async function restore(pos, values) {
@@ -636,7 +636,7 @@ export function printServeInfo(s) {
         : '⚠ 局域网可写：同网段任何人都能删版本、改基线'))
     }
   } else {
-    console.log('  ' + c.dim('仅本机可访问。开放给同事：protohub lan on'))
+    console.log('  ' + c.dim('仅本机可访问。开放给同事：flowlark lan on'))
   }
   console.log(c.dim('  Ctrl+C 停止'))
 }

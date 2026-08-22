@@ -297,7 +297,7 @@ export class Hub {
   /** R3：回滚到上一个当过基线的版本。找不到就明确报错，不猜。 */
   rollback(slug) {
     const baselineNo = store.readBaseline(this.root, slug)
-    if (!baselineNo) throw err.bad('NO_BASELINE', `项目 ${slug} 当前没有基线`, '先设一个：protohub baseline <项目> <版本号>')
+    if (!baselineNo) throw err.bad('NO_BASELINE', `项目 ${slug} 当前没有基线`, '先设一个：flowlark baseline <项目> <版本号>')
 
     const candidates = store
       .listVersionNos(this.root, slug)
@@ -562,7 +562,7 @@ export class Hub {
     if (buf.length > max) {
       throw err.bad('FILE_TOO_LARGE',
         `附件 ${(buf.length / 1024 / 1024).toFixed(1)}MB 超过上限 ${(max / 1024 / 1024).toFixed(0)}MB`,
-        '调大上限：protohub config server.maxFileBytes 50MB')
+        '调大上限：flowlark config server.maxFileBytes 50MB')
     }
 
     const safe = store.safeAttachmentName(finalName)

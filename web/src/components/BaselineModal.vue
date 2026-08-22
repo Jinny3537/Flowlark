@@ -25,7 +25,7 @@
       <div style="line-height:2;color:rgba(0,0,0,.65);font-size:13.5px">
         <div>• 切换后打开本项目默认落在 <b>{{ target.versionNo }}</b>。</div>
         <div>• 该版本的原型文件与变更日志将被<b>锁定</b>，规格书仍可编辑。</div>
-        <div v-if="current">• 可随时用 <code>protohub rollback {{ slug }}</code> 退回 {{ current }}。</div>
+        <div v-if="current">• 可随时用 <code>flowlark rollback {{ slug }}</code> 退回 {{ current }}。</div>
       </div>
 
       <div style="margin-top:16px"><CliHint :command="cliFor('baseline', slug, target.versionNo)" /></div>

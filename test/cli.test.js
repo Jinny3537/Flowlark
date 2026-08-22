@@ -14,7 +14,7 @@ const dirs = []
 after(() => dirs.forEach(cleanup))
 
 function workspace() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'protohub-cli-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-cli-'))
   dirs.push(dir)
   return dir
 }
@@ -23,7 +23,7 @@ function ph(cwd, ...args) {
   const r = spawnSync(process.execPath, [CLI, ...args], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, NO_COLOR: '1', PROTOHUB_USER: '测试用户', PROTOHUB_REPO: '' }
+    env: { ...process.env, NO_COLOR: '1', FLOWLARK_USER: '测试用户', FLOWLARK_REPO: '' }
   })
   return { code: r.status, out: r.stdout || '', err: r.stderr || '' }
 }
@@ -40,7 +40,7 @@ describe('CLI 全流程', () => {
 
     let r = ph(dir, 'init')
     t.assert.strictEqual(r.code, 0, r.err)
-    t.assert.ok(fs.existsSync(path.join(dir, 'protohub.json')))
+    t.assert.ok(fs.existsSync(path.join(dir, 'flowlark.json')))
     t.assert.ok(fs.existsSync(path.join(dir, '.gitattributes')), '应生成 .gitattributes')
 
     r = ph(dir, 'new', '订单中心重构', '--code', 'order-center')
@@ -108,7 +108,7 @@ describe('CLI 全流程', () => {
     const r = ph(dir, 'baseline', 'ord', 'v1.1')
     t.assert.strictEqual(r.code, 1)
     t.assert.match(r.err, /变更日志为空/)
-    t.assert.match(r.err, /protohub add-change|protohub change|-m/, '错误提示要告诉用户怎么修')
+    t.assert.match(r.err, /flowlark add-change|flowlark change|-m/, '错误提示要告诉用户怎么修')
   })
 
   test('单项目仓库可省略 -p', (t) => {
@@ -154,7 +154,7 @@ describe('CLI 全流程', () => {
     const dir = workspace()
     const r = ph(dir, 'ls')
     t.assert.strictEqual(r.code, 1)
-    t.assert.match(r.err, /protohub init/)
+    t.assert.match(r.err, /flowlark init/)
   })
 
   test('未知命令返回 127 并提示可用命令', (t) => {

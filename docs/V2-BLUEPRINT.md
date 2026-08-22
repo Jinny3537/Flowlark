@@ -1,4 +1,4 @@
-# protohub v2.0 蓝图 · 需求驱动的全链路
+# flowlark v2.0 蓝图 · 需求驱动的全链路
 
 > 主题：**让需求成为组织与导航的主轴，而不是版本上的一个标签。**
 > 地基不变：本地软件 + Git 协作，不引入常驻服务器与自建账号体系。
@@ -40,7 +40,7 @@ v2 要修的就是这三条。
 
 **采用：单向存储 + 派生索引。**
 
-关联仍然**只存在版本里**——「这一版实现了哪些需求」是创建版本时自然录入的信息，写入点唯一。需求侧的「我关联了哪些版本」通过扫描全库派生，缓存在 `.protohub/cache/index.json`，不进 Git。
+关联仍然**只存在版本里**——「这一版实现了哪些需求」是创建版本时自然录入的信息，写入点唯一。需求侧的「我关联了哪些版本」通过扫描全库派生，缓存在 `.flowlark/cache/index.json`，不进 Git。
 
 这延续了 v1 里 `BASELINE` 和「展示状态不落库」的同一条思路：**没有冗余字段，就没有需要同步的东西，也就没有不一致的可能。** 代价是需求视图要扫全库，但和现有搜索一样——几百个版本是毫秒级，引索引反而会带来「什么时候重建」这个新问题。
 
@@ -63,7 +63,7 @@ v2 要修的就是这三条。
 
 ```
 我的原型/
-├── protohub.json              schemaVersion: 2
+├── flowlark.json              schemaVersion: 2
 ├── requirements/              ← 新增：需求是一等实体
 │   └── REQ-2026-0275/
 │       ├── requirement.json   编号、标题、描述、外部映射、状态覆盖
@@ -80,7 +80,7 @@ v2 要修的就是这三条。
 │           ├── v1.2.html
 │           ├── v1.2.spec.md
 │           └── v1.2.files/
-└── .protohub/
+└── .flowlark/
     ├── oplog.ndjson
     ├── trash/
     ├── backup/                ← 新增：迁移前的自动备份
@@ -110,7 +110,7 @@ v2 要修的就是这三条。
 }
 ```
 
-外部系统的标题、状态、负责人**不写进这个文件**——它们会变，写进来就是又一份会过期的副本。放在 `.protohub/cache/external/` 里，界面上标明「来自 Jira，10 分钟前同步」。
+外部系统的标题、状态、负责人**不写进这个文件**——它们会变，写进来就是又一份会过期的副本。放在 `.flowlark/cache/external/` 里，界面上标明「来自 Jira，10 分钟前同步」。
 
 ### version.json 的变化
 
@@ -161,11 +161,11 @@ v2 要修的就是这三条。
 
 CLI：
 ```
-protohub req                        列出全部需求
-protohub req <编号>                 需求详情：关联版本、演进、变更聚合
-protohub req new <编号> -t "标题"    创建需求
-protohub req link <编号> <项目> <版本>   建立关联（本质是改版本的 requirements 字段）
-protohub req unlink / spec / attach
+flowlark req                        列出全部需求
+flowlark req <编号>                 需求详情：关联版本、演进、变更聚合
+flowlark req new <编号> -t "标题"    创建需求
+flowlark req link <编号> <项目> <版本>   建立关联（本质是改版本的 requirements 字段）
+flowlark req unlink / spec / attach
 ```
 
 ### M2. 迭代与发布批次
@@ -175,12 +175,12 @@ protohub req unlink / spec / attach
 **迭代视图**要回答：这个迭代研发要开发的原型有哪些、每个的定稿版本是什么、有没有还没定稿的、和上个迭代比新增了什么。
 
 ```
-protohub release new 2026-S12 -t "订单批量操作迭代"
-protohub release add 2026-S12 REQ-0275            自动取当前基线
-protohub release add 2026-S12 REQ-0275 -v v1.2    显式指定版本
-protohub release show 2026-S12                    完整清单 + 未定稿告警
-protohub release freeze 2026-S12                  冻结，禁止再改
-protohub release diff 2026-S11 2026-S12           两个迭代之间的差异
+flowlark release new 2026-S12 -t "订单批量操作迭代"
+flowlark release add 2026-S12 REQ-0275            自动取当前基线
+flowlark release add 2026-S12 REQ-0275 -v v1.2    显式指定版本
+flowlark release show 2026-S12                    完整清单 + 未定稿告警
+flowlark release freeze 2026-S12                  冻结，禁止再改
+flowlark release diff 2026-S11 2026-S12           两个迭代之间的差异
 ```
 
 `release show` 的关键价值是**未定稿告警**：迭代里有需求还停在草稿版本，说明它不该进这个迭代，或者产品忘了定稿。这是研发最想在迭代开始前知道的事。
@@ -190,8 +190,8 @@ protohub release diff 2026-S11 2026-S12           两个迭代之间的差异
 把一个迭代（或一个需求）的全部内容导出成**自包含的静态站点**：所有原型（离线化后）、规格书、变更日志、附件、一个索引页。
 
 ```
-protohub export release 2026-S12 -o ./交付包
-protohub export req REQ-0275 -o ./需求包
+flowlark export release 2026-S12 -o ./交付包
+flowlark export req REQ-0275 -o ./需求包
 ```
 
 **为什么这是全链路里最重要的一块**：它彻底绕开了「研发测试要装 Node、要 clone 仓库」这个门槛。一个文件夹丢过去，双击 index.html 就能看全套内容，断网也行。
@@ -238,8 +238,8 @@ token 存本地缓存不进 Git。无 token 时全部降级为纯本地需求，
 
 ### M7. 上传路径与编辑
 
-- 粘贴导入：`⌘V` 直接粘 HTML 源码 / `protohub add --clipboard`
-- URL 导入：`protohub add https://...`（拒绝内网地址段防 SSRF）
+- 粘贴导入：`⌘V` 直接粘 HTML 源码 / `flowlark add --clipboard`
+- URL 导入：`flowlark add https://...`（拒绝内网地址段防 SSRF）
 - watch 提升为一等公民：常驻监听，自动归档为草稿
 - 创建版本时**直接搜索关联需求**（走 provider 的 searchRequirements），而不是手抄编号
 
@@ -291,13 +291,13 @@ src/core/
 
 **迁移动作**：
 
-1. 备份整个仓库到 `.protohub/backup/v1-<时间戳>/`（不进 Git，迁移成功后保留一份供回退）
+1. 备份整个仓库到 `.flowlark/backup/v1-<时间戳>/`（不进 Git，迁移成功后保留一份供回退）
 2. 扫描所有 `version.json` 的 `requirements` 数组，收集全部 `{code, title, url}`
 3. 按 code 去重，为每个生成 `requirements/<code>/requirement.json`
    - 标题冲突时（同一编号在不同版本里写了不同标题）取**最新版本里的那个**，其余记进迁移报告
    - URL 解析出 provider 与 key，写进 `external`
 4. 把各 `version.json` 的 `requirements` 改写为编号数组
-5. `protohub.json` 的 `schemaVersion` 改为 2
+5. `flowlark.json` 的 `schemaVersion` 改为 2
 6. 输出迁移报告：生成了几个需求、有几处标题冲突、分别是什么
 
 **安全性设计**：
@@ -305,9 +305,9 @@ src/core/
 - 迁移是**纯本地文件操作**，不触碰 Git。迁移后仓库处于「有未提交改动」状态，用户 review 完 `git diff` 再自己提交——这一步不能自动做，schema 迁移的提交应该由人确认。
 - 迁移前检查工作区是否干净，不干净则拒绝并提示先提交，避免把迁移和业务改动混在一个 diff 里。
 - 遇到任何无法处理的数据（比如 requirements 里有非对象项）**中止并回滚**，不做部分迁移。
-- `schemaVersion: 2` 的仓库被 v1 版 protohub 打开时，v1 已有的版本检查会报「schema 版本过高」并提示升级——这条在 v1 里就写好了。
+- `schemaVersion: 2` 的仓库被 v1 版 Flowlark 打开时，v1 已有的版本检查会报「schema 版本过高」并提示升级——这条在 v1 里就写好了。
 
-**回退**：`protohub migrate --rollback` 从备份恢复。
+**回退**：`flowlark migrate --rollback` 从备份恢复。
 
 ---
 
@@ -365,8 +365,8 @@ src/core/
 
 | 不做 | 理由 |
 |---|---|
-| 镜像外部需求系统的完整状态机 | 两套状态机对齐是无底洞。protohub 只管原型侧的进展 |
-| 需求的评审流程与审批链 | 那是需求系统的职责，protohub 不重造 |
+| 镜像外部需求系统的完整状态机 | 两套状态机对齐是无底洞。Flowlark 只管原型侧的进展 |
+| 需求的评审流程与审批链 | 那是需求系统的职责，Flowlark 不重造 |
 | 自建账号体系 | 与本地形态冲突，权限交给 Git 平台 |
 | 需求工时、排期、燃尽图 | 项目管理工具的领域 |
 | 在线协同编辑原型 | 原型是单向产出的交付物，不是共创文档 |
@@ -378,7 +378,7 @@ src/core/
 | 模块 | 判据 |
 |---|---|
 | 需求实体 | 改一次需求标题，全库显示一致；能从需求反查到所有关联版本 |
-| 派生状态 | 删掉 `.protohub/cache/` 后所有需求状态能完全重算，结果一致 |
+| 派生状态 | 删掉 `.flowlark/cache/` 后所有需求状态能完全重算，结果一致 |
 | 迭代 | `release show` 能指出哪些需求还停在草稿版本 |
 | 交付包 | 导出的目录断网双击可用，包含全部原型、规格书、附件 |
 | 权限 | 只读用户不可能产生推不上去的本地改动 |

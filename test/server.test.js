@@ -249,7 +249,7 @@ describe('配置与局域网 API', () => {
   })
 
   test('运行时的局域网状态优先于配置文件', async (t) => {
-    // protohub serve --lan 是一次性覆盖，不写配置。
+    // flowlark serve --lan 是一次性覆盖，不写配置。
     // 若 health 按配置回答，局域网访客会看到可写的界面，点了才收到 403
     const { startServer } = await import('../src/server/index.js')
     const s2 = await startServer(root, { port: 0, previewPort: 0, lan: true })

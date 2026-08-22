@@ -18,8 +18,8 @@ export const err = {
   bad: (code, message, hint) => new PhError(code, message, { status: 400, hint }),
   conflict: (code, message, hint) => new PhError(code, message, { status: 409, hint }),
   noRepo: () =>
-    new PhError('NO_REPO', '当前目录及其上级目录中没有找到 protohub 仓库', {
+    new PhError('NO_REPO', '当前目录及其上级目录中没有找到 Flowlark 仓库', {
       status: 400,
-      hint: '执行 `protohub init` 创建一个，或 cd 到已有仓库目录'
+      hint: '执行 `flowlark init` 创建一个，或 cd 到已有仓库目录'
     })
 }

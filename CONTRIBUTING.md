@@ -4,19 +4,19 @@
 
 Node **18.17+**（`parseArgs` 要 18.3、`fetch` 要 18）。仓库带了 `.nvmrc`，用 nvm 的话 `nvm use` 即可。
 
-`git` 不是必需的——没有它 protohub 本身照常工作，只是同步、历史追溯、冲突处理那几个命令会明确报错。但**跑测试需要 git**，`gitint.test.js` 与 `git.test.js` 跑的是真实 git 命令。
+`git` 不是必需的——没有它 Flowlark 本身照常工作，只是同步、历史追溯、冲突处理那几个命令会明确报错。但**跑测试需要 git**，`gitint.test.js` 与 `git.test.js` 跑的是真实 git 命令。
 
 ```bash
-git clone <仓库地址> && cd protohub
+git clone <仓库地址> && cd flowlark
 npm test                 # 167 项，不需要装任何依赖
 npm run build:web        # 构建浏览器工作台（首次约 1-2 分钟）
-node bin/protohub.js --help
+node bin/flowlark.js --help
 ```
 
 ## 项目结构
 
 ```
-bin/protohub.js     CLI 入口
+bin/flowlark.js     CLI 入口
 src/core/           ← CLI 与 HTTP 的唯一事实来源
   store.js          文件读写；版本号 / 附件名的清洗都在这
   rules.js          R1–R7 业务规则，集中定义

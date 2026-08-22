@@ -90,7 +90,7 @@
             </div>
           </div>
 
-          <div style="margin-top:16px"><CliHint command="protohub sync" /></div>
+          <div style="margin-top:16px"><CliHint command="flowlark sync" /></div>
         </template>
       </template>
     </a-spin>

@@ -8,7 +8,7 @@ import * as net from '../core/net.js'
  */
 /**
  * @param runtime 服务的**实际**运行状态。不能直接读配置 ——
- *   `protohub serve --lan` 是一次性覆盖，不写配置文件；
+ *   `flowlark serve --lan` 是一次性覆盖，不写配置文件；
  *   若 health 按配置回答，局域网访客会看到可写的界面，点了才收到 403。
  */
 export function buildApi(hub, { previewPort, runtime = {} }) {
@@ -26,7 +26,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     const canWrite = net.allowWrite({ lan: lanActive, readonlyFromLan: readonly, isLocal: net.isLocalRequest(req) })
     sendJson(res, 200, {
       ok: true,
-      app: 'protohub',
+      app: 'flowlark',
       repo: hub.root,
       repoName: hub.config.name,
       // 前端要用它拼预览地址。硬编码会在改端口时静默失效，所以由服务端下发。

@@ -11,7 +11,7 @@ import { err } from './errors.js'
  * 两个刻意的设计：
  *
  * 1. **不修改原型文件本身**。原型是需求追溯的证据，R4 说它确认后不可变。
- *    离线版是派生产物，存在 .protohub/cache/offline/ 下，随时可重新生成，也不进 Git。
+ *    离线版是派生产物，存在 .flowlark/cache/offline/ 下，随时可重新生成，也不进 Git。
  *    这样连基线版本也能生成离线版，不违反不可变性。
  *
  * 2. **全部内联成单文件**，不落一堆 assets。和产品「一个版本 = 一个文件」的
@@ -25,7 +25,7 @@ const MAX_ASSET_BYTES = 8 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 15000
 
 export function offlinePath(root, slug, versionNo) {
-  return path.join(root, '.protohub', 'cache', 'offline', slug, `${versionNo}.html`)
+  return path.join(root, '.flowlark', 'cache', 'offline', slug, `${versionNo}.html`)
 }
 
 export function hasOffline(root, slug, versionNo) {
@@ -120,7 +120,7 @@ export async function buildOffline(root, slug, versionNo, htmlBuffer) {
     }
   }
 
-  const banner = `<!-- protohub 离线版本：${slug}/${versionNo}
+  const banner = `<!-- Flowlark 离线版本：${slug}/${versionNo}
      生成于 ${new Date().toISOString()}
      已内联 ${inlined}/${total} 个外部资源${failed.length ? `，${failed.length} 个抓取失败` : ''}
      这是派生产物，原型文件本身未被修改。 -->\n`

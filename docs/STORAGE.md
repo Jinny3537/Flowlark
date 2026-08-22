@@ -10,7 +10,7 @@
 
 ```
 my-prototypes/                    ← 用户自己 git init 的目录
-├── protohub.json                 仓库配置（schemaVersion / 仓库名 / 设置）
+├── flowlark.json                 仓库配置（schemaVersion / 仓库名 / 设置）
 ├── .gitattributes                原型 HTML 标记为二进制，避免污染 diff
 ├── projects/
 │   └── order-center/             ← 项目 slug，即目录名
@@ -23,7 +23,7 @@ my-prototypes/                    ← 用户自己 git init 的目录
 │           ├── v1.1.json
 │           ├── v1.1.html
 │           └── v1.1.spec.md
-└── .protohub/
+└── .flowlark/
     ├── oplog.ndjson              操作日志，append-only
     └── trash/                    逻辑删除的版本移动到这里
 ```
@@ -81,6 +81,6 @@ Git 友好不是把数据写成 JSON 就完事了。键顺序随机、缩进不�
 
 ## 逻辑删除
 
-R7 的逻辑删除不再是 `deleted_at` 字段，而是把版本的三个文件**移动**到 `.protohub/trash/<项目>/<时间戳>-<版本号>/`。
+R7 的逻辑删除不再是 `deleted_at` 字段，而是把版本的三个文件**移动**到 `.flowlark/trash/<项目>/<时间戳>-<版本号>/`。
 
 好处是主目录保持干净——`ls projects/order-center/versions/` 看到的就是真实存在的版本，不需要每个查询都带上 `WHERE deleted_at IS NULL`（那个条件漏写一次就是一个 bug）。恢复就是移回去。

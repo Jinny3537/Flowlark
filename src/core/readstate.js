@@ -5,17 +5,17 @@ import path from 'node:path'
  * 已读标记：「我上次看到哪一版」。
  *
  * 关键决定是**不进 Git**。已读状态是每个人自己的，提交上去会变成
- * 「张三把李四标成已读」这种荒唐的冲突。所以放在 .protohub/cache/ 下 ——
+ * 「张三把李四标成已读」这种荒唐的冲突。所以放在 .flowlark/cache/ 下 ——
  * init 生成的 .gitignore 已经忽略了这个目录，向后兼容，老仓库也不用改配置。
  *
  * 它真正的用处是给 diff 一个默认起点：研发上次看的是 v1.0，现在基线是 v1.3，
- * `protohub diff` 不带参数就该显示这三版的变更合集，而不是让他自己去想起点。
+ * `flowlark diff` 不带参数就该显示这三版的变更合集，而不是让他自己去想起点。
  */
 
 const FILE = 'read-state.json'
 
 function file(root) {
-  return path.join(root, '.protohub', 'cache', FILE)
+  return path.join(root, '.flowlark', 'cache', FILE)
 }
 
 function load(root) {

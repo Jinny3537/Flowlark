@@ -50,13 +50,13 @@ function requireRepo(root) {
 // ==================== 状态 ====================
 
 /**
- * protohub 自己管理的路径。
+ * Flowlark 自己管理的路径。
  *
  * sync 只提交这些，不是 `git add -A` ——
  * 用户常在同一个文件夹里放着正在改的原型源文件、临时导出的截图，
  * 把它们一并卷进提交是意料之外的行为。想提交别的，用 git 本身。
  */
-export const OWNED_PATHS = ['projects', 'protohub.json', '.protohub', '.gitattributes', '.gitignore']
+export const OWNED_PATHS = ['projects', 'flowlark.json', '.flowlark', '.gitattributes', '.gitignore']
 
 export function isOwnedPath(p) {
   return OWNED_PATHS.some((own) => p === own || p.startsWith(own + '/'))
@@ -112,7 +112,7 @@ export function status(root) {
 
   return {
     tracked: true,
-    // clean 只看 protohub 自己的文件 —— 用户放在旁边的草稿不该让「同步」按钮一直亮着
+    // clean 只看 Flowlark 自己的文件 —— 用户放在旁边的草稿不该让「同步」按钮一直亮着
     clean: own.length === 0,
     branch,
     ahead,
@@ -212,7 +212,7 @@ export function sync(root, { message, push = true } = {}) {
     }
   }
 
-  // 1. 提交本地改动。只暂存 protohub 自己的路径，不碰用户放在旁边的文件。
+  // 1. 提交本地改动。只暂存 Flowlark 自己的路径，不碰用户放在旁边的文件。
   if (!st.clean) {
     const existing = OWNED_PATHS.filter((p) => fs.existsSync(path.join(root, p)))
     if (!record('暂存改动', git(root, ['add', '-A', '--', ...existing]))) {
@@ -222,7 +222,7 @@ export function sync(root, { message, push = true } = {}) {
       steps.push({
         name: '跳过',
         ok: true,
-        detail: `${st.foreignFiles.length} 个非 protohub 文件未提交（${st.foreignFiles.slice(0, 3).map((f) => f.path).join('、')}${st.foreignFiles.length > 3 ? '…' : ''}）`
+        detail: `${st.foreignFiles.length} 个非 Flowlark 文件未提交（${st.foreignFiles.slice(0, 3).map((f) => f.path).join('、')}${st.foreignFiles.length > 3 ? '…' : ''}）`
       })
     }
     const msg = message || defaultCommitMessage(root, st)
@@ -280,9 +280,9 @@ function defaultCommitMessage(root, st) {
     if (/\/BASELINE$/.test(f.path)) baselineChanged = true
   }
   const projects = [...touched]
-  if (projects.length === 0) return 'protohub: 更新原型仓库'
+  if (projects.length === 0) return 'flowlark: 更新原型仓库'
   const scope = projects.length === 1 ? projects[0] : `${projects.length} 个项目`
-  return baselineChanged ? `protohub: 更新 ${scope}（含基线变更）` : `protohub: 更新 ${scope}`
+  return baselineChanged ? `flowlark: 更新 ${scope}（含基线变更）` : `flowlark: 更新 ${scope}`
 }
 
 // ==================== 历史 ====================
@@ -410,7 +410,7 @@ export function resolveBaselineConflict(root, slug, versionNo) {
   return { file: rel, versionNo }
 }
 
-/** 列出所有处于冲突状态的文件，并标出哪些是 protohub 能自动辅助解决的 */
+/** 列出所有处于冲突状态的文件，并标出哪些是 Flowlark 能自动辅助解决的 */
 export function listConflicts(root) {
   if (!isRepo(root)) return []
   const r = git(root, ['diff', '--name-only', '--diff-filter=U'])

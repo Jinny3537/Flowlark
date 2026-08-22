@@ -16,7 +16,7 @@ import { c, table, kv, fmtSize, fmtTime, ok, info, warn, next } from './ui.js'
 export async function config(pos, values) {
   const h = hub()
 
-  // protohub config —— 列出全部
+  // flowlark config —— 列出全部
   if (pos.length === 0 && !values.edit) {
     const items = h.listConfig()
     if (values.json) return void console.log(JSON.stringify(items, null, 2))
@@ -43,17 +43,17 @@ export async function config(pos, values) {
     console.log('')
     console.log(c.dim('  加粗的是改过的值；' + c.red('!') + ' 标记的是高风险开关'))
     next(
-      'protohub config <配置项>           ' + c.dim('查看单项详情'),
-      'protohub config <配置项> <值>       ' + c.dim('修改'),
-      'protohub config --edit             ' + c.dim('用编辑器改整个配置文件')
+      'flowlark config <配置项>           ' + c.dim('查看单项详情'),
+      'flowlark config <配置项> <值>       ' + c.dim('修改'),
+      'flowlark config --edit             ' + c.dim('用编辑器改整个配置文件')
     )
     return
   }
 
-  // protohub config --edit
+  // flowlark config --edit
   if (values.edit) {
     const { spawnSync } = await import('node:child_process')
-    const file = path.join(h.root, 'protohub.json')
+    const file = path.join(h.root, 'flowlark.json')
     const editor = process.env.VISUAL || process.env.EDITOR || 'vi'
     const r = spawnSync(editor, [file], { stdio: 'inherit' })
     if (r.status !== 0) return warn('编辑器异常退出')
@@ -67,7 +67,7 @@ export async function config(pos, values) {
         ok('配置已保存')
       }
     } catch (e) {
-      throw err.bad('CONFIG_BROKEN', `配置文件解析失败：${e.message}`, '检查 protohub.json 的 JSON 语法')
+      throw err.bad('CONFIG_BROKEN', `配置文件解析失败：${e.message}`, '检查 flowlark.json 的 JSON 语法')
     }
     return
   }
@@ -76,10 +76,10 @@ export async function config(pos, values) {
   const schema = cfgSchema.describe(key)
   if (!schema) {
     throw err.bad('UNKNOWN_CONFIG_KEY', `没有这个配置项：${key}`,
-      '看看有哪些：protohub config')
+      '看看有哪些：flowlark config')
   }
 
-  // protohub config <key> —— 查看单项
+  // flowlark config <key> —— 查看单项
   if (pos.length === 1 && !values.clear) {
     const item = h.listConfig().find((i) => i.key === key)
     if (values.json) return void console.log(JSON.stringify(item, null, 2))
@@ -95,21 +95,21 @@ export async function config(pos, values) {
     return
   }
 
-  // protohub config <key> --clear —— 恢复默认
+  // flowlark config <key> --clear —— 恢复默认
   if (values.clear) {
     const r = h.resetConfig(key)
     ok(`${c.cyan(key)} 已恢复默认值：${JSON.stringify(r.value)}`)
-    if (r.needsRestart) info('服务相关配置需要重启 protohub serve 才生效')
+    if (r.needsRestart) info('服务相关配置需要重启 flowlark serve 才生效')
     return
   }
 
-  // protohub config <key> <value>
+  // flowlark config <key> <value>
   const raw = pos.slice(1).join(' ')
   const r = h.setConfig(key, raw)
   ok(`${c.cyan(key)} = ${c.bold(JSON.stringify(r.value))}`)
   for (const s of r.sideEffects || []) info(s)
   for (const p of r.problems || []) warn(p)
-  if (r.needsRestart) info('服务相关配置需要重启 protohub serve 才生效')
+  if (r.needsRestart) info('服务相关配置需要重启 flowlark serve 才生效')
   if (schema.danger && r.value === false) {
     console.log('  ' + c.red('注意：') + c.dim(schema.note))
   }
@@ -131,8 +131,8 @@ export async function remote(pos, values) {
     if (!r) {
       info('还没有配置远端')
       return next(
-        'protohub remote <地址>   ' + c.dim('如 git@github.com:team/prototypes.git'),
-        c.dim('配置后 protohub sync 就会自动推送')
+        'flowlark remote <地址>   ' + c.dim('如 git@github.com:team/prototypes.git'),
+        c.dim('配置后 flowlark sync 就会自动推送')
       )
     }
     console.log(kv([['远端', c.cyan(r.name)], ['地址', r.url]]))
@@ -151,7 +151,7 @@ export async function remote(pos, values) {
   const url = pos[0]
   const r = h.gitSetRemote(url)
   ok(`${r.message}：${c.cyan(r.url)}`)
-  next('protohub sync   ' + c.dim('首次推送会自动建立上游分支'))
+  next('flowlark sync   ' + c.dim('首次推送会自动建立上游分支'))
 }
 
 // ==================== attach ====================
@@ -178,7 +178,7 @@ export async function attach(pos, values) {
     if (values.json) return void console.log(JSON.stringify(v.attachments, null, 2))
     if (v.attachments.length === 0) {
       info(`${versionNo} 还没有附件`)
-      return next(`protohub attach ${slug} ${versionNo} ./需求文档.pdf`)
+      return next(`flowlark attach ${slug} ${versionNo} ./需求文档.pdf`)
     }
     console.log(c.bold(`${slug} / ${versionNo}`) + c.dim('  的附件'))
     console.log('')
@@ -198,7 +198,7 @@ export async function attach(pos, values) {
     }
     console.log('')
     console.log(c.dim(`  存放位置：projects/${slug}/versions/${versionNo}.files/`))
-    console.log(c.dim('  附件随 Git 一起提交，protohub sync 就会推送给团队'))
+    console.log(c.dim('  附件随 Git 一起提交，flowlark sync 就会推送给团队'))
     return
   }
 
@@ -211,7 +211,7 @@ export async function attach(pos, values) {
     ok(`已添加 ${c.bold(path.basename(abs))}（${fmtSize(fs.statSync(abs).size)}）`)
   }
   console.log(c.dim(`  ${versionNo} 现有 ${v.attachments.length} 个附件`))
-  next('protohub sync   ' + c.dim('提交并推送给团队'))
+  next('flowlark sync   ' + c.dim('提交并推送给团队'))
 }
 
 // ==================== lan ====================
@@ -225,7 +225,7 @@ export async function lan(pos, values) {
     const on = ['on', 'true', '1', '开', 'yes'].includes(String(pos[0]).toLowerCase())
     const off = ['off', 'false', '0', '关', 'no'].includes(String(pos[0]).toLowerCase())
     if (!on && !off) {
-      throw err.bad('BAD_ARG', `不认识的参数「${pos[0]}」`, '用法：protohub lan on / off')
+      throw err.bad('BAD_ARG', `不认识的参数「${pos[0]}」`, '用法：flowlark lan on / off')
     }
     const r = h.setConfig('server.lan', on)
     ok(`局域网访问已${on ? c.green('开启') : c.dim('关闭')}`)
@@ -248,7 +248,7 @@ export async function lan(pos, values) {
         warn('只读保护是关闭的 —— 同网段任何人都能删版本、改基线')
       }
     }
-    info('需要重启 protohub serve 才生效')
+    info('需要重启 flowlark serve 才生效')
     return
   }
 
@@ -278,7 +278,7 @@ export async function lan(pos, values) {
   }
 
   if (!s.server.lan) {
-    next('protohub lan on   ' + c.dim('开放给同网段的同事访问'))
+    next('flowlark lan on   ' + c.dim('开放给同网段的同事访问'))
   } else {
     console.log('')
     console.log(c.dim('  防火墙可能仍会拦截，同事连不上时先检查这一项'))

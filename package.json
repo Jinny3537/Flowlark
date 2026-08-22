@@ -1,21 +1,21 @@
 {
-  "name": "protohub",
-  "version": "1.0.0",
-  "description": "本地原型版本库：CLI 管数据，浏览器看原型，数据是纯文本文件直接进 Git",
+  "name": "flowlark",
+  "version": "1.0.1",
+  "description": "Flowlark — Where prototypes flow。本地原型版本库：CLI 管数据，浏览器看原型，数据是纯文本文件直接进 Git",
   "type": "module",
   "license": "MIT",
-  "author": "protohub contributors",
-  "homepage": "https://github.com/OWNER/protohub#readme",
+  "author": "flowlark contributors",
+  "homepage": "https://github.com/OWNER/flowlark#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/protohub.git"
+    "url": "git+https://github.com/OWNER/flowlark.git"
   },
   "bugs": {
-    "url": "https://github.com/OWNER/protohub/issues"
+    "url": "https://github.com/OWNER/flowlark/issues"
   },
   "bin": {
-    "protohub": "bin/protohub.js",
-    "ph": "bin/protohub.js"
+    "flowlark": "bin/flowlark.js",
+    "fl": "bin/flowlark.js"
   },
   "engines": {
     "node": ">=18.17"
@@ -32,7 +32,7 @@
   "scripts": {
     "test": "node --test",
     "build:web": "cd web && npm install && npm run build",
-    "start": "node bin/protohub.js serve",
+    "start": "node bin/flowlark.js serve",
     "prepublishOnly": "npm run build:web && npm test"
   },
   "keywords": [

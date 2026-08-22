@@ -42,7 +42,7 @@ export async function sync(pos, values) {
   if (r.conflicted) {
     console.log('')
     warn('产生了冲突，需要人工确认')
-    next('protohub resolve   ' + c.dim('查看冲突并辅助解决'))
+    next('flowlark resolve   ' + c.dim('查看冲突并辅助解决'))
     process.exitCode = 1
     return
   }
@@ -65,7 +65,7 @@ export async function history(pos, values) {
 
   if (commits.length === 0) {
     info(`${versionNo} 还没有 Git 提交记录`)
-    return next('protohub sync   ' + c.dim('提交当前改动'))
+    return next('flowlark sync   ' + c.dim('提交当前改动'))
   }
 
   console.log(c.bold(`${slug} / ${versionNo}`) + c.dim('  的演进历史'))
@@ -80,7 +80,7 @@ export async function history(pos, values) {
       x.subject
     ])
   ))
-  next(`protohub spec ${slug} ${versionNo} --at ${commits[0].short}   ${c.dim('看那时的规格书')}`)
+  next(`flowlark spec ${slug} ${versionNo} --at ${commits[0].short}   ${c.dim('看那时的规格书')}`)
 }
 
 export async function blame(pos, values) {
@@ -141,8 +141,8 @@ export async function resolve(pos, values) {
     console.log(`    ${c.bold(info2.theirs)}   ${c.dim('（对方那边）')}`)
     console.log('')
     console.log(c.dim('  选一个保留：'))
-    console.log(`    protohub resolve ${con.project} ${info2.ours}`)
-    console.log(`    protohub resolve ${con.project} ${info2.theirs}`)
+    console.log(`    flowlark resolve ${con.project} ${info2.ours}`)
+    console.log(`    flowlark resolve ${con.project} ${info2.theirs}`)
     console.log('')
   }
 
@@ -155,7 +155,7 @@ export async function resolve(pos, values) {
     console.log('')
   }
 
-  next('解决完全部冲突后：git rebase --continue，或 protohub sync')
+  next('解决完全部冲突后：git rebase --continue，或 flowlark sync')
 }
 
 /** 不带参数是「列冲突」，带参数是「选一边」—— 一个命令覆盖查看和处置两步 */
@@ -163,7 +163,7 @@ export async function resolveCmd(pos, values) {
   return pos.length >= 2 ? resolvePick(pos, values) : resolve(pos, values)
 }
 
-/** protohub resolve <项目> <版本号> —— 直接定这个项目的基线 */
+/** flowlark resolve <项目> <版本号> —— 直接定这个项目的基线 */
 export async function resolvePick(pos, values) {
   const h = hub()
   const slug = pos[0]
@@ -183,8 +183,8 @@ export async function resolvePick(pos, values) {
   const left = h.gitConflicts()
   if (left.length) {
     console.log(c.dim(`  还剩 ${left.length} 个冲突文件`))
-    next('protohub resolve   ' + c.dim('看剩下的'))
+    next('flowlark resolve   ' + c.dim('看剩下的'))
   } else {
-    next('git rebase --continue   ' + c.dim('或 protohub sync'))
+    next('git rebase --continue   ' + c.dim('或 flowlark sync'))
   }
 }

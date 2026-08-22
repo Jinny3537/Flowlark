@@ -2,7 +2,7 @@
   <div class="page-pad">
     <h2 style="margin:0 0 4px;font-size:20px">设置</h2>
     <div class="text-secondary" style="margin-bottom:20px">
-      配置存在仓库根目录的 <span class="mono">protohub.json</span> 里，随 Git 一起提交，团队共用同一份。
+      配置存在仓库根目录的 <span class="mono">flowlark.json</span> 里，随 Git 一起提交，团队共用同一份。
     </div>
 
     <a-alert v-for="p in problems" :key="p" type="warning" show-icon :message="p" style="margin-bottom:12px" />
@@ -41,7 +41,7 @@
             <div style="flex:1">
               <div style="font-weight:500">局域网只读</div>
               <div class="text-secondary" style="font-size:12.5px;line-height:1.8">
-                开启时局域网来的请求只能查看，写操作仅限运行 protohub 的这台机器。
+                开启时局域网来的请求只能查看，写操作仅限运行 Flowlark 的这台机器。
                 <span v-if="!readonlyOn" style="color:#ff4d4f">
                   当前已关闭 —— 同网段任何人都能删版本、改基线。
                 </span>
@@ -59,13 +59,13 @@
 
         <a-alert v-if="restartNeeded" type="warning" show-icon style="margin-top:14px"
                  message="改动需要重启服务才生效"
-                 description="在运行 protohub 的终端按 Ctrl+C 后重新执行 protohub serve" />
+                 description="在运行 Flowlark 的终端按 Ctrl+C 后重新执行 flowlark serve" />
       </a-card>
 
       <!-- Git 远端 -->
       <a-card title="Git 远端" style="margin-bottom:16px">
         <div class="text-secondary" style="font-size:13px;margin-bottom:12px">
-          配置后 <span class="mono">protohub sync</span> 或工作台的同步按钮就能把原型、规格书、附件推给团队。
+          配置后 <span class="mono">flowlark sync</span> 或工作台的同步按钮就能把原型、规格书、附件推给团队。
         </div>
         <a-input-group compact>
           <a-input v-model:value="remoteUrl" style="width:calc(100% - 160px)"
@@ -129,8 +129,8 @@
       </a-card>
 
       <div class="text-secondary" style="font-size:12px;margin-bottom:24px">
-        也可以用命令行改：<span class="mono">protohub config &lt;配置项&gt; &lt;值&gt;</span>
-        <div style="margin-top:8px"><CliHint command="protohub config" /></div>
+        也可以用命令行改：<span class="mono">flowlark config &lt;配置项&gt; &lt;值&gt;</span>
+        <div style="margin-top:8px"><CliHint command="flowlark config" /></div>
       </div>
     </a-spin>
   </div>

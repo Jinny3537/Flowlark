@@ -227,7 +227,7 @@ function onAction(key, v) {
   if (key === 'remove') {
     return Modal.confirm({
       title: `删除版本 ${v.versionNo}？`,
-      content: '文件会移入 .protohub/trash，可在回收站恢复。',
+      content: '文件会移入 .flowlark/trash，可在回收站恢复。',
       okText: '删除', okType: 'danger',
       onOk: async () => { await api.removeVersion(props.slug, v.versionNo); message.success('已移入回收站'); load() }
     })

@@ -20,7 +20,7 @@ export async function search(pos, values) {
   const query = pos.join(' ').trim()
   if (!query) {
     throw err.bad('QUERY_REQUIRED', '请提供搜索关键词',
-      'protohub search 批量导出')
+      'flowlark search 批量导出')
   }
 
   const r = h.search(query, {
@@ -34,8 +34,8 @@ export async function search(pos, values) {
   if (r.total === 0) {
     info(`没有找到「${query}」`)
     return next(
-      'protohub search <关键词> --field spec   ' + c.dim('只搜规格书'),
-      'protohub ls                            ' + c.dim('看看有哪些项目')
+      'flowlark search <关键词> --field spec   ' + c.dim('只搜规格书'),
+      'flowlark ls                            ' + c.dim('看看有哪些项目')
     )
   }
 
@@ -58,7 +58,7 @@ export async function search(pos, values) {
 
   const first = r.results[0]
   if (first.versionNo) {
-    next(`protohub show ${first.project} ${first.versionNo}`)
+    next(`flowlark show ${first.project} ${first.versionNo}`)
   }
 }
 
@@ -81,7 +81,7 @@ export async function read(pos, values) {
     if (!state) {
       info(`${slug} 还没有已读标记`)
       return next(
-        `protohub read ${slug} ${project.baselineVersionNo || '<版本号>'}   ${c.dim('标记为已读')}`
+        `flowlark read ${slug} ${project.baselineVersionNo || '<版本号>'}   ${c.dim('标记为已读')}`
       )
     }
     console.log(kv([
@@ -93,7 +93,7 @@ export async function read(pos, values) {
     if (newer > 0) {
       console.log('')
       warn(`之后新增了 ${newer} 个版本`)
-      next(`protohub diff ${slug}   ${c.dim('看这期间改了什么')}`)
+      next(`flowlark diff ${slug}   ${c.dim('看这期间改了什么')}`)
     } else {
       console.log('')
       ok('没有新版本')
@@ -105,20 +105,20 @@ export async function read(pos, values) {
   if (!versionNo) throw err.bad('VERSION_REQUIRED', '项目还没有基线，请显式指定版本号')
   const state = h.markRead(slug, versionNo)
   ok(`已标记 ${c.bold(versionNo)} 为已读`)
-  console.log(c.dim('  之后 protohub diff 会默认从这一版算起'))
+  console.log(c.dim('  之后 flowlark diff 会默认从这一版算起'))
   return state
 }
 
 export async function tag(pos, values) {
   const h = hub()
 
-  // protohub tag —— 不带参数列出全仓库的标签
+  // flowlark tag —— 不带参数列出全仓库的标签
   if (pos.length === 0) {
     const tags = h.allTags()
     if (values.json) return void console.log(JSON.stringify(tags, null, 2))
     if (tags.length === 0) {
       info('还没有任何标签')
-      return next('protohub tag <项目> <版本> 已评审')
+      return next('flowlark tag <项目> <版本> 已评审')
     }
     console.log(table(['标签', '用了几次'], tags.map((t) => [c.magenta(t.tag), String(t.count)]),
       { aligns: ['left', 'right'] }))
@@ -186,8 +186,8 @@ export async function offline(pos, values) {
     console.log(c.dim('  这些资源在离线版里仍然会加载失败'))
   }
   console.log(c.dim(`  文件：${r.file}`))
-  console.log(c.dim('  这是派生产物，存在 .protohub/cache/ 下，不进 Git，原型文件本身未被修改'))
-  next(`protohub open ${slug} ${versionNo}   ${c.dim('工作台里可切换「离线预览」')}`)
+  console.log(c.dim('  这是派生产物，存在 .flowlark/cache/ 下，不进 Git，原型文件本身未被修改'))
+  next(`flowlark open ${slug} ${versionNo}   ${c.dim('工作台里可切换「离线预览」')}`)
 }
 
 export async function compare(pos, values) {

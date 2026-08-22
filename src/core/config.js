@@ -45,7 +45,7 @@ export const SCHEMA = [
   // ---------- Git 与身份 ----------
   {
     key: 'git.remote', type: 'string', default: '', label: '远端地址',
-    note: '设置后会写入 git remote origin，protohub sync 就能推送'
+    note: '设置后会写入 git remote origin，flowlark sync 就能推送'
   },
   {
     key: 'git.defaultBranch', type: 'string', default: '', label: '默认分支',
@@ -80,7 +80,7 @@ export const SCHEMA = [
   },
   {
     key: 'rules.watchDir', type: 'string', default: '', label: 'watch 默认监听目录',
-    note: 'protohub watch 不带 -d 时使用'
+    note: 'flowlark watch 不带 -d 时使用'
   },
 
   // ---------- 外观与默认值 ----------
@@ -147,7 +147,7 @@ export function coerce(key, raw) {
   const s = describe(key)
   if (!s) {
     throw err.bad('UNKNOWN_CONFIG_KEY', `没有这个配置项：${key}`,
-      `可用配置项：protohub config`)
+      `可用配置项：flowlark config`)
   }
 
   switch (s.type) {

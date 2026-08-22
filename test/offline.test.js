@@ -114,8 +114,8 @@ describe('离线版本生成', () => {
     const { root, hub } = repo()
     hub.addVersion('off', { versionNo: 'v1.0', title: 'x', html: `<html><body>x</body></html>` })
     const r = await hub.buildOffline('off', 'v1.0')
-    t.assert.match(r.file, /\.protohub[/\\]cache[/\\]offline/)
-    t.assert.match(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), /\.protohub\/cache\//)
+    t.assert.match(r.file, /\.flowlark[/\\]cache[/\\]offline/)
+    t.assert.match(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), /\.flowlark\/cache\//)
   })
 
   test('基线版本也能生成离线版（因为不违反不可变性）', async (t) => {

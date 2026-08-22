@@ -1,7 +1,7 @@
 import { message } from 'ant-design-vue'
 
 /**
- * 工作台与 API 同源（都由 protohub serve 提供），所以走相对路径，
+ * 工作台与 API 同源（都由 flowlark serve 提供），所以走相对路径，
  * 没有 CORS、没有服务器地址配置这回事 —— 本地形态省掉的复杂度之一。
  */
 async function request(method, path, body, { raw = false, contentType } = {}) {
@@ -15,7 +15,7 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body)
     })
   } catch {
-    message.error('无法连接本地服务，protohub serve 可能已经停止')
+    message.error('无法连接本地服务，flowlark serve 可能已经停止')
     throw new Error('NETWORK')
   }
 

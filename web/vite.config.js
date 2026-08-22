@@ -12,7 +12,7 @@ export default defineConfig({
     }
   },
   build: {
-    // 产物直接落到 web/dist，protohub serve 从这里读
+    // 产物直接落到 web/dist，flowlark serve 从这里读
     outDir: 'dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1600

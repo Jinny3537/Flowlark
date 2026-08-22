@@ -5,10 +5,10 @@ import { fileURLToPath } from 'node:url'
 import { initRepo } from '../src/core/repo.js'
 import { Hub } from '../src/core/service.js'
 
-export const CLI = fileURLToPath(new URL('../bin/protohub.js', import.meta.url))
+export const CLI = fileURLToPath(new URL('../bin/flowlark.js', import.meta.url))
 
 export function tmpRepo() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'protohub-test-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-test-'))
   initRepo(dir)
   return dir
 }

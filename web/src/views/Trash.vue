@@ -2,7 +2,7 @@
   <div class="page-pad">
     <h2 style="margin:0 0 4px;font-size:20px">回收站</h2>
     <div class="text-secondary" style="margin-bottom:20px">
-      删除的版本被移动到 <span class="mono">.protohub/trash/</span>，文件完整保留。
+      删除的版本被移动到 <span class="mono">.flowlark/trash/</span>，文件完整保留。
       主目录里看到的永远是真实存在的版本，不需要靠标记位过滤。
     </div>
 

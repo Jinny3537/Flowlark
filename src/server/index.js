@@ -73,7 +73,7 @@ export async function startServer(root, { port, previewPort, lan, host } = {}) {
         return sendJson(res, 403, {
           code: 'READONLY_FROM_LAN',
           message: '局域网访问为只读模式，无法修改数据',
-          hint: '请在运行 protohub 的那台机器上操作；或关闭只读保护（protohub config server.readonlyFromLan false）'
+          hint: '请在运行 Flowlark 的那台机器上操作；或关闭只读保护（flowlark config server.readonlyFromLan false）'
         })
       }
 
@@ -173,7 +173,7 @@ function listen(server, port, host, label) {
       if (e.code === 'EADDRINUSE') {
         reject(new Error(
           `${label}端口 ${port} 已被占用。` +
-          `可能是另一个 protohub 已在运行；换端口：protohub serve --port ${port + 10}`
+          `可能是另一个 Flowlark 已在运行；换端口：flowlark serve --port ${port + 10}`
         ))
       } else if (e.code === 'EACCES') {
         reject(new Error(`${label}端口 ${port} 需要更高权限，换一个 1024 以上的端口`))
@@ -214,7 +214,7 @@ justify-content:center;height:100vh;margin:0;background:#fafafa;color:#8c8c8c;te
 </head><body><div><div style="font-size:32px">📄</div>
 <div style="font-size:15px;color:#595959;margin-top:8px">原型文件不存在</div>
 <div style="font-size:13px">${escapeHtml(slug)} / ${escapeHtml(no)}</div>
-<div style="font-size:12px;margin-top:8px">用 <code>protohub ls ${escapeHtml(slug)}</code> 确认版本号</div>
+<div style="font-size:12px;margin-top:8px">用 <code>flowlark ls ${escapeHtml(slug)}</code> 确认版本号</div>
 </div></body></html>`
 }
 
@@ -225,7 +225,7 @@ justify-content:center;height:100vh;margin:0;background:#fafafa;color:#595959;te
 code{background:#f0f0f0;padding:2px 8px;border-radius:4px;font-size:13px}</style>
 </head><body><div><div style="font-size:32px">🛠️</div>
 <div style="font-size:16px;margin-top:8px">浏览器工作台还没构建</div>
-<div style="font-size:13px;color:#8c8c8c">在 protohub 源码目录执行 <code>npm run build:web</code></div>
+<div style="font-size:13px;color:#8c8c8c">在 Flowlark 源码目录执行 <code>npm run build:web</code></div>
 <div style="font-size:13px;color:#8c8c8c">API 已经可用，CLI 的所有功能不受影响</div>
 </div></body></html>`
 }

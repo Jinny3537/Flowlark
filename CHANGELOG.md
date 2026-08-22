@@ -2,6 +2,22 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-08-22
+
+### 变更
+
+- **产品更名为 Flowlark**，Slogan：*Where prototypes flow*
+  - npm 包名、CLI 命令改为 `flowlark`（短别名 `fl`）
+  - 仓库配置文件 `protohub.json` → `flowlark.json`，内部目录 `.protohub/` → `.flowlark/`
+  - 环境变量 `PROTOHUB_*` → `FLOWLARK_*`
+
+### 兼容
+
+- 打开更名前的仓库时**自动改名并提示**，数据一字不改地搬过去。
+  只做文件改名，不碰 Git —— 改完处于「有未提交改动」状态，用户 review 后自己提交。
+- 新旧名并存时保留新的，老文件原地留着交给用户处置，不静默覆盖。
+- 老的 `PROTOHUB_REPO` / `PROTOHUB_USER` / `PROTOHUB_DEBUG` 环境变量仍然生效。
+
 ## [1.0.0] - 2026-08-21
 
 首个完整版本。
@@ -44,8 +60,8 @@
 - 搜索片段高亮位置偏移 → 换行替换必须长度守恒
 - `history` 排序不稳定 → 改为单次 `git log` 传多 pathspec，由 git 保证拓扑序
 - Git 把中文文件名转义成八进制 → 自动设 `core.quotepath=false`（不覆盖用户已有偏好）
-- `sync` 卷走用户放在旁边的草稿 → 只暂存 protohub 自有路径
+- `sync` 卷走用户放在旁边的草稿 → 只暂存 Flowlark 自有路径
 - 端口 `0`（内核分配）被 `||` 判成假值 → 改用 `??` 并回填实际端口
 - `--lan` 临时开启时 `/api/health` 读的是配置文件，导致局域网访客看到可写界面 → 改为反映实际运行状态
 
-[1.0.0]: https://github.com/OWNER/protohub/releases/tag/v1.0.0
+[1.0.0]: https://github.com/OWNER/flowlark/releases/tag/v1.0.0

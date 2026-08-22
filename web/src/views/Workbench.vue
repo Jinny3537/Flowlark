@@ -252,7 +252,7 @@
           </div>
         </a-timeline-item>
       </a-timeline>
-      <div style="margin-top:16px"><CliHint :command="`protohub history ${slug} ${versionNo}`" /></div>
+      <div style="margin-top:16px"><CliHint :command="`flowlark history ${slug} ${versionNo}`" /></div>
     </a-drawer>
   </div>
 </template>
@@ -294,7 +294,7 @@ const buildingOffline = ref(false)
 const tagDraft = ref([])
 const allTags = ref([])
 
-const leftPct = ref(Number(localStorage.getItem('protohub.split')) || 64)
+const leftPct = ref(Number(localStorage.getItem('flowlark.split')) || 64)
 const dragging = ref(false)
 const wbRef = ref(null)
 
@@ -502,7 +502,7 @@ function onDrag(e) {
 }
 function stopDrag() {
   dragging.value = false
-  localStorage.setItem('protohub.split', String(Math.round(leftPct.value)))
+  localStorage.setItem('flowlark.split', String(Math.round(leftPct.value)))
   window.removeEventListener('mousemove', onDrag)
   window.removeEventListener('mouseup', stopDrag)
 }

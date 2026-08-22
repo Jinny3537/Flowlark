@@ -8,7 +8,7 @@ body:
       label: 发生了什么
       description: 你执行了什么，期望看到什么，实际看到什么
       placeholder: |
-        执行：protohub baseline order-center v1.2
+        执行：flowlark baseline order-center v1.2
         期望：切换成功
         实际：报错 XXX
     validations:
@@ -20,7 +20,7 @@ body:
       label: 环境
       description: 把下面这条命令的输出贴进来就行
       placeholder: |
-        node -v && protohub -V && git --version && uname -sm
+        node -v && flowlark -V && git --version && uname -sm
       render: shell
     validations:
       required: true
@@ -30,13 +30,13 @@ body:
     attributes:
       label: 仓库状态（可选）
       description: |
-        `protohub status --json` 的输出。它不包含原型内容，只有项目数、版本数、Git 状态这些元信息。
-        如果问题和某个版本有关，`protohub show <项目> <版本> --json` 也很有帮助。
+        `flowlark status --json` 的输出。它不包含原型内容，只有项目数、版本数、Git 状态这些元信息。
+        如果问题和某个版本有关，`flowlark show <项目> <版本> --json` 也很有帮助。
       render: json
 
   - type: textarea
     id: trace
     attributes:
       label: 完整堆栈（可选）
-      description: 设 `PROTOHUB_DEBUG=1` 重跑一次能拿到完整堆栈
+      description: 设 `FLOWLARK_DEBUG=1` 重跑一次能拿到完整堆栈
       render: shell

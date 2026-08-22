@@ -37,7 +37,7 @@
       存放位置：<span class="mono">projects/{{ slug }}/versions/{{ versionNo }}.files/</span>
     </div>
     <div style="margin-top:12px">
-      <CliHint :command="`protohub attach ${slug} ${versionNo} <文件>`" />
+      <CliHint :command="`flowlark attach ${slug} ${versionNo} <文件>`" />
     </div>
   </div>
 </template>
