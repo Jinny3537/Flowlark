@@ -1,0 +1,4 @@
+import { after,describe,test } from 'node:test'
+import { cleanup,html,newHub } from './helpers.js'
+const dirs=[];after(()=>dirs.forEach(cleanup))
+describe('交付快照',()=>{test('拒绝未确认版本，创建后没有更新删除面',(t)=>{const{root,hub}=newHub();dirs.push(root);hub.createProject({name:'订单',code:'orders'});hub.createRequirement({code:'REQ-1',title:'需求一'});hub.addVersion('orders',{versionNo:'v1',title:'一版',html:html(),requirements:['REQ-1']});t.assert.throws(()=>hub.createSnapshot({name:'S1',items:[{requirement:'REQ-1',project:'orders',version:'v1'}]}),e=>e.code==='SNAPSHOT_BLOCKED');hub.setBaseline('orders','v1');const snapshot=hub.createSnapshot({name:'S1',title:'评审快照',items:[{requirement:'REQ-1',project:'orders',version:'v1'}]});t.assert.match(snapshot.changesDigest,/^sha256:/);t.assert.strictEqual(hub.listSnapshots().length,1);t.assert.strictEqual(typeof hub.updateSnapshot,'undefined')})})

@@ -10,6 +10,12 @@ import { err } from './errors.js'
 
 /** 落盘的状态。注意没有 BASELINE 和 HISTORY —— 那两个是算出来的。 */
 export const STORED_STATUS = ['DRAFT', 'READY', 'VOID']
+export const REVIEW_STATUSES = ['pending', 'confirmed', 'questions', 'obsolete']
+
+export function assertReviewStatus(status) {
+  if (!REVIEW_STATUSES.includes(status)) throw err.bad('REVIEW_STATUS_INVALID', `不支持的审阅状态：${status}`)
+  return status
+}
 
 export const DISPLAY = {
   DRAFT: { key: 'DRAFT', label: '编辑中', short: '草稿', color: 'gold' },

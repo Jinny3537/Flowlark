@@ -69,6 +69,7 @@ export const api = {
   setSpec: (slug, no, markdown) => put(`/api/versions/${enc(slug)}/${enc(no)}/spec`, { markdown }),
   setChanges: (slug, no, items) => put(`/api/versions/${enc(slug)}/${enc(no)}/changes`, { items }),
   setRequirements: (slug, no, items) => put(`/api/versions/${enc(slug)}/${enc(no)}/requirements`, { items }),
+  setReviewStatus: (slug, no, status) => put(`/api/versions/${enc(slug)}/${enc(no)}/review`, { status }),
 
   setBaseline: (slug, no) => post(`/api/versions/${enc(slug)}/${enc(no)}/baseline`),
   voidVersion: (slug, no) => post(`/api/versions/${enc(slug)}/${enc(no)}/void`),
@@ -114,6 +115,16 @@ export const api = {
   removeView: (id) => del(`/api/views/${enc(id)}`),
   exportRequirement: (code, outputDir) => post(`/api/export/requirement/${enc(code)}`, { outputDir }),
   exportMilestone: (name, outputDir) => post(`/api/export/milestone/${enc(name)}`, { outputDir }),
+  listSnapshots: () => get('/api/snapshots'),
+  getSnapshot: (name) => get(`/api/snapshots/${enc(name)}`),
+  inspectSnapshot: (body) => post('/api/snapshots/inspect', body),
+  createSnapshot: (body) => post('/api/snapshots', body),
+  suggestImpact: (changes) => post('/api/impact', { changes }),
+  listNotifications: () => get('/api/notifications'),
+  flushNotifications: (body = {}) => post('/api/notifications/flush', body),
+  testNotification: (body) => post('/api/notifications/test', body),
+  setNotificationWebhook: (provider, webhookUrl) => put(`/api/notifications/${enc(provider)}/webhook`, { webhookUrl }),
+  deleteNotificationWebhook: (provider) => del(`/api/notifications/${enc(provider)}/webhook`),
 
   // ---- 标签 ----
   allTags: () => get('/api/tags'),

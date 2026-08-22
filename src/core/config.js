@@ -107,6 +107,19 @@ export const SCHEMA = [
   {
     key: 'integrations.issueLabels', type: 'list', default: ['flowlark-feedback'], label: '反馈标签'
   },
+  {
+    key: 'integrations.notificationProvider', type: 'string', default: 'none',
+    enum: ['none', 'wecom', 'dingtalk', 'slack'], label: '通知平台'
+  },
+  {
+    key: 'integrations.notificationEvents', type: 'list',
+    default: ['baseline.created', 'snapshot.created', 'review.questions'], label: '通知事件'
+  },
+  {
+    key: 'integrations.notificationTemplate', type: 'string',
+    default: '{{event}} · {{project}}{{version}} {{snapshot}}', label: '通知模板',
+    note: '支持 event/project/version/requirement/milestone/snapshot/reviewStatus/url/changeCount'
+  },
 
   // ---------- 外观与默认值 ----------
   {

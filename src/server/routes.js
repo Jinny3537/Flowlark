@@ -103,6 +103,41 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, await hub.exportMilestone(p.name, body.outputDir))
   })
 
+  // ---- 交付快照与影响面 ----
+  r.get('/api/snapshots', async (req, res) => sendJson(res, 200, hub.listSnapshots()))
+  r.post('/api/snapshots', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    const result = hub.createSnapshot(body)
+    const notificationResults = await hub.flushNotifications().catch((e) => [{ ok: false, error: e.message }])
+    sendJson(res, 201, { ...result, notificationResults })
+  })
+  r.get('/api/snapshots/:name', async (req, res, p) => sendJson(res, 200, hub.getSnapshot(p.name)))
+  r.post('/api/snapshots/inspect', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.inspectSnapshot(body))
+  })
+  r.post('/api/impact', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.suggestImpact(body.changes || [], { limit: body.limit }))
+  })
+
+  // ---- 团队通知 ----
+  r.get('/api/notifications', async (req, res) => sendJson(res, 200, hub.listNotifications()))
+  r.post('/api/notifications/flush', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.flushNotifications(body))
+  })
+  r.post('/api/notifications/test', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.testNotification(body))
+  })
+  r.put('/api/notifications/:provider/webhook', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.setNotificationWebhook(p.provider, body.webhookUrl))
+  })
+  r.delete('/api/notifications/:provider/webhook', async (req, res, p) =>
+    sendJson(res, 200, hub.deleteNotificationWebhook(p.provider)))
+
   r.put('/api/projects/:slug', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.updateProject(p.slug, body))
@@ -157,8 +192,18 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, hub.setRequirements(p.slug, p.no, body.items || []))
   })
 
-  r.post('/api/versions/:slug/:no/baseline', async (req, res, p) =>
-    sendJson(res, 200, hub.setBaseline(p.slug, p.no)))
+  r.post('/api/versions/:slug/:no/baseline', async (req, res, p) => {
+    const result = hub.setBaseline(p.slug, p.no)
+    const notificationResults = await hub.flushNotifications().catch((e) => [{ ok: false, error: e.message }])
+    sendJson(res, 200, { ...result, notificationResults })
+  })
+
+  r.put('/api/versions/:slug/:no/review', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    const result = hub.setReviewStatus(p.slug, p.no, body.status)
+    const notificationResults = await hub.flushNotifications().catch((e) => [{ ok: false, error: e.message }])
+    sendJson(res, 200, { ...result, notificationResults })
+  })
 
   r.post('/api/versions/:slug/:no/void', async (req, res, p) =>
     sendJson(res, 200, hub.voidVersion(p.slug, p.no)))

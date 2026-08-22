@@ -18,6 +18,9 @@ import * as migrate from './migrate.js'
 import * as milestones from './milestones.js'
 import * as savedViews from './views.js'
 import * as exporter from './exporter.js'
+import * as snapshots from './snapshots.js'
+import { suggestImpact as runImpact } from './impact.js'
+import * as notifications from './notifications.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -272,6 +275,24 @@ export class Hub {
     return this.getVersion(slug, versionNo)
   }
 
+  setReviewStatus(slug, versionNo, status) {
+    this.#assertWritable('更新审阅状态')
+    const value = rules.assertReviewStatus(status)
+    const version = store.readVersion(this.root, slug, versionNo)
+    if (value === 'obsolete' && version.status !== 'VOID') {
+      throw err.bad('REVIEW_OBSOLETE_REQUIRES_VOID', '请通过“废弃版本”进入已废弃状态')
+    }
+    if (version.status === 'VOID' && value !== 'obsolete') {
+      throw err.bad('VERSION_VOID', '已废弃版本需要先恢复，才能重新审阅')
+    }
+    version.reviewStatus = value
+    version.updatedAt = new Date().toISOString()
+    store.writeVersion(this.root, slug, version)
+    this.#log(slug, versionNo, 'REVIEW_STATUS_SET', `审阅状态更新为 ${value}`)
+    if (value === 'questions') this.queueNotification({ event: 'review.questions', project: slug, version: versionNo, reviewStatus: value })
+    return this.getVersion(slug, versionNo)
+  }
+
   // ==================== 需求 ====================
 
   listRequirements() {
@@ -381,6 +402,38 @@ export class Hub {
     return exporter.exportMilestonePackage(this.root, name, target)
   }
 
+  listSnapshots() { return snapshots.listSnapshots(this.root) }
+  getSnapshot(name) { return snapshots.readSnapshot(this.root, name) }
+  inspectSnapshot(input) { return snapshots.inspectSnapshotInput(this.root, input) }
+  createSnapshot(input) {
+    this.#assertWritable('创建交付快照')
+    const item = snapshots.createSnapshot(this.root, input)
+    this.#log(null, null, 'SNAPSHOT_CREATE', `创建交付快照 ${item.name}`)
+    this.queueNotification({ event: 'snapshot.created', snapshot: item.name, milestone: item.milestone || '', changeCount: item.items.length })
+    return item
+  }
+  suggestImpact(changes, options) { return runImpact(this.root, changes, options) }
+
+  notificationConfig(overrides = {}) {
+    const s = this.settings.integrations
+    const provider = overrides.provider || s.notificationProvider
+    const env = { wecom: 'FLOWLARK_WECOM_WEBHOOK', dingtalk: 'FLOWLARK_DINGTALK_WEBHOOK', slack: 'FLOWLARK_SLACK_WEBHOOK' }[provider]
+    return { provider, template: overrides.template || s.notificationTemplate, webhookUrl: overrides.webhookUrl || secrets.getSecret(`webhook-${provider}`, { envKey: env }) }
+  }
+  listNotifications() { return notifications.listNotifications(this.root) }
+  queueNotification(event) {
+    const s = this.settings.integrations
+    if (!s.notificationProvider || s.notificationProvider === 'none' || !s.notificationEvents.includes(event.event)) return null
+    return notifications.enqueueNotification(this.root, event)
+  }
+  flushNotifications(overrides = {}) { return notifications.flushNotifications(this.root, this.notificationConfig(overrides)) }
+  testNotification(overrides = {}) {
+    const config = this.notificationConfig(overrides)
+    return notifications.sendNotification(config.provider, config, { event: 'test', project: this.config.name, version: '', snapshot: '' })
+  }
+  setNotificationWebhook(provider, value) { return secrets.setSecret(`webhook-${provider}`, value) }
+  deleteNotificationWebhook(provider) { return secrets.deleteSecret(`webhook-${provider}`) }
+
   // ==================== 基线 ====================
 
   /**
@@ -413,6 +466,7 @@ export class Hub {
     // 只有首次成为基线才记 baselineAt —— 它同时是「历史版本」的判据和 R6 回滚豁免的依据
     if (!v.baselineAt) v.baselineAt = now
     v.status = 'READY'
+    v.reviewStatus = 'confirmed'
     v.updatedAt = now
     store.writeVersion(this.root, slug, v)
     store.writeBaseline(this.root, slug, versionNo)
@@ -424,6 +478,7 @@ export class Hub {
         (baselineNo ? `，原基线 ${baselineNo} 降为历史版本` : ''),
       { from: baselineNo, to: versionNo }
     )
+    this.queueNotification({ event: 'baseline.created', project: slug, version: versionNo, changeCount: v.changes.length })
     return this.getVersion(slug, versionNo)
   }
 
@@ -453,6 +508,7 @@ export class Hub {
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertNotBaseline(v, baselineNo, '废弃')
     v.status = 'VOID'
+    v.reviewStatus = 'obsolete'
     v.updatedAt = new Date().toISOString()
     store.writeVersion(this.root, slug, v)
     this.#log(slug, versionNo, 'VERSION_VOID', `废弃版本 ${versionNo}`)
@@ -464,6 +520,7 @@ export class Hub {
     const v = store.readVersion(this.root, slug, versionNo)
     if (v.status !== 'VOID') throw err.bad('NOT_VOID', `${versionNo} 不是已废弃状态`)
     v.status = 'DRAFT'
+    v.reviewStatus = 'pending'
     v.updatedAt = new Date().toISOString()
     store.writeVersion(this.root, slug, v)
     this.#log(slug, versionNo, 'VERSION_REOPEN', `恢复版本 ${versionNo} 为编辑中`)

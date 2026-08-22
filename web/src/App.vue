@@ -38,7 +38,7 @@
                    :title="readonlyTooltip">
           <a-tag color="orange"><EyeOutlined /> {{ readonlyLabel }}</a-tag>
         </a-tooltip>
-        <a-tag v-else-if="app.lan" color="cyan">局域网已开放</a-tag>
+        <a-tag v-else-if="app.lan" color="cyan" class="lan-status">局域网已开放</a-tag>
         <a-tag v-if="app.connected" color="green">运行中</a-tag>
         <a-tag v-else color="red">服务已停止</a-tag>
       </a-layout-header>
@@ -49,6 +49,7 @@
             <a-menu-item key="projects"><template #icon><FolderOutlined /></template>项目</a-menu-item>
             <a-menu-item key="requirements"><template #icon><ProfileOutlined /></template>需求</a-menu-item>
             <a-menu-item key="milestones"><template #icon><CalendarOutlined /></template>迭代</a-menu-item>
+            <a-menu-item key="deliveries"><template #icon><SendOutlined /></template>交付</a-menu-item>
             <a-menu-item key="watch"><template #icon><InboxOutlined /></template>草稿箱</a-menu-item>
             <a-menu-item key="oplog"><template #icon><HistoryOutlined /></template>操作日志</a-menu-item>
             <a-menu-item key="trash"><template #icon><DeleteOutlined /></template>回收站</a-menu-item>
@@ -90,7 +91,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import {
-  FolderOutlined, HistoryOutlined, DeleteOutlined, InboxOutlined, ProfileOutlined, CalendarOutlined,
+  FolderOutlined, HistoryOutlined, DeleteOutlined, InboxOutlined, ProfileOutlined, CalendarOutlined, SendOutlined,
   SearchOutlined, BranchesOutlined, SettingOutlined, EyeOutlined
 } from '@ant-design/icons-vue'
 import SearchPalette from './components/SearchPalette.vue'
@@ -117,6 +118,7 @@ const activeKey = computed(() => {
   if (route.path.startsWith('/oplog')) return 'oplog'
   if (route.path.startsWith('/requirements')) return 'requirements'
   if (route.path.startsWith('/milestones')) return 'milestones'
+  if (route.path.startsWith('/deliveries')) return 'deliveries'
   if (route.path.startsWith('/watch')) return 'watch'
   if (route.path.startsWith('/trash')) return 'trash'
   if (route.path.startsWith('/settings')) return ''
@@ -289,6 +291,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 
 @media (max-width: 768px) {
+  .app-header > .ant-divider,
+  .app-header .repo-path,
+  .app-header .lan-status { display: none; }
   .search-trigger span,
   .search-trigger kbd {
     display: none;

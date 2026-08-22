@@ -52,7 +52,8 @@
         <a-col :span="8"><a-form-item label="版本号" required help="字母数字与 . _ + -，同项目内唯一"><a-input v-model:value="form.versionNo" class="mono" placeholder="v1.0" :maxlength="32" /></a-form-item></a-col>
         <a-col :span="16"><a-form-item label="版本标题" required><a-input v-model:value="form.title" placeholder="一句话说明本版主题" :maxlength="100" /></a-form-item></a-col>
       </a-row>
-      <a-form-item label="变更日志" help="建版时可不填；设为基线时至少需要 1 条"><ChangeEditor v-model="form.changes" /></a-form-item>
+      <a-form-item label="变更日志" help="建版时可不填；设为基线时至少需要 1 条"><ChangeEditor v-model="form.changes" /><a-button v-if="form.changes.some(item=>item.location)" size="small" class="impact-button" :loading="impactLoading" @click="checkImpact">检查影响面</a-button></a-form-item>
+      <a-alert v-if="impacts.length" type="warning" show-icon class="source-warning"><template #message><strong>发现 {{ impacts.length }} 条历史关联</strong><div v-for="(item,index) in impacts" :key="index" class="impact-row"><span>{{ item.location }}</span><span class="mono">{{ item.source.project }}/{{ item.source.versionNo }}</span><span>{{ item.requirements.join(', ')||'无需求号' }}</span></div></template></a-alert>
       <a-form-item label="关联需求"><RequirementEditor v-model="form.requirements" /></a-form-item>
     </a-form>
   </a-modal>
@@ -82,6 +83,8 @@ const externalRefs = ref([])
 const refsOpen = ref(false)
 const saving = ref(false)
 const importing = ref(false)
+const impactLoading = ref(false)
+const impacts = ref([])
 const form = reactive({ versionNo: '', title: '', changes: [], requirements: [] })
 const cliCommand = computed(() => cliFor('add', props.slug))
 const sourceSummary = computed(() => html.value
@@ -103,6 +106,7 @@ function resetSource() {
   html.value = ''
   externalRefs.value = []
   refsOpen.value = false
+  impacts.value = []
 }
 
 function inferVersionNo(name) {
@@ -168,6 +172,12 @@ async function submit() {
   } catch { /* api 已提示 */ }
   finally { saving.value = false }
 }
+
+async function checkImpact() {
+  impactLoading.value = true
+  try { impacts.value = await api.suggestImpact(form.changes) }
+  finally { impactLoading.value = false }
+}
 </script>
 
 <style scoped>
@@ -181,5 +191,7 @@ async function submit() {
 .url-row .ant-input { flex:1; }
 .source-meta { margin-top:var(--fl-s-2); font-size:var(--fl-fs-2); }
 .source-warning { margin-bottom:var(--fl-s-4); }
+.impact-button { margin-top:var(--fl-s-2); }
+.impact-row { display:grid; grid-template-columns:1fr auto auto; gap:var(--fl-s-2); margin-top:4px; font-size:var(--fl-fs-2); }
 .ref-list { max-height:100px; overflow:auto; margin-top:var(--fl-s-2); color:var(--fl-text-3); font-size:var(--fl-fs-1); word-break:break-all; }
 </style>

@@ -14,6 +14,8 @@
       </a-select>
 
       <a-tag v-if="version" :color="version.display.color">{{ version.display.label }}</a-tag>
+      <ReviewStatusControl v-if="version" :slug="slug" :version-no="versionNo" :status="version.reviewStatus"
+                           :disabled="!app.canWrite" @changed="reloadVersion" />
 
       <div class="spacer"></div>
 
@@ -303,6 +305,7 @@ import CliHint from '../components/CliHint.vue'
 import Attachments from '../components/Attachments.vue'
 import AnnotationOverlay from '../components/AnnotationOverlay.vue'
 import FeedbackDrawer from '../components/FeedbackDrawer.vue'
+import ReviewStatusControl from '../components/ReviewStatusControl.vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
 import { fmtTime, fmtAbsolute, fmtSize, renderMarkdown, cliFor } from '../utils'

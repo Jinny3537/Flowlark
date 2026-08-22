@@ -31,6 +31,8 @@ export default createRouter({
     { path: '/milestones', name: 'milestones', component: () => import('./views/MilestoneList.vue') },
     { path: '/milestones/:name', name: 'milestone-detail', component: () => import('./views/MilestoneDetail.vue'), props: true },
     { path: '/search', name: 'search-panel', component: () => import('./views/SearchPanel.vue') },
+    { path: '/deliveries', name: 'deliveries', component: () => import('./views/DeliveryList.vue') },
+    { path: '/deliveries/:name', name: 'delivery-detail', component: () => import('./views/DeliveryDetail.vue'), props: true },
     { path: '/trash', name: 'trash', component: () => import('./views/Trash.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/Settings.vue') }
   ]
