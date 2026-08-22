@@ -6,7 +6,7 @@ import { err } from './errors.js'
 import { stringify, parse } from './json.js'
 import * as cfg from './config.js'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 export const REPO_FILE = 'flowlark.json'
 export const INTERNAL_DIR = '.flowlark'
 
@@ -114,6 +114,10 @@ export function initRepo(dir, { name } = {}) {
     throw err.conflict('REPO_EXISTS', `${root} 已经是一个 Flowlark 仓库`)
   }
   fs.mkdirSync(path.join(root, 'projects'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'requirements'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'milestones'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'snapshots'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'views'), { recursive: true })
   fs.mkdirSync(path.join(root, '.flowlark', 'trash'), { recursive: true })
 
   const config = {

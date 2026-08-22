@@ -57,8 +57,8 @@ describe('稳定序列化', () => {
     const text = fs.readFileSync(store.paths.versionJson(root, 'ord', 'v1.0'), 'utf8')
     const keys = [...text.matchAll(/^ {2}"([a-zA-Z]+)"/gm)].map((m) => m[1])
     t.assert.deepStrictEqual(
-      keys.slice(0, 4),
-      ['versionNo', 'title', 'status', 'note'],
+      keys.slice(0, 5),
+      ['versionNo', 'title', 'status', 'reviewStatus', 'note'],
       '键顺序应由 schema 决定'
     )
   })

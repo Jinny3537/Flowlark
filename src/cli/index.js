@@ -6,6 +6,9 @@ import * as cmdGit from './cmd-git.js'
 import * as cmdFind from './cmd-find.js'
 import * as cmdAdmin from './cmd-admin.js'
 import * as cmdFeedback from './cmd-feedback.js'
+import * as cmdRequirements from './cmd-requirements.js'
+import * as cmdMilestones from './cmd-milestones.js'
+import * as cmdExport from './cmd-export.js'
 import { HELP, COMMAND_HELP } from './help.js'
 
 const COMMANDS = {
@@ -35,6 +38,9 @@ const COMMANDS = {
   offline: cmdFind.offline,
   compare: cmdFind.compare,
   feedback: cmdFeedback.feedback,
+  req: cmdRequirements.requirement,
+  milestone: cmdMilestones.milestone,
+  export: cmdExport.exportPackage,
   // Git
   sync: cmdGit.sync,
   history: cmdGit.history,
@@ -140,6 +146,9 @@ const OPTIONS = {
   global: { type: 'boolean' },
   refresh: { type: 'boolean' },
   provider: { type: 'string' },
+  owner: { type: 'string' },
+  start: { type: 'string' },
+  end: { type: 'string' },
   help: { type: 'boolean', short: 'h' }
 }
 

@@ -68,6 +68,7 @@ function hit(results, { field, score, text, query, project, version, extra }) {
     versionNo: version ? version.versionNo : null,
     versionTitle: version ? version.title : null,
     versionStatus: version ? version.display.key : null,
+    objectType: 'version',
     ...extra
   })
 }
@@ -77,19 +78,24 @@ function hit(results, { field, score, text, query, project, version, extra }) {
  * @param {string} query
  * @param {{project?: string, limit?: number, fields?: string[]}} options
  */
-export function search(hub, query, { project = null, limit = 50, fields = null } = {}) {
+export function search(hub, query, { project = null, limit = 50, fields = null, filters = {} } = {}) {
   const q = String(query || '').trim()
-  if (q.length === 0) return { query: q, total: 0, results: [] }
+  const hasFilters = Object.values(filters || {}).some((value) => Array.isArray(value) ? value.length : value !== null && value !== undefined && value !== '')
+  if (q.length === 0 && !hasFilters) return { query: q, total: 0, results: [] }
 
   const want = (f) => !fields || fields.includes(f)
   const results = []
   const projects = project ? [hub.getProject(project)] : hub.listProjects()
+  let milestoneVersions = null
+  if (filters.milestone) {
+    milestoneVersions = new Set(hub.getMilestone(filters.milestone).items.map((item) => `${item.project}:${item.version}`))
+  }
 
   for (const p of projects) {
-    if (want('projectName')) {
+    if (q && want('projectName')) {
       hit(results, { field: 'projectName', score: WEIGHT.projectName, text: `${p.name} ${p.code}`, query: q, project: p })
     }
-    if (want('description') && p.description) {
+    if (q && want('description') && p.description) {
       hit(results, { field: 'description', score: WEIGHT.description, text: p.description, query: q, project: p })
     }
 
@@ -97,6 +103,25 @@ export function search(hub, query, { project = null, limit = 50, fields = null }
     for (const vLite of versions) {
       // listVersions 不带规格书正文，逐个取全量
       const v = hub.getVersion(p.slug, vLite.versionNo)
+      const requirementCodes = v.requirements.map((item) => item.code)
+      if (filters.tags && filters.tags.length && !filters.tags.every((tag) => v.tags.includes(tag))) continue
+      if (filters.reviewStatus && filters.reviewStatus.length && !filters.reviewStatus.includes(v.reviewStatus)) continue
+      if (filters.status && filters.status.length && !filters.status.includes(v.display.key)) continue
+      if (filters.requirement && !requirementCodes.includes(filters.requirement)) continue
+      if (milestoneVersions && !milestoneVersions.has(`${p.slug}:${v.versionNo}`)) continue
+      if (filters.dateFrom && String(v.updatedAt || v.createdAt) < filters.dateFrom) continue
+      if (filters.dateTo && String(v.updatedAt || v.createdAt) > filters.dateTo) continue
+      if (filters.attachment && !(v.attachments || []).some((item) => item.name.toLowerCase().endsWith(String(filters.attachment).toLowerCase()))) continue
+
+      if (!q) {
+        results.push({
+          objectType: 'version', field: 'filter', fieldLabel: '筛选结果', score: 1,
+          snippet: { text: v.title, matchStart: 0, matchLength: 0 },
+          project: p.slug, projectName: p.name, versionNo: v.versionNo,
+          versionTitle: v.title, versionStatus: v.display.key, reviewStatus: v.reviewStatus
+        })
+        continue
+      }
 
       if (want('versionNo')) {
         hit(results, { field: 'versionNo', score: WEIGHT.versionNo, text: v.versionNo, query: q, project: p, version: v })
@@ -143,6 +168,21 @@ export function search(hub, query, { project = null, limit = 50, fields = null }
         // 规格书可能很长，只取第一处命中，避免一份文档刷屏
         hit(results, { field: 'spec', score: WEIGHT.spec, text: v.spec, query: q, project: p, version: v })
       }
+    }
+  }
+
+  if (q && (!filters.scope || filters.scope === 'all' || filters.scope === 'requirements')) {
+    for (const requirement of hub.listRequirements()) {
+      const text = `${requirement.code} ${requirement.title} ${requirement.description || ''}`
+      const match = snippet(text, q)
+      if (match) results.push({ objectType: 'requirement', field: 'requirementEntity', fieldLabel: '需求', score: 70, snippet: match, requirementCode: requirement.code, requirementTitle: requirement.title, requirementStatus: requirement.derivedStatus })
+    }
+  }
+  if (q && (!filters.scope || filters.scope === 'all' || filters.scope === 'milestones')) {
+    for (const milestone of hub.listMilestones()) {
+      const text = `${milestone.name} ${milestone.title}`
+      const match = snippet(text, q)
+      if (match) results.push({ objectType: 'milestone', field: 'milestone', fieldLabel: '迭代', score: 65, snippet: match, milestoneName: milestone.name, milestoneTitle: milestone.title, milestoneReady: milestone.ready })
     }
   }
 

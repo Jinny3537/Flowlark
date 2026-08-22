@@ -10,13 +10,15 @@ const KEY_ORDER = {
   repo: ['schemaVersion', 'name', 'createdAt', 'settings'],
   project: ['slug', 'name', 'code', 'description', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'],
   version: [
-    'versionNo', 'title', 'status', 'note', 'tags',
+    'versionNo', 'title', 'status', 'reviewStatus', 'note', 'tags',
     'file', 'fileSize', 'sourcePath', 'externalRefs',
     'changes', 'requirements', 'attachments',
     'createdAt', 'createdBy', 'updatedAt', 'baselineAt', 'specUpdatedAt'
   ],
   change: ['type', 'location', 'content', 'requirement'],
-  requirement: ['code', 'title', 'url'],
+  requirement: ['code', 'title', 'description', 'owner', 'statusOverride', 'external', 'url', 'createdAt', 'updatedAt'],
+  milestone: ['name', 'title', 'startAt', 'endAt', 'items', 'createdAt', 'updatedAt'],
+  snapshot: ['name', 'title', 'milestone', 'items', 'changesDigest', 'createdAt', 'createdBy'],
   attachment: ['name', 'size', 'contentType', 'addedAt', 'addedBy']
 }
 

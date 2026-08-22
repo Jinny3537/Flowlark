@@ -28,6 +28,9 @@ ${c.bold('检索与组织')}
   ${c.cyan('offline')} <项目> <版本>  抓取 CDN 依赖生成自包含的离线版
   ${c.cyan('compare')} <项目> <v1> <v2>  浏览器里并排对比两个版本
   ${c.cyan('feedback')}             反馈草稿：list / export / submit / rm
+  ${c.cyan('req')}                  需求：list / show / new / link / unlink
+  ${c.cyan('milestone')}            迭代：list / show / new / add / rm
+  ${c.cyan('export')}               导出需求或迭代静态交付包
 
 ${c.bold('Git')}
   ${c.cyan('sync')}                提交 + 拉取 + 推送，一步到位

@@ -17,6 +17,15 @@ after(() => dirs.forEach(cleanup))
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+async function waitUntil(check, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (check()) return true
+    await sleep(200)
+  }
+  return false
+}
+
 describe('版本号推断', () => {
   test('从文件名里认出版本号', (t) => {
     const cases = [
@@ -58,8 +67,7 @@ describe('watch 自动归档', () => {
       await sleep(800) // 全量并发测试时子进程启动会变慢，等 watcher 明确进入监听
 
       fs.writeFileSync(path.join(watchDir, '订单中心_v1.4.html'), html('自动归档'))
-      // 防抖 + 两次稳定写入检查 + 全量测试并发余量
-      await sleep(3200)
+      await waitUntil(() => hub.listVersions('ord').length === 1)
 
       const versions = hub.listVersions('ord')
       t.assert.strictEqual(versions.length, 1, `应归档 1 个版本，实际 ${versions.length}；输出：${out}`)

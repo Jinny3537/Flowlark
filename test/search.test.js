@@ -90,6 +90,13 @@ describe('全局搜索', () => {
     const { hub } = seeded()
     t.assert.strictEqual(hub.search('   ').total, 0)
   })
+
+  test('空关键词可以按需求结构化筛选', (t) => {
+    const { hub } = seeded()
+    const result = hub.search('', { filters: { requirement: 'REQ-0301' } })
+    t.assert.strictEqual(result.total, 1)
+    t.assert.strictEqual(result.results[0].versionNo, 'v1.1')
+  })
 })
 
 describe('版本标签', () => {
@@ -123,7 +130,7 @@ describe('版本标签', () => {
     hub.setTags('ord', 'v1.0', ['已交付'])
     const text = fs.readFileSync(path.join(root, 'projects/ord/versions/v1.0.json'), 'utf8')
     const keys = [...text.matchAll(/^ {2}"([a-zA-Z]+)"/gm)].map((m) => m[1])
-    t.assert.deepStrictEqual(keys.slice(0, 5), ['versionNo', 'title', 'status', 'note', 'tags'])
+    t.assert.deepStrictEqual(keys.slice(0, 6), ['versionNo', 'title', 'status', 'reviewStatus', 'note', 'tags'])
   })
 })
 

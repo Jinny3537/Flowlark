@@ -47,6 +47,17 @@ export const paths = {
   versionHtml: (root, slug, no) => path.join(root, 'projects', slug, 'versions', `${no}.html`),
   versionSpec: (root, slug, no) => path.join(root, 'projects', slug, 'versions', `${no}.spec.md`),
   attachments: (root, slug, no) => path.join(root, 'projects', slug, 'versions', `${no}.files`),
+  requirements: (root) => path.join(root, 'requirements'),
+  requirement: (root, code) => path.join(root, 'requirements', code),
+  requirementFile: (root, code) => path.join(root, 'requirements', code, 'requirement.json'),
+  requirementSpec: (root, code) => path.join(root, 'requirements', code, 'spec.md'),
+  requirementFiles: (root, code) => path.join(root, 'requirements', code, 'files'),
+  milestones: (root) => path.join(root, 'milestones'),
+  milestoneFile: (root, name) => path.join(root, 'milestones', `${name}.json`),
+  snapshots: (root) => path.join(root, 'snapshots'),
+  snapshotFile: (root, name) => path.join(root, 'snapshots', `${name}.json`),
+  views: (root) => path.join(root, 'views'),
+  teamViews: (root) => path.join(root, 'views', 'team.json'),
   trash: (root) => path.join(root, '.flowlark', 'trash'),
   oplog: (root) => path.join(root, '.flowlark', 'oplog.ndjson')
 }
@@ -196,6 +207,7 @@ export function readVersion(root, slug, no) {
   v.externalRefs = v.externalRefs || []
   v.tags = v.tags || []
   v.attachments = v.attachments || []
+  v.reviewStatus = v.reviewStatus || 'pending'
   return v
 }
 

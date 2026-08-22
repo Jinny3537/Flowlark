@@ -13,6 +13,11 @@ import * as issuex from './integrations/issues/index.js'
 import * as secrets from './secrets.js'
 import * as importer from './importer.js'
 import * as watchbox from './watch-inbox.js'
+import * as reqx from './requirements.js'
+import * as migrate from './migrate.js'
+import * as milestones from './milestones.js'
+import * as savedViews from './views.js'
+import * as exporter from './exporter.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -25,6 +30,8 @@ import { readConfig, writeConfig, currentUser } from './repo.js'
 export class Hub {
   constructor(root) {
     this.root = root
+    const initial = readConfig(root)
+    if (initial.schemaVersion < 2) migrate.migrateToSchema2(root)
     this.config = readConfig(root)
   }
 
@@ -163,6 +170,7 @@ export class Hub {
       versionNo,
       title: t,
       status: rules.STORED_STATUS.includes(status) ? status : 'DRAFT',
+      reviewStatus: 'pending',
       note: String(note || ''),
       tags: [...new Set((tags || []).map((t) => String(t).trim()).filter(Boolean))].slice(0, 12),
       file: `${versionNo}.html`,
@@ -262,6 +270,115 @@ export class Hub {
     store.writeVersion(this.root, slug, v)
     this.#log(slug, versionNo, 'REQS_SET', `更新 ${versionNo} 的关联需求，共 ${v.requirements.length} 条`)
     return this.getVersion(slug, versionNo)
+  }
+
+  // ==================== 需求 ====================
+
+  listRequirements() {
+    return reqx.listRequirements(this.root)
+  }
+
+  getRequirement(code) {
+    return reqx.requirementDetail(this.root, code)
+  }
+
+  createRequirement(input) {
+    this.#assertWritable('创建需求')
+    const item = reqx.createRequirement(this.root, input)
+    this.#log(null, null, 'REQUIREMENT_CREATE', `创建需求 ${item.code}`)
+    return reqx.requirementDetail(this.root, item.code)
+  }
+
+  updateRequirement(code, patch) {
+    this.#assertWritable('编辑需求')
+    const item = reqx.updateRequirement(this.root, code, patch)
+    this.#log(null, null, 'REQUIREMENT_UPDATE', `编辑需求 ${item.code}`)
+    return reqx.requirementDetail(this.root, item.code)
+  }
+
+  linkRequirement(code, slug, versionNo) {
+    this.#assertWritable('关联需求')
+    const item = reqx.readRequirement(this.root, code)
+    const version = store.readVersion(this.root, slug, versionNo)
+    const existing = (version.requirements || []).map((raw) => typeof raw === 'string' ? raw : raw.code)
+    return this.setRequirements(slug, versionNo, [...existing, item.code])
+  }
+
+  unlinkRequirement(code, slug, versionNo) {
+    this.#assertWritable('取消关联需求')
+    const version = store.readVersion(this.root, slug, versionNo)
+    const links = (version.requirements || []).map((raw) => typeof raw === 'string' ? raw : raw.code).filter((item) => item !== code)
+    return this.setRequirements(slug, versionNo, links)
+  }
+
+  rebuildRequirementIndex() {
+    return reqx.buildRequirementIndex(this.root)
+  }
+
+  migrationPreflight() {
+    return migrate.preflightMigration(this.root)
+  }
+
+  rollbackMigration(backup) {
+    this.#assertWritable('回滚数据迁移')
+    return migrate.rollbackMigration(this.root, backup)
+  }
+
+  // ==================== 迭代 ====================
+
+  listMilestones() {
+    return milestones.listMilestones(this.root)
+  }
+
+  getMilestone(name) {
+    return milestones.inspectMilestone(this.root, name)
+  }
+
+  createMilestone(input) {
+    this.#assertWritable('创建迭代')
+    const item = milestones.createMilestone(this.root, input)
+    this.#log(null, null, 'MILESTONE_CREATE', `创建迭代 ${item.name}`)
+    return item
+  }
+
+  updateMilestone(name, patch) {
+    this.#assertWritable('编辑迭代')
+    const item = milestones.updateMilestone(this.root, name, patch)
+    this.#log(null, null, 'MILESTONE_UPDATE', `编辑迭代 ${item.name}`)
+    return item
+  }
+
+  removeMilestone(name) {
+    this.#assertWritable('删除迭代')
+    const item = milestones.removeMilestone(this.root, name)
+    this.#log(null, null, 'MILESTONE_REMOVE', `删除迭代 ${item.name}`)
+    return item
+  }
+
+  listSavedViews() {
+    return savedViews.listSavedViews(this.root)
+  }
+
+  saveView(input) {
+    this.#assertWritable('保存团队视图')
+    return savedViews.saveView(this.root, input)
+  }
+
+  removeView(id) {
+    this.#assertWritable('删除团队视图')
+    return savedViews.removeView(this.root, id)
+  }
+
+  exportRequirement(code, outputDir) {
+    this.#assertWritable('导出需求包')
+    const target = outputDir || path.join(this.root, '.flowlark', 'cache', 'exports', `requirement-${code}`)
+    return exporter.exportRequirementPackage(this.root, code, target)
+  }
+
+  exportMilestone(name, outputDir) {
+    this.#assertWritable('导出迭代包')
+    const target = outputDir || path.join(this.root, '.flowlark', 'cache', 'exports', `milestone-${name}`)
+    return exporter.exportMilestonePackage(this.root, name, target)
   }
 
   // ==================== 基线 ====================
@@ -974,12 +1091,14 @@ export class Hub {
   // ==================== 内部 ====================
 
   #decorate(v, baselineNo) {
+    const links = reqx.resolveRequirementLinks(this.root, v.requirements)
     return {
       ...v,
+      requirements: links,
       display: rules.displayStatus(v, baselineNo),
       isBaseline: rules.isBaseline(v, baselineNo),
       changeCount: v.changes.length,
-      requirementCount: v.requirements.length
+      requirementCount: links.length
     }
   }
 
@@ -1004,15 +1123,16 @@ export class Hub {
   #normalizeRequirements(items) {
     const out = []
     for (const raw of items || []) {
-      const code = String(raw.code || '').trim()
+      const item = typeof raw === 'string' ? { code: raw, title: raw } : raw
+      const code = String(item.code || '').trim()
       if (!code) continue
-      const url = String(raw.url || '').trim()
+      const url = String(item.url || '').trim()
       if (url && !/^https?:\/\//i.test(url)) {
         throw err.bad('REQ_URL_INVALID', `需求链接「${url}」必须以 http:// 或 https:// 开头`)
       }
-      out.push({ code, title: String(raw.title || '').trim(), url })
+      out.push(reqx.ensureRequirement(this.root, { code, title: String(item.title || '').trim() || code, url }))
     }
-    return out
+    return [...new Set(out)]
   }
 
   #log(project, versionNo, action, detail, extra = {}) {

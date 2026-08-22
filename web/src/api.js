@@ -86,10 +86,34 @@ export const api = {
   downloadUrl: (slug, no) => `/api/versions/${enc(slug)}/${enc(no)}/download`,
 
   // ---- 搜索 ----
-  search: (q, { project = null, limit = 30, field = null } = {}) =>
-    get(`/api/search?q=${enc(q)}&limit=${limit}` +
-      (project ? `&project=${enc(project)}` : '') +
-      (field ? `&field=${enc(field)}` : '')),
+  search: (q, { project = null, limit = 30, field = null, filters = {} } = {}) => {
+    const params = new URLSearchParams({ q: q || '', limit: String(limit) })
+    if (project) params.set('project', project)
+    if (field) params.set('field', field)
+    for (const [key, value] of Object.entries(filters || {})) {
+      if (Array.isArray(value)) value.forEach((item) => params.append(key === 'tags' ? 'tag' : key, item))
+      else if (value !== null && value !== undefined && value !== '') params.set(key, value)
+    }
+    return get(`/api/search?${params}`)
+  },
+
+  // ---- 需求、迭代与视图 ----
+  listRequirements: () => get('/api/requirements'),
+  getRequirement: (code) => get(`/api/requirements/${enc(code)}`),
+  createRequirement: (body) => post('/api/requirements', body),
+  updateRequirement: (code, body) => put(`/api/requirements/${enc(code)}`, body),
+  linkRequirement: (code, body) => post(`/api/requirements/${enc(code)}/links`, body),
+  unlinkRequirement: (code, slug, no) => del(`/api/requirements/${enc(code)}/links/${enc(slug)}/${enc(no)}`),
+  listMilestones: () => get('/api/milestones'),
+  getMilestone: (name) => get(`/api/milestones/${enc(name)}`),
+  createMilestone: (body) => post('/api/milestones', body),
+  updateMilestone: (name, body) => put(`/api/milestones/${enc(name)}`, body),
+  removeMilestone: (name) => del(`/api/milestones/${enc(name)}`),
+  listViews: () => get('/api/views'),
+  saveView: (id, body) => put(`/api/views/${enc(id)}`, body),
+  removeView: (id) => del(`/api/views/${enc(id)}`),
+  exportRequirement: (code, outputDir) => post(`/api/export/requirement/${enc(code)}`, { outputDir }),
+  exportMilestone: (name, outputDir) => post(`/api/export/milestone/${enc(name)}`, { outputDir }),
 
   // ---- 标签 ----
   allTags: () => get('/api/tags'),

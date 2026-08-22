@@ -1,0 +1,100 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { err } from './errors.js'
+import { parse, stringify } from './json.js'
+import * as store from './store.js'
+import { requirementExists } from './requirements.js'
+
+export const MILESTONE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+
+export function assertMilestoneName(name) {
+  const value = String(name || '').trim()
+  if (!MILESTONE_NAME_RE.test(value)) throw err.bad('MILESTONE_NAME_INVALID', `迭代标识「${value}」不合法`)
+  return value
+}
+
+export function milestoneExists(root, name) {
+  return fs.existsSync(store.paths.milestoneFile(root, assertMilestoneName(name)))
+}
+
+function normalizeItems(root, items) {
+  const out = []
+  const seen = new Set()
+  for (const raw of items || []) {
+    const item = {
+      requirement: String(raw.requirement || '').trim(),
+      project: String(raw.project || '').trim(),
+      version: String(raw.version || '').trim()
+    }
+    if (!item.requirement || !requirementExists(root, item.requirement)) throw err.bad('MILESTONE_REQUIREMENT_MISSING', `需求「${item.requirement}」不存在`)
+    store.readProject(root, item.project)
+    store.readVersion(root, item.project, item.version)
+    const key = `${item.requirement}:${item.project}:${item.version}`
+    if (!seen.has(key)) { seen.add(key); out.push(item) }
+  }
+  return out
+}
+
+export function createMilestone(root, input) {
+  const name = assertMilestoneName(input.name)
+  if (milestoneExists(root, name)) throw err.conflict('MILESTONE_EXISTS', `迭代「${name}」已存在`)
+  const now = new Date().toISOString()
+  const item = {
+    name,
+    title: String(input.title || name).trim(),
+    startAt: input.startAt || null,
+    endAt: input.endAt || null,
+    items: normalizeItems(root, input.items),
+    createdAt: now,
+    updatedAt: now
+  }
+  fs.mkdirSync(store.paths.milestones(root), { recursive: true })
+  fs.writeFileSync(store.paths.milestoneFile(root, name), stringify(item, 'milestone'))
+  return inspectMilestone(root, item)
+}
+
+export function readMilestone(root, name) {
+  const safe = assertMilestoneName(name)
+  const file = store.paths.milestoneFile(root, safe)
+  if (!fs.existsSync(file)) throw err.notFound(`迭代「${safe}」`)
+  return parse(fs.readFileSync(file, 'utf8'), `${safe}.json`)
+}
+
+export function listMilestones(root) {
+  const dir = store.paths.milestones(root)
+  if (!fs.existsSync(dir)) return []
+  return fs.readdirSync(dir).filter((name) => name.endsWith('.json'))
+    .map((name) => inspectMilestone(root, readMilestone(root, name.slice(0, -5))))
+    .sort((a, b) => String(b.endAt || b.updatedAt).localeCompare(String(a.endAt || a.updatedAt)))
+}
+
+export function updateMilestone(root, name, patch) {
+  const item = readMilestone(root, name)
+  if (patch.title !== undefined) item.title = String(patch.title || '').trim() || item.name
+  if (patch.startAt !== undefined) item.startAt = patch.startAt || null
+  if (patch.endAt !== undefined) item.endAt = patch.endAt || null
+  if (patch.items !== undefined) item.items = normalizeItems(root, patch.items)
+  item.updatedAt = new Date().toISOString()
+  fs.writeFileSync(store.paths.milestoneFile(root, item.name), stringify(item, 'milestone'))
+  return inspectMilestone(root, item)
+}
+
+export function removeMilestone(root, name) {
+  const item = readMilestone(root, name)
+  fs.rmSync(store.paths.milestoneFile(root, item.name))
+  return { name: item.name }
+}
+
+export function inspectMilestone(root, input) {
+  const item = typeof input === 'string' ? readMilestone(root, input) : input
+  const warnings = []
+  const details = item.items.map((entry) => {
+    const version = store.readVersion(root, entry.project, entry.version)
+    const baseline = store.readBaseline(root, entry.project)
+    if (version.status === 'VOID') warnings.push({ code: 'VERSION_VOID', ...entry, message: `${entry.project}/${entry.version} 已废弃` })
+    else if (version.status === 'DRAFT') warnings.push({ code: 'VERSION_DRAFT', ...entry, message: `${entry.project}/${entry.version} 仍是草稿` })
+    if (baseline !== entry.version) warnings.push({ code: 'BASELINE_DRIFT', ...entry, baseline, message: `${entry.project} 当前基线已变为 ${baseline || '无'}` })
+    return { ...entry, versionTitle: version.title, versionStatus: version.status, reviewStatus: version.reviewStatus, currentBaseline: baseline }
+  })
+  return { ...item, items: details, warnings, ready: warnings.length === 0 }
+}

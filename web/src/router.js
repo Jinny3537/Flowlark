@@ -26,6 +26,11 @@ export default createRouter({
     },
     { path: '/oplog', name: 'oplog', component: () => import('./views/OpLog.vue') },
     { path: '/watch', name: 'watch', component: () => import('./views/WatchInbox.vue') },
+    { path: '/requirements', name: 'requirements', component: () => import('./views/RequirementList.vue') },
+    { path: '/requirements/:code', name: 'requirement-detail', component: () => import('./views/RequirementDetail.vue'), props: true },
+    { path: '/milestones', name: 'milestones', component: () => import('./views/MilestoneList.vue') },
+    { path: '/milestones/:name', name: 'milestone-detail', component: () => import('./views/MilestoneDetail.vue'), props: true },
+    { path: '/search', name: 'search-panel', component: () => import('./views/SearchPanel.vue') },
     { path: '/trash', name: 'trash', component: () => import('./views/Trash.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/Settings.vue') }
   ]

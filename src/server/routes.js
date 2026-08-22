@@ -55,6 +55,54 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 201, hub.createProject(body))
   })
 
+  // ---- 需求 ----
+  r.get('/api/requirements', async (req, res) => sendJson(res, 200, hub.listRequirements()))
+  r.post('/api/requirements', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 201, hub.createRequirement(body))
+  })
+  r.get('/api/requirements/:code', async (req, res, p) => sendJson(res, 200, hub.getRequirement(p.code)))
+  r.put('/api/requirements/:code', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.updateRequirement(p.code, body))
+  })
+  r.post('/api/requirements/:code/links', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.linkRequirement(p.code, body.project, body.versionNo))
+  })
+  r.delete('/api/requirements/:code/links/:slug/:no', async (req, res, p) =>
+    sendJson(res, 200, hub.unlinkRequirement(p.code, p.slug, p.no)))
+
+  // ---- 迭代 ----
+  r.get('/api/milestones', async (req, res) => sendJson(res, 200, hub.listMilestones()))
+  r.post('/api/milestones', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 201, hub.createMilestone(body))
+  })
+  r.get('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.getMilestone(p.name)))
+  r.put('/api/milestones/:name', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.updateMilestone(p.name, body))
+  })
+  r.delete('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.removeMilestone(p.name)))
+
+  // ---- 团队已存视图 ----
+  r.get('/api/views', async (req, res) => sendJson(res, 200, hub.listSavedViews()))
+  r.put('/api/views/:id', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.saveView({ ...body, id: p.id }))
+  })
+  r.delete('/api/views/:id', async (req, res, p) => sendJson(res, 200, hub.removeView(p.id)))
+
+  r.post('/api/export/requirement/:code', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.exportRequirement(p.code, body.outputDir))
+  })
+  r.post('/api/export/milestone/:name', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.exportMilestone(p.name, body.outputDir))
+  })
+
   r.put('/api/projects/:slug', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.updateProject(p.slug, body))
@@ -150,10 +198,22 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.get('/api/search', async (req, res, p, url) => {
     const q = url.searchParams.get('q') || ''
     const field = url.searchParams.get('field')
+    const filters = {
+      tags: url.searchParams.getAll('tag'),
+      reviewStatus: url.searchParams.getAll('reviewStatus'),
+      status: url.searchParams.getAll('status'),
+      requirement: url.searchParams.get('requirement') || null,
+      milestone: url.searchParams.get('milestone') || null,
+      attachment: url.searchParams.get('attachment') || null,
+      dateFrom: url.searchParams.get('dateFrom') || null,
+      dateTo: url.searchParams.get('dateTo') || null,
+      scope: url.searchParams.get('scope') || null
+    }
     sendJson(res, 200, hub.search(q, {
       project: url.searchParams.get('project') || null,
       limit: Number(url.searchParams.get('limit')) || 30,
-      fields: field ? field.split(',').map((s) => s.trim()) : null
+      fields: field ? field.split(',').map((s) => s.trim()) : null,
+      filters
     }))
   })
 

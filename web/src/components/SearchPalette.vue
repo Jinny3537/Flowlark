@@ -30,6 +30,7 @@
         <div style="font-size:12px;margin-top:14px;color:rgba(0,0,0,.35)">
           ↑↓ 选择　Enter 打开　Esc 关闭
         </div>
+        <a-button size="small" style="margin-top:14px" @click="openPanel">打开筛选面板</a-button>
       </div>
 
       <div v-for="(item, i) in results" :key="i"
@@ -103,9 +104,14 @@ function move(delta) {
 function go(i) {
   const item = results.value[i]
   if (!item) return
-  router.push(item.versionNo
-    ? `/projects/${item.project}/versions/${item.versionNo}`
-    : `/projects/${item.project}`)
+  if (item.objectType === 'requirement') router.push(`/requirements/${encodeURIComponent(item.requirementCode)}`)
+  else if (item.objectType === 'milestone') router.push(`/milestones/${encodeURIComponent(item.milestoneName)}`)
+  else router.push(item.versionNo ? `/projects/${item.project}/versions/${item.versionNo}` : `/projects/${item.project}`)
+  close(false)
+}
+
+function openPanel() {
+  router.push('/search')
   close(false)
 }
 
