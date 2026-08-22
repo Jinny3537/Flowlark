@@ -2,6 +2,23 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.6] - 2026-08-22
+
+### 新增
+
+- 原型预览支持框选区域反馈，自动携带项目、版本、基线、需求、变更和区域深链。
+- 反馈可生成 Markdown，或通过 GitHub、GitLab、Gitee Provider 创建 Issue；远端失败时保留本机草稿并自动降级。
+- Issue Token 支持 macOS 钥匙串和环境变量，不写入仓库配置。
+- 新建版本支持拖拽文件、粘贴完整 HTML、公开 URL 三种导入方式，并自动读取 `<title>`。
+- URL 导入增加协议、凭据、DNS、IP、重定向、响应类型、时长和大小检查，阻断 SSRF。
+- `flowlark watch` 增加内容哈希去重、稳定写入检查和草稿箱；失败项保留原因并可重试。
+- 新增 `flowlark feedback list/export/submit/rm` 和工作台草稿箱页面。
+
+### 验证
+
+- 208 项 Node 测试通过，Web 生产构建通过。
+- 浏览器验证覆盖桌面/移动工作台、三种导入入口、区域标注和 Markdown 降级，控制台无错误。
+
 ## [1.1.0] - 2026-08-22
 
 ### 新增

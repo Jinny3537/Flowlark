@@ -51,6 +51,9 @@
             <a-tooltip title="原型由独立端口提供，与工作台不同源；里面的脚本读不到工作台的任何数据">
               <a-tag><LockOutlined /> 沙箱隔离</a-tag>
             </a-tooltip>
+            <a-button size="small" :type="annotationMode ? 'primary' : 'default'" @click="toggleAnnotation">
+              <template #icon><HighlightOutlined /></template>{{ annotationMode ? '退出标注' : '标注反馈' }}
+            </a-button>
             <a-divider type="vertical" class="compact-divider" />
             <a-tooltip :title="docsCollapsed ? '恢复分屏' : '收起右侧文档，预览占满'">
               <a-button type="text" size="small" :aria-label="docsCollapsed ? '恢复分屏' : '全宽预览'"
@@ -86,10 +89,14 @@
             </a-alert>
           </div>
 
-          <!-- 不给 allow-same-origin：脚本跑得起来，但读不到工作台任何东西 -->
-          <iframe v-if="version" class="wb-frame" :src="previewSrc"
-                  sandbox="allow-scripts allow-forms allow-popups allow-modals"
-                  referrerpolicy="no-referrer"></iframe>
+          <div v-if="version" ref="previewCanvas" class="preview-canvas">
+            <!-- 不给 allow-same-origin：脚本跑得起来，但读不到工作台任何东西 -->
+            <iframe class="wb-frame" :src="previewSrc"
+                    sandbox="allow-scripts allow-forms allow-popups allow-modals"
+                    referrerpolicy="no-referrer"></iframe>
+            <AnnotationOverlay :active="annotationMode" :anchor="selectedAnchor"
+                               @select="selectAnnotation" @cancel="cancelAnnotation" />
+          </div>
         </div>
 
         <a-tooltip title="拖动调整宽度，双击复位">
@@ -257,6 +264,8 @@
 
     <BaselineModal v-model:open="blOpen" :slug="slug" :target="version"
                    :current="currentBaselineNo" :total-versions="siblings.length" @done="reload" />
+    <FeedbackDrawer v-model:open="feedbackOpen" :context="feedbackContext" :capture-rect="captureRect"
+                    @submitted="annotationMode = false" />
 
     <a-drawer v-model:open="historyOpen" title="这一版的演进历史" placement="right" :width="520">
       <a-empty v-if="commits.length === 0" description="还没有 Git 提交记录">
@@ -280,11 +289,11 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   LeftOutlined, LinkOutlined, HistoryOutlined, DesktopOutlined, LockOutlined,
-  ColumnWidthOutlined, FullscreenOutlined, EditOutlined, ExportOutlined
+  ColumnWidthOutlined, FullscreenOutlined, EditOutlined, ExportOutlined, HighlightOutlined
 } from '@ant-design/icons-vue'
 import ChangeList from '../components/ChangeList.vue'
 import ChangeEditor from '../components/ChangeEditor.vue'
@@ -292,6 +301,8 @@ import RequirementEditor from '../components/RequirementEditor.vue'
 import BaselineModal from '../components/BaselineModal.vue'
 import CliHint from '../components/CliHint.vue'
 import Attachments from '../components/Attachments.vue'
+import AnnotationOverlay from '../components/AnnotationOverlay.vue'
+import FeedbackDrawer from '../components/FeedbackDrawer.vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
 import { fmtTime, fmtAbsolute, fmtSize, renderMarkdown, cliFor } from '../utils'
@@ -299,6 +310,7 @@ import { fmtTime, fmtAbsolute, fmtSize, renderMarkdown, cliFor } from '../utils'
 const props = defineProps({ slug: String, versionNo: String })
 const app = useAppStore()
 const router = useRouter()
+const route = useRoute()
 
 const project = ref(null)
 const version = ref(null)
@@ -317,6 +329,11 @@ const useOffline = ref(false)
 const buildingOffline = ref(false)
 const tagDraft = ref([])
 const allTags = ref([])
+const annotationMode = ref(false)
+const feedbackOpen = ref(false)
+const selectedAnchor = ref(null)
+const captureRect = ref(null)
+const previewCanvas = ref(null)
 
 // 原型是这个页面的主角，默认给它多一点。右侧文档区 min-width 340px 兜底可读性。
 const DEFAULT_SPLIT = 68
@@ -345,6 +362,15 @@ const currentBaselineNo = computed(() => {
 })
 /** R4：只有「编辑中」且当前请求可写时，才能改结构性内容 */
 const editable = computed(() => app.canWrite && !!version.value && version.value.display.key === 'DRAFT')
+const feedbackContext = computed(() => ({
+  project: props.slug,
+  version: props.versionNo,
+  baseline: currentBaselineNo.value,
+  requirements: (version.value && version.value.requirements || []).map((item) => item.code),
+  changes: version.value && version.value.changes || [],
+  anchor: selectedAnchor.value || { x: 0, y: 0, width: 1, height: 1 },
+  url: annotationLink(selectedAnchor.value)
+}))
 const olderSiblings = computed(() => {
   const i = siblings.value.findIndex((v) => v.versionNo === props.versionNo)
   return i < 0 ? [] : siblings.value.slice(i + 1)
@@ -411,6 +437,52 @@ function copyLink() {
   navigator.clipboard.writeText(previewSrc.value)
     .then(() => message.success('预览直链已复制'))
     .catch(() => message.error('复制失败，可在「版本信息」里手动选中'))
+}
+
+function encodeAnchor(anchor) {
+  if (!anchor) return ''
+  const bytes = new TextEncoder().encode(JSON.stringify(anchor))
+  let raw = ''
+  for (const byte of bytes) raw += String.fromCharCode(byte)
+  return btoa(raw).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+}
+
+function decodeAnchor(value) {
+  if (!value) return null
+  try {
+    const raw = atob(String(value).replaceAll('-', '+').replaceAll('_', '/'))
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(raw, (char) => char.charCodeAt(0))))
+  } catch { return null }
+}
+
+function annotationLink(anchor) {
+  const resolved = router.resolve({
+    name: 'workbench', params: { slug: props.slug, versionNo: props.versionNo },
+    query: anchor ? { anchor: encodeAnchor(anchor) } : {}
+  })
+  return `${window.location.origin}${window.location.pathname}${resolved.href}`
+}
+
+function toggleAnnotation() {
+  annotationMode.value = !annotationMode.value
+  if (annotationMode.value) selectedAnchor.value = null
+}
+
+function selectAnnotation(anchor) {
+  selectedAnchor.value = anchor
+  annotationMode.value = false
+  const rect = previewCanvas.value && previewCanvas.value.getBoundingClientRect()
+  if (rect) captureRect.value = {
+    left: rect.left + anchor.x * rect.width,
+    top: rect.top + anchor.y * rect.height,
+    width: anchor.width * rect.width,
+    height: anchor.height * rect.height
+  }
+  feedbackOpen.value = true
+}
+
+function cancelAnnotation() {
+  annotationMode.value = false
 }
 const openExternal = () => window.open(previewSrc.value, '_blank', 'noopener')
 const openUrl = (url) => url && window.open(url, '_blank', 'noopener')
@@ -552,13 +624,18 @@ watch(docsCollapsed, (v) => localStorage.setItem('flowlark.docsCollapsed', v ? '
 onBeforeUnmount(stopDrag)
 
 watch(() => [props.slug, props.versionNo], reload)
-onMounted(reload)
+watch(() => route.query.anchor, (value) => { selectedAnchor.value = decodeAnchor(value) })
+onMounted(() => {
+  selectedAnchor.value = decodeAnchor(route.query.anchor)
+  reload()
+})
 </script>
 
 <style scoped>
 .version-select { width: 280px; }
 .compact-divider { margin: 0 2px; }
 .preview-alert { padding: 10px 12px 0; }
+.preview-canvas { position:relative; display:flex; flex:1; min-height:0; overflow:hidden; }
 .ref-line {
   font-size: var(--fl-fs-1);
   word-break: break-all;
@@ -575,6 +652,12 @@ onMounted(reload)
 .no-wrap { white-space: nowrap; }
 .history-subject { font-size: var(--fl-fs-3); color: var(--fl-text); }
 @media (max-width: 900px) {
-  .version-select { width: 220px; }
+  .wb-toolbar { overflow-x:auto; padding-inline:var(--fl-s-2); gap:var(--fl-s-2); }
+  .wb-toolbar > strong, .wb-toolbar > .ant-divider { display:none; }
+  .version-select { width:180px; min-width:180px; }
+  .wb-subbar { overflow-x:auto; scrollbar-width:none; }
+  .wb-subbar::-webkit-scrollbar { display:none; }
+  .wb-subbar > span { display:none; }
+  .wb-subbar > .spacer { min-width:4px; }
 }
 </style>

@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { CLI, html, newHub, cleanup } from './helpers.js'
 import { inferVersionNo } from '../src/cli/commands.js'
+import { collectWatchFile, listWatchInbox, updateWatchItem } from '../src/core/watch-inbox.js'
 
 /**
  * watch 的测试。上一轮交付时这块是承认没覆盖的空白 ——
@@ -54,11 +55,11 @@ describe('watch 自动归档', () => {
     child.stdout.on('data', (c) => { out += c })
 
     try {
-      await sleep(600) // 等 watcher 起来
+      await sleep(800) // 全量并发测试时子进程启动会变慢，等 watcher 明确进入监听
 
       fs.writeFileSync(path.join(watchDir, '订单中心_v1.4.html'), html('自动归档'))
-      // 防抖 400ms + 处理时间
-      await sleep(1800)
+      // 防抖 + 两次稳定写入检查 + 全量测试并发余量
+      await sleep(3200)
 
       const versions = hub.listVersions('ord')
       t.assert.strictEqual(versions.length, 1, `应归档 1 个版本，实际 ${versions.length}；输出：${out}`)
@@ -110,5 +111,34 @@ describe('watch 自动归档', () => {
 
     t.assert.strictEqual(r.code, 1)
     t.assert.match(r.err, /不存在/)
+  })
+
+  test('内容哈希去重，内容变化后形成新的草稿项', (t) => {
+    const { root } = newHub()
+    dirs.push(root)
+    const file = path.join(root, 'draft_v2.html')
+    fs.writeFileSync(file, html('第一版', '<title>草稿标题</title>'))
+
+    const first = collectWatchFile(root, 'ord', file)
+    const duplicate = collectWatchFile(root, 'ord', file)
+    t.assert.strictEqual(duplicate.id, first.id)
+    t.assert.strictEqual(duplicate.duplicate, true)
+
+    fs.writeFileSync(file, html('第二版', '<title>草稿标题</title>'))
+    const second = collectWatchFile(root, 'ord', file)
+    t.assert.notStrictEqual(second.id, first.id)
+    t.assert.strictEqual(listWatchInbox(root).length, 2)
+  })
+
+  test('失败原因保留在草稿箱中', (t) => {
+    const { root } = newHub()
+    dirs.push(root)
+    const file = path.join(root, 'draft_v3.html')
+    fs.writeFileSync(file, html('失败草稿'))
+    const item = collectWatchFile(root, 'ord', file)
+    updateWatchItem(root, item.id, { status: 'failed', error: '版本号冲突' })
+    const saved = listWatchInbox(root).find((candidate) => candidate.id === item.id)
+    t.assert.strictEqual(saved.status, 'failed')
+    t.assert.strictEqual(saved.error, '版本号冲突')
   })
 })

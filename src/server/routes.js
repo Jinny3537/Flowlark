@@ -191,6 +191,73 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, { ok: true })
   })
 
+  // ---- 标注反馈 ----
+  // 草稿只写本机 cache，不进入 Git，因此 Git 只读用户也能完整使用。
+  r.get('/api/feedback/drafts', async (req, res) =>
+    sendJson(res, 200, hub.listFeedbackDrafts()))
+
+  r.post('/api/feedback/drafts', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    const screenshot = body.screenshotBase64 ? Buffer.from(body.screenshotBase64, 'base64') : null
+    const input = { ...body }
+    delete input.screenshotBase64
+    sendJson(res, 201, hub.createFeedbackDraft(input, screenshot))
+  })
+
+  r.get('/api/feedback/drafts/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.getFeedbackDraft(p.id)))
+
+  r.get('/api/feedback/drafts/:id/markdown', async (req, res, p) =>
+    sendJson(res, 200, { id: p.id, markdown: hub.feedbackMarkdown(p.id) }))
+
+  r.get('/api/feedback/drafts/:id/screenshot', async (req, res, p) => {
+    const buf = hub.feedbackScreenshot(p.id)
+    if (!buf) return sendJson(res, 404, { code: 'NOT_FOUND', message: '反馈截图不存在' })
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': buf.length, 'Cache-Control': 'no-store' })
+    res.end(buf)
+  })
+
+  r.post('/api/feedback/drafts/:id/submit', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.submitFeedback(p.id, body))
+  })
+
+  r.delete('/api/feedback/drafts/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.removeFeedbackDraft(p.id)))
+
+  r.get('/api/integrations/issues', async (req, res) =>
+    sendJson(res, 200, { providers: hub.issueProviders(), selected: hub.settings.integrations.issueProvider }))
+
+  r.post('/api/integrations/issues/:provider/test', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.testIssueConnection(p.provider, body))
+  })
+
+  r.put('/api/integrations/issues/:provider/token', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.setIssueToken(p.provider, body.token))
+  })
+
+  r.delete('/api/integrations/issues/:provider/token', async (req, res, p) =>
+    sendJson(res, 200, hub.deleteIssueToken(p.provider)))
+
+  // ---- 原型导入 ----
+  r.post('/api/import/html', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.inspectImportedHtml(body.html || ''))
+  })
+
+  r.post('/api/import/url', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.importPrototypeUrl(body.url))
+  })
+
+  r.get('/api/watch/inbox', async (req, res) =>
+    sendJson(res, 200, hub.listWatchInbox()))
+
+  r.post('/api/watch/inbox/:id/retry', async (req, res, p) =>
+    sendJson(res, 200, hub.retryWatchItem(p.id)))
+
   // ---- Git ----
   r.get('/api/git/status', async (req, res, p, url) =>
     sendJson(res, 200, {

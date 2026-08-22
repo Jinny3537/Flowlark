@@ -105,6 +105,21 @@ export const api = {
   buildOffline: (slug, no) => post(`/api/versions/${enc(slug)}/${enc(no)}/offline`),
   clearOffline: (slug, no) => del(`/api/versions/${enc(slug)}/${enc(no)}/offline`),
 
+  // ---- 反馈与导入 ----
+  listFeedbackDrafts: () => get('/api/feedback/drafts'),
+  createFeedbackDraft: (body) => post('/api/feedback/drafts', body),
+  feedbackMarkdown: (id) => get(`/api/feedback/drafts/${enc(id)}/markdown`),
+  submitFeedback: (id, body) => post(`/api/feedback/drafts/${enc(id)}/submit`, body),
+  removeFeedbackDraft: (id) => del(`/api/feedback/drafts/${enc(id)}`),
+  issueIntegrations: () => get('/api/integrations/issues'),
+  testIssueIntegration: (provider, body = {}) => post(`/api/integrations/issues/${enc(provider)}/test`, body),
+  setIssueToken: (provider, token) => put(`/api/integrations/issues/${enc(provider)}/token`, { token }),
+  deleteIssueToken: (provider) => del(`/api/integrations/issues/${enc(provider)}/token`),
+  inspectHtml: (html) => post('/api/import/html', { html }),
+  importUrl: (url) => post('/api/import/url', { url }),
+  watchInbox: () => get('/api/watch/inbox'),
+  retryWatchItem: (id) => post(`/api/watch/inbox/${enc(id)}/retry`, {}),
+
   // ---- Git ----
   gitStatus: ({ fast = false, cache = false } = {}) => {
     const q = new URLSearchParams()

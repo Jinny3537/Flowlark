@@ -11,6 +11,7 @@ export const GROUPS = [
   { key: 'server', label: '服务与网络' },
   { key: 'git', label: 'Git 与身份' },
   { key: 'rules', label: '业务规则' },
+  { key: 'integrations', label: '反馈与集成' },
   { key: 'ui', label: '外观与默认值' }
 ]
 
@@ -81,6 +82,30 @@ export const SCHEMA = [
   {
     key: 'rules.watchDir', type: 'string', default: '', label: 'watch 默认监听目录',
     note: 'flowlark watch 不带 -d 时使用'
+  },
+
+  // ---------- 反馈与集成 ----------
+  {
+    key: 'integrations.issueProvider', type: 'string', default: 'markdown',
+    enum: ['markdown', 'github', 'gitlab', 'gitee'], label: '反馈目标',
+    note: '未配置或远端失败时始终可以导出 Markdown'
+  },
+  {
+    key: 'integrations.issueBaseUrl', type: 'string', default: '', label: 'Issue API 地址',
+    note: '留空使用平台官方地址；企业自建 GitHub/GitLab 可填写 API 根地址'
+  },
+  {
+    key: 'integrations.issueProject', type: 'string', default: '', label: 'Issue 项目标识',
+    note: 'GitLab 填项目 ID 或路径；GitHub/Gitee 可留空并填写组织与仓库'
+  },
+  {
+    key: 'integrations.issueOwner', type: 'string', default: '', label: 'Issue 组织/用户'
+  },
+  {
+    key: 'integrations.issueRepo', type: 'string', default: '', label: 'Issue 仓库'
+  },
+  {
+    key: 'integrations.issueLabels', type: 'list', default: ['flowlark-feedback'], label: '反馈标签'
   },
 
   // ---------- 外观与默认值 ----------

@@ -47,6 +47,7 @@
         <a-layout-sider :width="188" theme="light" class="app-sidebar">
           <a-menu mode="inline" :selected-keys="activeKey ? [activeKey] : []" class="app-menu" @click="({ key }) => $router.push('/' + key)">
             <a-menu-item key="projects"><template #icon><FolderOutlined /></template>项目</a-menu-item>
+            <a-menu-item key="watch"><template #icon><InboxOutlined /></template>草稿箱</a-menu-item>
             <a-menu-item key="oplog"><template #icon><HistoryOutlined /></template>操作日志</a-menu-item>
             <a-menu-item key="trash"><template #icon><DeleteOutlined /></template>回收站</a-menu-item>
           </a-menu>
@@ -87,7 +88,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import {
-  FolderOutlined, HistoryOutlined, DeleteOutlined,
+  FolderOutlined, HistoryOutlined, DeleteOutlined, InboxOutlined,
   SearchOutlined, BranchesOutlined, SettingOutlined, EyeOutlined
 } from '@ant-design/icons-vue'
 import SearchPalette from './components/SearchPalette.vue'
@@ -112,6 +113,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 
 const activeKey = computed(() => {
   if (route.path.startsWith('/oplog')) return 'oplog'
+  if (route.path.startsWith('/watch')) return 'watch'
   if (route.path.startsWith('/trash')) return 'trash'
   if (route.path.startsWith('/settings')) return ''
   return 'projects'

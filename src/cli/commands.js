@@ -8,6 +8,7 @@ import { Hub } from '../core/service.js'
 import * as store from '../core/store.js'
 import { CHANGE_LABEL } from '../core/rules.js'
 import { groupRefsByHost } from '../core/scan.js'
+import { waitForStableFile } from '../core/watch-inbox.js'
 import { c, table, statusTag, kv, heading, fmtSize, fmtTime, ok, info, warn, next } from './ui.js'
 
 // ==================== 公共 ====================
@@ -115,13 +116,17 @@ export async function add(pos, values) {
   if (!file) throw err.bad('FILE_REQUIRED', '请提供要归档的 HTML 文件', 'flowlark add ./原型.html -t "标题"')
 
   const slug = resolveProject(h, values.project)
-  const versionNo = values.version || inferVersionNo(file)
-  const title = values.title || path.basename(file).replace(/\.html?$/i, '')
+  const fromUrl = /^https?:\/\//i.test(file)
+  const imported = fromUrl ? await h.importPrototypeUrl(file) : null
+  const sourceName = fromUrl ? new URL(file).pathname : file
+  const versionNo = values.version || inferVersionNo(sourceName)
+  const title = values.title || (imported && imported.title) || path.basename(sourceName).replace(/\.html?$/i, '') || '导入原型'
 
   const v = h.addVersion(slug, {
     versionNo,
     title,
-    sourcePath: file,
+    sourcePath: fromUrl ? null : file,
+    html: imported ? imported.html : null,
     changes: (values.message || []).map(parseChange),
     requirements: (values.req || []).map(parseReq),
     tags: values.tag || []
@@ -582,34 +587,25 @@ export async function watch(pos, values) {
   info(`监听 ${c.bold(dir)} → 项目 ${c.cyan(slug)}`)
   console.log(c.dim('  新出现的 .html 会自动归档为草稿版本。Ctrl+C 退出。\n'))
 
-  const seen = new Set(fs.readdirSync(dir).filter((f) => /\.html?$/i.test(f)))
   const pending = new Map()
 
   fs.watch(dir, (event, filename) => {
     if (!filename || !/\.html?$/i.test(filename)) return
-    if (seen.has(filename)) return
     // 防抖：编辑器保存常触发多次事件，且文件可能还没写完
     clearTimeout(pending.get(filename))
-    pending.set(filename, setTimeout(() => {
+    pending.set(filename, setTimeout(async () => {
       pending.delete(filename)
       const full = path.join(dir, filename)
       if (!fs.existsSync(full)) return
-      seen.add(filename)
       try {
-        let no = inferVersionNo(filename)
-        // 推断出的版本号可能已被占用，追加后缀直到可用
-        let n = 1
-        while (store.versionExists(h.root, slug, no)) no = `${inferVersionNo(filename)}-${++n}`
-        const v = h.addVersion(slug, {
-          versionNo: no,
-          title: path.basename(filename).replace(/\.html?$/i, ''),
-          sourcePath: full
-        })
-        ok(`${c.dim(new Date().toLocaleTimeString())} 归档 ${c.bold(v.versionNo)} ← ${filename}`)
+        await waitForStableFile(full)
+        const item = h.collectWatchFile(slug, full)
+        if (item.duplicate) return
+        ok(`${c.dim(new Date().toLocaleTimeString())} 归档 ${c.bold(item.versionNo)} ← ${filename}`)
       } catch (e) {
         warn(`${filename} 归档失败：${e.message}`)
       }
-    }, 400))
+    }, 300))
   })
 }
 

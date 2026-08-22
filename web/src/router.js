@@ -25,6 +25,7 @@ export default createRouter({
       props: true
     },
     { path: '/oplog', name: 'oplog', component: () => import('./views/OpLog.vue') },
+    { path: '/watch', name: 'watch', component: () => import('./views/WatchInbox.vue') },
     { path: '/trash', name: 'trash', component: () => import('./views/Trash.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/Settings.vue') }
   ]

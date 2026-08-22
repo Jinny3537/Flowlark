@@ -27,6 +27,7 @@ ${c.bold('检索与组织')}
   ${c.cyan('attach')} <项目> <版本> <文件…>  挂 PRD / 设计稿 / 评审纪要，随 Git 提交
   ${c.cyan('offline')} <项目> <版本>  抓取 CDN 依赖生成自包含的离线版
   ${c.cyan('compare')} <项目> <v1> <v2>  浏览器里并排对比两个版本
+  ${c.cyan('feedback')}             反馈草稿：list / export / submit / rm
 
 ${c.bold('Git')}
   ${c.cyan('sync')}                提交 + 拉取 + 推送，一步到位

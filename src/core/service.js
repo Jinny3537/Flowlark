@@ -8,6 +8,11 @@ import * as assistant from './assistant.js'
 import * as readstate from './readstate.js'
 import * as offline from './offline.js'
 import * as permissions from './permissions.js'
+import * as feedback from './feedback.js'
+import * as issuex from './integrations/issues/index.js'
+import * as secrets from './secrets.js'
+import * as importer from './importer.js'
+import * as watchbox from './watch-inbox.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -838,6 +843,132 @@ export class Hub {
 
   refreshWritePermission() {
     return permissions.refresh(this.root)
+  }
+
+  // ==================== 反馈 ====================
+
+  createFeedbackDraft(input, screenshot = null) {
+    return feedback.saveFeedbackDraft(this.root, input, screenshot)
+  }
+
+  listFeedbackDrafts() {
+    return feedback.listFeedbackDrafts(this.root)
+  }
+
+  getFeedbackDraft(id) {
+    return feedback.readFeedbackDraft(this.root, id)
+  }
+
+  feedbackMarkdown(id) {
+    return feedback.renderFeedbackMarkdown(feedback.readFeedbackDraft(this.root, id))
+  }
+
+  feedbackScreenshot(id) {
+    return feedback.readFeedbackScreenshot(this.root, id)
+  }
+
+  removeFeedbackDraft(id) {
+    return feedback.removeFeedbackDraft(this.root, id)
+  }
+
+  issueProviders() {
+    return issuex.issueProviders()
+  }
+
+  issueConfig(provider, overrides = {}) {
+    const s = this.settings.integrations
+    const env = {
+      github: 'FLOWLARK_GITHUB_TOKEN',
+      gitlab: 'FLOWLARK_GITLAB_TOKEN',
+      gitee: 'FLOWLARK_GITEE_TOKEN'
+    }[provider]
+    return {
+      baseUrl: overrides.baseUrl || s.issueBaseUrl,
+      projectId: overrides.projectId || overrides.project || s.issueProject,
+      owner: overrides.owner || s.issueOwner,
+      repo: overrides.repo || s.issueRepo,
+      labels: overrides.labels || s.issueLabels,
+      token: overrides.token || secrets.getSecret(provider, { envKey: env })
+    }
+  }
+
+  testIssueConnection(provider, overrides = {}) {
+    return issuex.testIssueConnection(provider, this.issueConfig(provider, overrides))
+  }
+
+  submitFeedback(id, { provider, config = {} } = {}) {
+    const selected = provider || this.settings.integrations.issueProvider
+    if (!selected || selected === 'markdown') {
+      return Promise.resolve({ provider: 'markdown', markdown: this.feedbackMarkdown(id), fallback: true })
+    }
+    const draft = feedback.readFeedbackDraft(this.root, id)
+    return issuex.createIssue(selected, this.issueConfig(selected, config), draft)
+  }
+
+  searchFeedbackIssues(provider, query, overrides = {}) {
+    return issuex.searchIssues(provider, this.issueConfig(provider, overrides), query)
+  }
+
+  setIssueToken(provider, token) {
+    return secrets.setSecret(provider, token)
+  }
+
+  deleteIssueToken(provider) {
+    return secrets.deleteSecret(provider)
+  }
+
+  inspectImportedHtml(html) {
+    const result = importer.inspectHtml(html)
+    const max = this.settings.server.maxFileBytes
+    if (result.size > max) throw err.bad('FILE_TOO_LARGE', `HTML 超过 ${(max / 1024 / 1024).toFixed(0)} MB 上限`)
+    return result
+  }
+
+  importPrototypeUrl(url) {
+    return importer.importUrl(url, { maxBytes: this.settings.server.maxFileBytes })
+  }
+
+  listWatchInbox() {
+    return watchbox.listWatchInbox(this.root)
+  }
+
+  collectWatchFile(slug, sourcePath) {
+    store.readProject(this.root, slug)
+    const item = watchbox.collectWatchFile(this.root, slug, sourcePath)
+    if (item.duplicate) return item
+    try {
+      let versionNo = item.suggestedVersionNo
+      let suffix = 1
+      while (store.versionExists(this.root, slug, versionNo)) versionNo = `${item.suggestedVersionNo}-${++suffix}`
+      const version = this.addVersion(slug, {
+        versionNo,
+        title: item.title,
+        sourcePath: item.sourcePath
+      })
+      return watchbox.updateWatchItem(this.root, item.id, { status: 'archived', versionNo: version.versionNo, error: null })
+    } catch (e) {
+      watchbox.updateWatchItem(this.root, item.id, { status: 'failed', error: e.message })
+      throw e
+    }
+  }
+
+  retryWatchItem(id) {
+    const item = watchbox.getWatchItem(this.root, id)
+    if (item.status !== 'failed') throw err.conflict('WATCH_ITEM_NOT_FAILED', '只有归档失败的 watch 草稿可以重试')
+    try {
+      let versionNo = item.suggestedVersionNo
+      let suffix = 1
+      while (store.versionExists(this.root, item.project, versionNo)) versionNo = `${item.suggestedVersionNo}-${++suffix}`
+      const version = this.addVersion(item.project, {
+        versionNo,
+        title: item.title,
+        sourcePath: item.sourcePath
+      })
+      return watchbox.updateWatchItem(this.root, item.id, { status: 'archived', versionNo: version.versionNo, error: null })
+    } catch (e) {
+      watchbox.updateWatchItem(this.root, item.id, { status: 'failed', error: e.message })
+      throw e
+    }
   }
 
   // ==================== 内部 ====================
