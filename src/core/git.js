@@ -43,7 +43,7 @@ function requireRepo(root) {
   }
   if (!isRepo(root)) {
     throw err.bad('NOT_GIT_REPO', '当前仓库还没有纳入 Git',
-      `在 ${root} 执行：git init && git add . && git commit -m "init"`)
+      '运行 flowlark git setup，或在工作台的 Git 面板点「纳入 Git 管理」')
   }
 }
 
@@ -71,7 +71,10 @@ export function status(root) {
   if (!available() || !isRepo(root)) {
     return { tracked: false, clean: true, files: [], branch: null, ahead: 0, behind: 0, conflicted: [] }
   }
-  const porcelain = git(root, ['status', '--porcelain=v1', '--branch'])
+  // -uall：让 git 逐个列出未跟踪文件，而不是把整个目录折叠成一行 "projects/"。
+  // 折叠版本会让「这次改了哪些项目的哪些版本」无从判断 ——
+  // 新建一个项目时改动全在未跟踪目录里，恰恰是最需要看清楚的时候。
+  const porcelain = git(root, ['status', '--porcelain=v1', '--branch', '-uall'])
   const lines = porcelain.out.split('\n').filter(Boolean)
 
   let branch = null
@@ -106,7 +109,7 @@ export function status(root) {
     files.push({ code, label: XY[code] || code.trim(), path: line.slice(3) })
   }
 
-  // 未跟踪的目录 git 只报目录名（如 "projects/"），归属判断要容忍尾部斜杠
+  // -uall 之后基本都是具体文件了，但空目录等边角情况仍可能带尾部斜杠
   const own = files.filter((f) => isOwnedPath(f.path.replace(/\/$/, '')))
   const foreign = files.filter((f) => !isOwnedPath(f.path.replace(/\/$/, '')))
 
@@ -393,20 +396,31 @@ export function readBaselineConflict(root, slug) {
   const raw = fs.readFileSync(file, 'utf8')
   const m = CONFLICT_RE.exec(raw)
   if (!m) return null
+  const ours = m[1].trim()
+  const theirs = m[2].trim()
+
+  // rebase 期间 ours/theirs 是反的，而且反得很违反直觉：
+  // rebase 把远端的提交当作基底，自己的提交是「被重放上去的那一个」，
+  // 于是 <<<<<<< HEAD 那半边是「别人的」，>>>>>>> 那半边才是「我的」。
+  // 界面上如果照搬 git 的用词，用户会稳定地选错基线 —— 必须在这里翻译好。
+  const rebasing = inProgress(root) === 'rebase'
   return {
-    ours: m[1].trim(),
-    theirs: m[2].trim(),
+    ours,
+    theirs,
+    mine: rebasing ? theirs : ours,
+    others: rebasing ? ours : theirs,
+    rebasing,
     file: path.relative(root, file)
   }
 }
 
-/** 选定一边，写回文件并 git add */
+/** 选定一边，写回文件并登记为已解决 */
 export function resolveBaselineConflict(root, slug, versionNo) {
   const file = paths.baselineFile(root, slug)
   fs.writeFileSync(file, versionNo + '\n', 'utf8')
   const rel = path.relative(root, file)
   const r = git(root, ['add', rel])
-  if (!r.ok) throw err.bad('GIT_ADD_FAILED', `git add 失败：${r.err}`)
+  if (!r.ok) throw err.bad('GIT_STAGE_FAILED', `登记解决结果失败：${r.err}`)
   return { file: rel, versionNo }
 }
 
@@ -435,4 +449,272 @@ export function contributors(root, slug, limit = 20) {
     const m = /^\s*(\d+)\s+(.+?)\s+<(.*)>$/.exec(line)
     return m ? { commits: Number(m[1]), name: m[2], email: m[3] } : null
   }).filter(Boolean).slice(0, limit)
+}
+
+
+// ==================== Git 助手 ====================
+//
+// 这一段存在的理由：用户不该为了用这个软件去学 git。
+// 以前遇到「没纳入 Git」「rebase 卡住了」，产品只会甩一句命令让人自己去终端敲，
+// 那等于把最难的一步原样丢回给用户。下面把每种处境都变成一个可执行的动作。
+
+/** 读取提交身份。没有身份 git 会在第一次提交时直接失败，得提前发现 */
+export function identity(root) {
+  const name = git(root, ['config', '--get', 'user.name']).out
+  const email = git(root, ['config', '--get', 'user.email']).out
+  return { name: name || '', email: email || '', complete: !!(name && email) }
+}
+
+export function setIdentity(root, { name, email, global: isGlobal = false } = {}) {
+  requireRepo(root)
+  const scope = isGlobal ? '--global' : '--local'
+  const done = []
+  if (name && String(name).trim()) {
+    git(root, ['config', scope, 'user.name', String(name).trim()])
+    done.push('姓名')
+  }
+  if (email && String(email).trim()) {
+    git(root, ['config', scope, 'user.email', String(email).trim()])
+    done.push('邮箱')
+  }
+  if (!done.length) throw err.bad('IDENTITY_EMPTY', '姓名和邮箱至少填一个')
+  return { fields: done, scope: isGlobal ? '全局' : '本仓库' }
+}
+
+/**
+ * git 中途停下来的三种状态。
+ * rebase 停在冲突上时目录里会留下 rebase-merge/rebase-apply，
+ * merge 停下来则是 MERGE_HEAD —— 这是唯一可靠的判定方式，
+ * 靠解析 `git status` 的自然语言输出会随 git 版本和语言环境失效。
+ */
+export function inProgress(root) {
+  if (!isRepo(root)) return null
+  const dirOut = git(root, ['rev-parse', '--git-dir'])
+  if (!dirOut.ok) return null
+  const gitDir = path.resolve(root, dirOut.out)
+  if (fs.existsSync(path.join(gitDir, 'rebase-merge')) ||
+      fs.existsSync(path.join(gitDir, 'rebase-apply'))) return 'rebase'
+  if (fs.existsSync(path.join(gitDir, 'MERGE_HEAD'))) return 'merge'
+  if (fs.existsSync(path.join(gitDir, 'CHERRY_PICK_HEAD'))) return 'cherry-pick'
+  return null
+}
+
+/**
+ * 把仓库纳入 Git：init + 默认配置 + 身份 + 首次提交，一次做完。
+ * 拆成四条命令让用户自己敲，只会在任意一步卡住。
+ */
+export function initRepo(root, { name, email, message } = {}) {
+  if (!available()) {
+    throw err.bad('GIT_MISSING', '系统里没有找到 git',
+      'macOS 上在终端运行 xcode-select --install 即可获得 git')
+  }
+  const steps = []
+  if (isRepo(root)) {
+    steps.push({ name: '初始化', ok: true, detail: '已经是 Git 仓库，跳过' })
+  } else {
+    const r = git(root, ['init'])
+    if (!r.ok) throw err.bad('GIT_INIT_FAILED', `初始化失败：${r.err}`)
+    steps.push({ name: '初始化', ok: true, detail: `已在 ${root} 建立 Git 仓库` })
+  }
+
+  const applied = ensureRepoDefaults(root)
+  steps.push({ name: '默认配置', ok: true, detail: applied.length ? applied.join('；') : '已是推荐配置' })
+
+  if (name || email) setIdentity(root, { name, email })
+  const who = identity(root)
+  if (!who.complete) {
+    steps.push({
+      name: '提交身份',
+      ok: false,
+      detail: '还没有配置姓名和邮箱，Git 会拒绝提交。在设置里填一次即可'
+    })
+    return { steps, committed: false, needIdentity: true }
+  }
+  steps.push({ name: '提交身份', ok: true, detail: `${who.name} <${who.email}>` })
+
+  const owned = OWNED_PATHS.filter((p) => fs.existsSync(path.join(root, p)))
+  const add = git(root, ['add', '--', ...owned])
+  if (!add.ok) throw err.bad('GIT_STAGE_FAILED', `暂存失败：${add.err}`)
+
+  const staged = git(root, ['diff', '--cached', '--name-only']).out
+  if (!staged) {
+    steps.push({ name: '首次提交', ok: true, detail: '没有需要提交的内容' })
+    return { steps, committed: false, needIdentity: false }
+  }
+
+  const msg = String(message || '').trim() || 'chore: 用 Flowlark 管理原型仓库'
+  const commit = git(root, ['commit', '-m', msg])
+  if (!commit.ok) throw err.bad('GIT_COMMIT_FAILED', `提交失败：${commit.err}`)
+  steps.push({
+    name: '首次提交',
+    ok: true,
+    detail: `${staged.split('\n').filter(Boolean).length} 个文件已提交`
+  })
+  return { steps, committed: true, needIdentity: false }
+}
+
+/** 用户在编辑器里改完了冲突文件，登记为「已解决」 */
+export function markResolved(root, relPaths) {
+  requireRepo(root)
+  const list = (Array.isArray(relPaths) ? relPaths : [relPaths]).map(String).filter(Boolean)
+  if (!list.length) throw err.bad('NO_FILES', '没有指定文件')
+
+  const still = new Set(listConflicts(root).map((c) => c.path))
+  for (const rel of list) {
+    if (!still.has(rel)) continue
+    const full = path.join(root, rel)
+    if (fs.existsSync(full) && /<{7} |={7}$|>{7} /m.test(fs.readFileSync(full, 'utf8'))) {
+      throw err.bad('CONFLICT_MARKERS_LEFT', `${rel} 里还留着冲突标记`,
+        '把 <<<<<<< ======= >>>>>>> 三行连同不要的那一半删掉，只留最终内容')
+    }
+  }
+  const r = git(root, ['add', '--', ...list])
+  if (!r.ok) throw err.bad('GIT_STAGE_FAILED', `登记失败：${r.err}`)
+  return { files: list }
+}
+
+/**
+ * 冲突全部解决后，让 git 接着往下走。
+ * GIT_EDITOR=true 是关键：不设的话 git 会打开 vim 等用户写提交信息，
+ * 而我们是在图形界面或非交互 CLI 里调它，用户只会看到程序卡住。
+ */
+export function continueInProgress(root) {
+  requireRepo(root)
+  const state = inProgress(root)
+  if (!state) return { state: null, done: true, message: '没有正在进行的合并，无需继续' }
+
+  const remaining = listConflicts(root)
+  if (remaining.length) {
+    throw err.bad('CONFLICTS_REMAIN', `还有 ${remaining.length} 个文件没解决`,
+      remaining.map((c) => c.path).join('、'))
+  }
+
+  // 解决冲突的过程本身会往 oplog 里写一条记录，于是 oplog 变成「已暂存又被改过」。
+  // git 认为工作区没整理干净，拒绝继续，还会给出一句指向 git add 的提示 ——
+  // 那正是我们不想让用户看到的东西。这里把自己管的文件先收进暂存区。
+  const owned = OWNED_PATHS.filter((p) => fs.existsSync(path.join(root, p)))
+  if (owned.length) git(root, ['add', '--', ...owned])
+
+  const cmd = state === 'rebase' ? ['rebase', '--continue']
+    : state === 'merge' ? ['commit', '--no-edit']
+      : ['cherry-pick', '--continue']
+  const r = spawnSync('git', cmd, {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, GIT_EDITOR: 'true' },
+    maxBuffer: 32 * 1024 * 1024
+  })
+  if (r.status !== 0) {
+    const stillConflicted = listConflicts(root)
+    if (stillConflicted.length) {
+      return { state, done: false, conflicts: stillConflicted, message: '继续时又遇到了下一批冲突' }
+    }
+    // git 这类提示常走 stdout 而不是 stderr，只读 stderr 会得到一句空错误
+    const why = [(r.stderr || '').trim(), (r.stdout || '').trim()].filter(Boolean).join('\n')
+    throw err.bad('GIT_CONTINUE_FAILED', '继续失败', why || '没有更多信息，可以试试放弃这次同步再重来')
+  }
+  const after = inProgress(root)
+  return {
+    state,
+    done: !after,
+    conflicts: listConflicts(root),
+    message: after ? '还有后续提交要处理，可以再点一次继续' : '合并已完成'
+  }
+}
+
+/** 放弃这次合并，回到操作之前的状态 */
+export function abortInProgress(root) {
+  requireRepo(root)
+  const state = inProgress(root)
+  if (!state) return { state: null, aborted: false, message: '没有正在进行的合并' }
+  const cmd = state === 'rebase' ? ['rebase', '--abort']
+    : state === 'merge' ? ['merge', '--abort'] : ['cherry-pick', '--abort']
+  const r = git(root, cmd)
+  if (!r.ok) throw err.bad('GIT_ABORT_FAILED', `放弃失败：${r.err}`)
+  return { state, aborted: true, message: '已回到同步之前的状态，本地改动没有丢' }
+}
+
+/**
+ * Git 助手的核心：看一眼当前处境，给出一件该做的事。
+ *
+ * 返回的每条 action 都是产品自己能执行的动作（有 api 字段），
+ * 而不是让用户去终端敲的命令 —— 这是这个模块存在的全部意义。
+ */
+export function diagnose(root) {
+  const checks = []
+  const actions = []
+  const push = (level, title, detail, action) => {
+    checks.push({ level, title, detail })
+    if (action) actions.push(action)
+  }
+
+  if (!available()) {
+    push('error', '没装 Git', '同步、历史、协作都依赖它',
+      { key: 'install-git', label: '查看安装方法', kind: 'link',
+        detail: 'macOS：终端运行 xcode-select --install；其他系统见 git-scm.com/downloads' })
+    return { ok: false, stage: 'no-git', checks, actions }
+  }
+
+  if (!isRepo(root)) {
+    push('error', '还没纳入 Git', '纳入之后才有历史、协作和冲突处理',
+      { key: 'init', label: '纳入 Git 管理', kind: 'primary', api: 'POST /api/git/init' })
+    return { ok: false, stage: 'no-repo', checks, actions }
+  }
+  push('ok', '已纳入 Git', root)
+
+  const who = identity(root)
+  if (!who.complete) {
+    push('error', '缺少提交身份', 'Git 需要知道提交是谁做的，否则会拒绝提交',
+      { key: 'identity', label: '填写姓名和邮箱', kind: 'primary', api: 'PUT /api/git/identity' })
+  } else {
+    push('ok', '提交身份', `${who.name} <${who.email}>`)
+  }
+
+  const state = inProgress(root)
+  const conflicts = listConflicts(root)
+  if (state) {
+    if (conflicts.length) {
+      const assisted = conflicts.filter((c) => c.assisted).length
+      push('warn', `${state === 'rebase' ? '同步' : '合并'}停在冲突上`,
+        `${conflicts.length} 个文件待处理${assisted ? `，其中 ${assisted} 个可以一键选择` : ''}`,
+        { key: 'resolve', label: '去处理冲突', kind: 'primary', api: 'GET /api/git/conflicts' })
+    } else {
+      push('warn', '冲突已解决，还差最后一步', '让 Git 接着把这次同步走完',
+        { key: 'continue', label: '继续完成同步', kind: 'primary', api: 'POST /api/git/continue' })
+    }
+    actions.push({ key: 'abort', label: '放弃这次同步', kind: 'danger', api: 'POST /api/git/abort' })
+    return { ok: false, stage: 'conflicted', checks, actions }
+  }
+
+  const st = status(root)
+  const remote = getRemote(root)
+  if (!remote) {
+    push('warn', '没有配置远端', '只在本机留存，换台机器或团队协作需要远端仓库',
+      { key: 'remote', label: '配置远端地址', kind: 'default', api: 'PUT /api/git/remote' })
+  } else {
+    push('ok', '远端', remote.url)
+  }
+
+  if (!st.clean) {
+    push('warn', `${st.files.length} 处改动还没提交`, '提交后这些改动才进入历史，别人也才看得到',
+      { key: 'sync', label: remote ? '提交并同步' : '提交到本地', kind: 'primary', api: 'POST /api/git/sync' })
+  } else if (st.ahead) {
+    push('warn', `本地领先远端 ${st.ahead} 个提交`, '推送后团队才能拿到',
+      { key: 'sync', label: '推送到远端', kind: 'primary', api: 'POST /api/git/sync' })
+  } else if (st.behind) {
+    push('warn', `落后远端 ${st.behind} 个提交`, '拉下来才是最新的',
+      { key: 'sync', label: '拉取更新', kind: 'primary', api: 'POST /api/git/sync' })
+  } else {
+    push('ok', '工作区', '干净，且与远端一致')
+  }
+
+  return {
+    ok: checks.every((c) => c.level === 'ok'),
+    stage: checks.some((c) => c.level === 'error') ? 'blocked' : st.clean && !st.ahead && !st.behind ? 'clean' : 'pending',
+    checks,
+    actions,
+    branch: st.branch,
+    identity: who,
+    remote
+  }
 }

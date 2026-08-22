@@ -208,6 +208,39 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, hub.gitResolveBaseline(p.slug, body.versionNo))
   })
 
+  // ---- Git 助手 ----
+  // 这一组存在的意义：界面上原本印着让用户去终端敲的命令，现在都成了这里的一次调用。
+
+  r.get('/api/git/doctor', async (req, res) => sendJson(res, 200, hub.gitDoctor()))
+
+  r.post('/api/git/init', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.gitInit(body))
+  })
+
+  r.get('/api/git/identity', async (req, res) => sendJson(res, 200, hub.gitIdentity()))
+
+  r.put('/api/git/identity', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.gitSetIdentity(body))
+  })
+
+  r.post('/api/git/resolved', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.gitMarkResolved(body.paths || body.path))
+  })
+
+  r.post('/api/git/continue', async (req, res) => sendJson(res, 200, hub.gitContinue()))
+
+  r.post('/api/git/abort', async (req, res) => sendJson(res, 200, hub.gitAbort()))
+
+  r.get('/api/git/suggest-message', async (req, res) => sendJson(res, 200, hub.gitSuggestMessage()))
+
+  r.get('/api/git/brief', async (req, res, p, url) =>
+    sendJson(res, 200, hub.gitBrief(url.searchParams.get('intent'))))
+
+  r.get('/api/git/changes', async (req, res) => sendJson(res, 200, hub.gitChangeSummary()))
+
   r.get('/api/versions/:slug/:no/history', async (req, res, p, url) =>
     sendJson(res, 200, hub.gitVersionHistory(p.slug, p.no, Number(url.searchParams.get('limit')) || 30)))
 

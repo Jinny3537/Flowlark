@@ -9,7 +9,7 @@
 ## 目录布局
 
 ```
-my-prototypes/                    ← 用户自己 git init 的目录
+my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
 ├── flowlark.json                 仓库配置（schemaVersion / 仓库名 / 设置）
 ├── .gitattributes                原型 HTML 标记为二进制，避免污染 diff
 ├── projects/

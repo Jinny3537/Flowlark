@@ -32,9 +32,12 @@
       <a-button v-else-if="version && version.isBaseline" size="small" disabled>✓ 当前基线</a-button>
     </div>
 
-    <a-spin :spinning="loading" style="flex:1;overflow:hidden">
+    <div class="wb-stage">
+      <div v-if="loading" class="wb-loading"><a-spin size="large" /></div>
+
       <div class="wb" ref="wbRef">
-        <div class="wb-left" :style="{ width: leftPct + '%' }">
+        <div class="wb-left" :class="{ 'is-full': docsCollapsed }"
+             :style="docsCollapsed ? null : { width: leftPct + '%' }">
           <div style="height:40px;flex-shrink:0;border-bottom:1px solid #f0f0f0;background:#fafafa;display:flex;align-items:center;padding:0 12px;gap:8px;font-size:12px">
             <span class="text-secondary">🖥️ 原型预览</span>
             <span class="mono text-secondary" v-if="version">{{ version.file }} · {{ fmtSize(version.fileSize) }}</span>
@@ -47,6 +50,12 @@
             </a-tooltip>
             <a-tooltip title="原型由独立端口提供，与工作台不同源；里面的脚本读不到工作台的任何数据">
               <a-tag>🔒 沙箱隔离</a-tag>
+            </a-tooltip>
+            <a-divider type="vertical" style="margin:0 2px" />
+            <a-tooltip :title="docsCollapsed ? '恢复分屏' : '收起右侧文档，预览占满'">
+              <a-button type="text" size="small" @click="docsCollapsed = !docsCollapsed">
+                {{ docsCollapsed ? '⇥ 分屏' : '⇤ 全宽' }}
+              </a-button>
             </a-tooltip>
           </div>
 
@@ -78,9 +87,12 @@
                   referrerpolicy="no-referrer"></iframe>
         </div>
 
-        <div class="wb-split" :class="{ dragging }" @mousedown="startDrag"></div>
+        <a-tooltip title="拖动调整宽度，双击复位">
+          <div v-show="!docsCollapsed" class="wb-split" :class="{ dragging }"
+               @mousedown="startDrag" @dblclick="resetSplit"></div>
+        </a-tooltip>
 
-        <div class="wb-right">
+        <div v-show="!docsCollapsed" class="wb-right">
           <a-tabs v-model:activeKey="tab" style="flex-shrink:0" :tab-bar-style="{ padding: '0 16px' }">
             <a-tab-pane key="spec" tab="规格书" />
             <a-tab-pane key="changes" :tab="`变更日志 ${version ? version.changeCount : 0}`" />
@@ -232,7 +244,7 @@
           </div>
         </div>
       </div>
-    </a-spin>
+    </div>
 
     <BaselineModal v-model:open="blOpen" :slug="slug" :target="version"
                    :current="currentBaselineNo" :total-versions="siblings.length" @done="reload" />
@@ -294,7 +306,10 @@ const buildingOffline = ref(false)
 const tagDraft = ref([])
 const allTags = ref([])
 
-const leftPct = ref(Number(localStorage.getItem('flowlark.split')) || 64)
+// 原型是这个页面的主角，默认给它多一点。右侧文档区 min-width 340px 兜底可读性。
+const DEFAULT_SPLIT = 68
+const leftPct = ref(Number(localStorage.getItem('flowlark.split')) || DEFAULT_SPLIT)
+const docsCollapsed = ref(localStorage.getItem('flowlark.docsCollapsed') === '1')
 const dragging = ref(false)
 const wbRef = ref(null)
 
@@ -498,7 +513,8 @@ function startDrag(e) {
 function onDrag(e) {
   if (!dragging.value || !wbRef.value) return
   const r = wbRef.value.getBoundingClientRect()
-  leftPct.value = Math.max(30, Math.min(78, ((e.clientX - r.left) / r.width) * 100))
+  // 上限放到 88%：想把文档挤到最窄只留一条边的场景是合理的
+  leftPct.value = Math.max(30, Math.min(88, ((e.clientX - r.left) / r.width) * 100))
 }
 function stopDrag() {
   dragging.value = false
@@ -506,6 +522,13 @@ function stopDrag() {
   window.removeEventListener('mousemove', onDrag)
   window.removeEventListener('mouseup', stopDrag)
 }
+function resetSplit() {
+  leftPct.value = DEFAULT_SPLIT
+  localStorage.setItem('flowlark.split', String(DEFAULT_SPLIT))
+}
+
+watch(docsCollapsed, (v) => localStorage.setItem('flowlark.docsCollapsed', v ? '1' : '0'))
+
 onBeforeUnmount(stopDrag)
 
 watch(() => [props.slug, props.versionNo], reload)

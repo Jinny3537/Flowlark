@@ -32,7 +32,7 @@
             <div style="display:flex;gap:24px">
               <div>
                 <div class="mono" style="font-size:20px;font-weight:600"
-                     :style="p.baselineVersionNo ? 'color:#1677ff' : 'color:rgba(0,0,0,.25)'">
+                     :style="p.baselineVersionNo ? 'color:#0E9384' : 'color:rgba(0,0,0,.25)'">
                   {{ p.baselineVersionNo || '—' }}
                 </div>
                 <div class="text-secondary" style="font-size:12px">

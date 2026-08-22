@@ -1,10 +1,10 @@
 <template>
-  <a-config-provider :locale="zhCN">
+  <a-config-provider :locale="zhCN" :theme="theme">
     <a-layout style="height:100%">
       <a-layout-header style="height:56px;line-height:56px;background:#fff;border-bottom:1px solid #f0f0f0;padding:0 24px;display:flex;align-items:center;gap:16px">
         <div style="display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;cursor:pointer"
              @click="$router.push('/projects')">
-          <div style="width:28px;height:28px;border-radius:6px;background:#1677ff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">F</div>
+          <BrandMark :size="30" />
           <span>Flowlark</span>
           <span class="slogan">Where prototypes flow</span>
         </div>
@@ -78,7 +78,11 @@ import {
 } from '@ant-design/icons-vue'
 import SearchPalette from './components/SearchPalette.vue'
 import GitPanel from './components/GitPanel.vue'
+import BrandMark from './components/BrandMark.vue'
+import { antdTheme } from './brand'
 import { useAppStore } from './store'
+
+const theme = antdTheme
 import { api } from './api'
 
 const app = useAppStore()
@@ -145,7 +149,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 <style>
 /* Slogan 只在够宽的屏上显示，窄屏优先保证功能区 */
 .slogan {
-  font-size: 12px; font-weight: 400; color: rgba(0,0,0,.35);
+  font-size: 12px; font-weight: 400; color: #0E9384; opacity: .72;
   letter-spacing: .3px; white-space: nowrap;
 }
 @media (max-width: 1100px) { .slogan { display: none; } }
@@ -155,7 +159,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   height: 30px; padding: 0 10px; border: 1px solid #f0f0f0; border-radius: 6px;
   color: rgba(0,0,0,.45); font-size: 13px; background: #fafafa; transition: all .2s;
 }
-.search-trigger:hover { border-color: #91caff; color: #1677ff; background: #fff; }
+.search-trigger:hover { border-color: #7FD8CA; color: #0E9384; background: #fff; }
 .search-trigger kbd {
   font-family: inherit; font-size: 11px; background: #fff; border: 1px solid #e8e8e8;
   border-radius: 4px; padding: 1px 5px; color: rgba(0,0,0,.35);

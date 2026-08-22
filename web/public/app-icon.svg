@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><title>Flowlark app icon — glide</title><defs><linearGradient id="fl-glide-tile-teal" gradientUnits="userSpaceOnUse" x1="0" y1="128" x2="128" y2="0"><stop offset="0" stop-color="#0B5F55"/><stop offset="1" stop-color="#2ED3B7"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#fl-glide-tile-teal)"/><g transform="translate(19.200000000000003,19.200000000000003) scale(0.7) translate(2.5,-8.566) scale(1.064)"><g fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round">
+  <path d="M9 98 C26 98 40 94 52 86"/>
+  <path d="M14 116 C36 115 55 108 70 96"/>
+</g>
+<g transform="translate(1,-10) scale(0.8) translate(12,16)" fill="#FFFFFF"><path d="M120 40 C110 38 98 39 86 42 C66 46 44 40 22 22 C34 44 50 58 68 64 C52 74 38 88 28 106 C50 94 72 78 88 62 C100 54 112 47 120 40 Z"/></g></g></svg>

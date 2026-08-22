@@ -96,7 +96,7 @@ export async function init(pos, values) {
   ]))
   next(
     `flowlark new "项目名"     ${c.dim('创建第一个项目')}`,
-    `git init && git add . && git commit -m "init"   ${c.dim('纳入版本控制')}`
+    `flowlark git setup       ${c.dim('纳入 Git 版本控制')}`
   )
 }
 

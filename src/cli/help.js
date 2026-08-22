@@ -33,6 +33,7 @@ ${c.bold('Git')}
   ${c.cyan('history')} <项目> <版本>  这一版都谁改过、改了哪部分
   ${c.cyan('blame')} <项目>        基线变迁史：什么时候切到了哪一版、谁切的
   ${c.cyan('resolve')}             查看冲突；基线冲突可辅助解决
+  ${c.cyan('git')}                 Git 助手：体检、纳入管理、继续/放弃、交给 AI 助理
 
 ${c.bold('系统')}
   ${c.cyan('config')}              查看 / 修改配置（服务、Git、业务规则、外观）
@@ -63,7 +64,8 @@ export const COMMAND_HELP = {
   .gitattributes    HTML 标为 binary；操作日志用 union 合并策略避免无谓冲突
   .gitignore
 
-之后 ${c.cyan('git init && git add . && git commit')} 就能纳入版本控制，团队 pull 后各自本地跑。
+之后 ${c.cyan('flowlark git setup')} 就能纳入版本控制 —— 初始化、提交身份、首次提交一次做完。
+团队 pull 后各自本地跑。
 `,
 
   new: `${c.bold('flowlark new')} <项目名> [选项]
@@ -239,12 +241,48 @@ ${c.bold('只提交 Flowlark 自己的路径')}（projects/、flowlark.json 等�
   resolve: `${c.bold('flowlark resolve')} [项目] [版本号]
 
   不带参数            列出所有冲突文件，并区分哪些能辅助解决
-  <项目> <版本号>      直接把该项目的基线定为这一版，并 git add
+  <项目> <版本号>      直接把该项目的基线定为这一版
 
 基线冲突的内容就是一行版本号，两边各自想指向谁一目了然，
 所以不需要用户去理解 Git 的冲突标记，直接问「保留哪个」就行。
 
+注意：${c.dim('rebase 期间 Git 的 ours/theirs 是反的')}，Flowlark 已经翻译好了，
+显示的「你这边」「对方」就是字面意思，照着选不会错。
+
 JSON 和 Markdown 的冲突需要手工处理，但因为键序稳定、行粒度小，通常一眼能看懂。
+改完执行 ${c.cyan('flowlark git resolved <文件>')}，全部解决后 ${c.cyan('flowlark git continue')}。
+`,
+
+  git: `${c.bold('flowlark git')} [子命令]
+
+不带子命令时做一次体检：看当前处境，告诉你下一件该做的事。
+
+  setup       把仓库纳入 Git（初始化 + 身份 + 首次提交，一步到位）
+                --name / --email / --remote / -m
+  whoami      查看或设置提交身份（--name --email，加 --global 写全局）
+  resolved    在编辑器里改好冲突文件后，登记为已解决（不填则登记全部）
+  continue    冲突都解决了，让这次同步走完
+  abort       放弃这次同步，回到操作之前
+  brief       生成一段交给 AI 助理的说明（含仓库处境与必须遵守的约定）
+
+${c.bold('为什么有这一组命令')}
+
+因为你不该为了用这个软件去学 Git。以前遇到「没纳入 Git」「rebase 卡住了」，
+产品只会印一行命令让你自己去终端敲 —— 那是在最需要帮忙的时刻把人推开。
+现在每种处境都有对应的动作，记不住就敲 ${c.cyan('flowlark git')}。
+
+${c.bold('关于 AI 助理')}
+
+Flowlark 自己不接 AI：不想为了生成一句提交说明就要你去申请 API key，
+更不想把仓库内容发给第三方。但你手边多半已经有 Claude Code、Cursor 这类工具，
+它们能读仓库也能执行 git，缺的只是上下文 —— 不知道 BASELINE 是一行文本、
+不知道哪些路径归 Flowlark 管，于是会给出错误的建议。
+
+${c.cyan('flowlark git brief')} 就是把这些整理成一段说明，粘给助理即可。
+交出去的是描述，不是数据：只有路径、状态和规则，没有任何原型内容。
+
+  flowlark git brief | pbcopy        ${c.dim('直接进剪贴板')}
+  flowlark git brief > 交给助理.md    ${c.dim('存成文件')}
 `,
 
   watch: `${c.bold('flowlark watch')} <项目> -d <目录>

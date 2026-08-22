@@ -108,6 +108,17 @@ export const api = {
   gitSync: (message) => post('/api/git/sync', { message }),
   gitConflicts: () => get('/api/git/conflicts'),
   gitResolve: (slug, versionNo) => post(`/api/git/resolve/${enc(slug)}`, { versionNo }),
+
+  // Git 助手：界面上曾经印着让用户去终端敲的命令，现在都是这几个调用
+  gitDoctor: () => get('/api/git/doctor'),
+  gitInit: (body) => post('/api/git/init', body || {}),
+  gitIdentity: () => get('/api/git/identity'),
+  gitSetIdentity: (body) => put('/api/git/identity', body),
+  gitMarkResolved: (paths) => post('/api/git/resolved', { paths }),
+  gitContinue: () => post('/api/git/continue', {}),
+  gitAbort: () => post('/api/git/abort', {}),
+  gitSuggestMessage: () => get('/api/git/suggest-message'),
+  gitBrief: (intent) => get(`/api/git/brief${intent ? `?intent=${enc(intent)}` : ''}`),
   versionHistory: (slug, no) => get(`/api/versions/${enc(slug)}/${enc(no)}/history`),
   specHistory: (slug, no) => get(`/api/versions/${enc(slug)}/${enc(no)}/spec-history`),
   specAt: (slug, no, ref) => get(`/api/versions/${enc(slug)}/${enc(no)}/spec-at?ref=${enc(ref)}`),

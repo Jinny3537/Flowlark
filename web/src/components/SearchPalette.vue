@@ -134,6 +134,6 @@ function renderSnippet(snip) {
   font-family: inherit; color: rgba(0,0,0,.88);
 }
 .palette-item { padding: 10px 16px; cursor: pointer; border-bottom: 1px solid #fafafa; }
-.palette-item.active { background: #e6f4ff; }
+.palette-item.active { background: #E6F7F4; }
 .palette-item mark { background: #ffe58f; padding: 0 1px; border-radius: 2px; }
 </style>

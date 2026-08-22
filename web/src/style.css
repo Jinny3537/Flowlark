@@ -19,32 +19,65 @@ body { background: #f5f5f5; }
 }
 .cli-hint button:hover { color: #fff; }
 
-/* 分屏工作台 */
-.wb { display: flex; height: 100%; overflow: hidden; }
-.wb-left { display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+/* 分屏工作台
+   舞台层单独存在，是为了让 loading 用绝对定位覆盖，而不是包一层容器 ——
+   a-spin 会插入 .ant-spin-container，那一层没有 height:100%，
+   高度链一断，里面的 iframe 就塌成默认的 150px。 */
+.wb-stage { flex: 1; min-height: 0; position: relative; display: flex; }
+.wb-loading {
+  position: absolute; inset: 0; z-index: 5; display: flex;
+  align-items: center; justify-content: center; background: rgba(255,255,255,.65);
+}
+
+.wb { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+
+/* 预览区的宽度由 leftPct 显式决定，不参与弹性伸缩 ——
+   否则右侧文档区的 min-width 会反过来把预览挤小，
+   窗口越窄挤得越狠，最后看起来就跟右边一样大。 */
+.wb-left {
+  flex: 0 0 auto; min-width: 320px; min-height: 0;
+  display: flex; flex-direction: column; overflow: hidden; background: #fff;
+}
+/* 全宽预览：文档区收起，预览吃满 */
+.wb-left.is-full { flex: 1 1 auto; width: auto !important; }
+
 .wb-split { width: 6px; flex-shrink: 0; background: #f0f0f0; cursor: col-resize; position: relative; }
-.wb-split:hover, .wb-split.dragging { background: #91caff; }
+.wb-split:hover, .wb-split.dragging { background: #7FD8CA; }
 .wb-split::after {
   content: ''; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
   width: 2px; height: 32px; background: rgba(0,0,0,.25); border-radius: 2px;
 }
-.wb-right { flex: 1; min-width: 340px; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
-.wb-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+
+.wb-right {
+  flex: 1 1 0; min-width: 340px; min-height: 0;
+  display: flex; flex-direction: column; overflow: hidden; background: #fff;
+}
+.wb-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
+
+/* 窄屏放不下两栏（320 + 340 + 分隔条），改成上下排：预览在上，文档在下。
+   横向硬挤的结果是两边都难用。 */
+@media (max-width: 900px) {
+  .wb { flex-direction: column; }
+  .wb-left, .wb-left.is-full { width: auto !important; flex: 1 1 55%; min-width: 0; }
+  .wb-right { flex: 1 1 45%; min-width: 0; }
+  .wb-split { width: auto; height: 6px; cursor: row-resize; }
+  .wb-split::after { left: 50%; top: 2px; transform: translateX(-50%); width: 32px; height: 2px; }
+}
 
 /* 版本时间线 */
 .ver-row {
   background: #fff; border: 1px solid #f0f0f0; border-radius: 8px; padding: 14px 18px;
   display: flex; align-items: center; gap: 16px; cursor: pointer; transition: all .2s; margin-bottom: 10px;
 }
-.ver-row:hover { border-color: #91caff; box-shadow: 0 6px 16px rgba(0,0,0,.08); }
-.ver-row.is-baseline { border-color: #91caff; background: #fcfeff; }
+.ver-row:hover { border-color: #7FD8CA; box-shadow: 0 6px 16px rgba(0,0,0,.08); }
+.ver-row.is-baseline { border-color: #7FD8CA; background: #FAFEFD; }
 .ver-row.is-void { opacity: .55; }
 .ver-row.is-void .ver-no { text-decoration: line-through; }
 .ver-no { font-size: 15px; font-weight: 600; min-width: 76px; }
 
 .baseline-banner {
-  background: linear-gradient(135deg,#e6f4ff 0%,#f0f8ff 100%);
-  border: 1px solid #91caff; border-radius: 8px; padding: 20px 24px;
+  background: linear-gradient(135deg,#E6F7F4 0%,#F2FBF9 100%);
+  border: 1px solid #7FD8CA; border-radius: 8px; padding: 20px 24px;
   margin-bottom: 20px; display: flex; align-items: center; gap: 20px;
 }
 
@@ -60,7 +93,7 @@ body { background: #f5f5f5; }
 .md table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
 .md th { background:#fafafa; text-align:left; padding:8px 12px; border:1px solid #f0f0f0; font-weight:500; }
 .md td { padding:8px 12px; border:1px solid #f0f0f0; color:rgba(0,0,0,.65); vertical-align:top; }
-.md blockquote { border-left:3px solid #91caff; background:#e6f4ff; padding:8px 14px; margin:12px 0; border-radius:0 6px 6px 0; }
+.md blockquote { border-left:3px solid #7FD8CA; background:#E6F7F4; padding:8px 14px; margin:12px 0; border-radius:0 6px 6px 0; }
 
 /* 变更条目 */
 .cl-item { display:flex; gap:10px; padding:10px 12px; border:1px solid #f0f0f0; border-radius:6px; margin-bottom:8px; }

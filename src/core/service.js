@@ -4,6 +4,7 @@ import { err } from './errors.js'
 import * as store from './store.js'
 import * as rules from './rules.js'
 import * as gitx from './git.js'
+import * as assistant from './assistant.js'
 import * as readstate from './readstate.js'
 import * as offline from './offline.js'
 import { search as runSearch } from './search.js'
@@ -724,6 +725,82 @@ export class Hub {
 
   gitContributors(slug, limit) {
     return gitx.contributors(this.root, slug, limit)
+  }
+
+  // ==================== Git 助手 ====================
+  //
+  // 以前这些事都靠在界面上打印一行命令、让用户自己去终端敲。
+  // 现在每一件都是产品自己能执行的动作。
+
+  /** 体检：当前处境是什么、下一件该做的事是什么 */
+  gitDoctor() {
+    return gitx.diagnose(this.root)
+  }
+
+  gitInit({ name, email, message, remote } = {}) {
+    const r = gitx.initRepo(this.root, { name, email, message })
+    if (remote && String(remote).trim()) {
+      gitx.setRemote(this.root, String(remote).trim())
+      this.config.settings.git.remote = String(remote).trim()
+      writeConfig(this.root, this.config)
+      r.steps.push({ name: '远端', ok: true, detail: `已配置 ${String(remote).trim()}` })
+    }
+    this.#log(null, null, 'GIT_INIT', '把仓库纳入 Git 管理')
+    return r
+  }
+
+  gitIdentity() {
+    return gitx.identity(this.root)
+  }
+
+  gitSetIdentity({ name, email, global: isGlobal } = {}) {
+    const r = gitx.setIdentity(this.root, { name, email, global: isGlobal })
+    // 同步到 Flowlark 自己的配置，两处身份保持一致，用户只需要填一次
+    if (name) this.config.settings.git.userName = String(name).trim()
+    if (email) this.config.settings.git.userEmail = String(email).trim()
+    writeConfig(this.root, this.config)
+    this.#log(null, null, 'GIT_IDENTITY', `设置提交身份（${r.scope}）`)
+    return { ...r, identity: gitx.identity(this.root) }
+  }
+
+  gitInProgress() {
+    return gitx.inProgress(this.root)
+  }
+
+  gitMarkResolved(paths) {
+    const r = gitx.markResolved(this.root, paths)
+    this.#log(null, null, 'CONFLICT_RESOLVE', `标记 ${r.files.length} 个文件已解决`)
+    return r
+  }
+
+  gitContinue() {
+    const r = gitx.continueInProgress(this.root)
+    if (r.done) this.#log(null, null, 'GIT_CONTINUE', '完成中断的同步')
+    return r
+  }
+
+  gitAbort() {
+    const r = gitx.abortInProgress(this.root)
+    if (r.aborted) this.#log(null, null, 'GIT_ABORT', '放弃中断的同步')
+    return r
+  }
+
+  /** 建议一条提交说明。没有 AI 也能用，写不准就返回 null 让用户自己填 */
+  gitSuggestMessage() {
+    return { message: assistant.suggestMessage(this.root) }
+  }
+
+  /** 生成交给 AI 助理的说明。只给路径、状态和规则，不外发原型内容 */
+  gitBrief(intent) {
+    return {
+      intent: intent || 'commit',
+      text: assistant.brief(this.root, intent),
+      rules: assistant.ASSISTANT_RULES
+    }
+  }
+
+  gitChangeSummary() {
+    return assistant.changeSummary(this.root)
   }
 
   // ==================== 内部 ====================

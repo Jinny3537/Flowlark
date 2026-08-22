@@ -28,8 +28,8 @@
       <ChangeList :items="cumulative.items" :location-counts="cumulative.locationCounts" show-hot />
     </div>
 
-    <div class="wb" style="flex:1">
-      <div class="wb-left" style="width:50%">
+    <div class="wb" style="flex:1;min-height:0">
+      <div class="wb-left" style="width:50%;flex:0 0 50%">
         <div class="cmp-bar">
           <a-select v-model:value="a" size="small" style="width:230px" @change="load">
             <a-select-option v-for="v in versions" :key="v.versionNo" :value="v.versionNo">
@@ -47,7 +47,7 @@
 
       <div class="wb-split" style="cursor:default"></div>
 
-      <div class="wb-left" style="flex:1">
+      <div class="wb-left" style="flex:1 1 auto;width:auto">
         <div class="cmp-bar">
           <a-select v-model:value="b" size="small" style="width:230px" @change="load">
             <a-select-option v-for="v in versions" :key="v.versionNo" :value="v.versionNo">

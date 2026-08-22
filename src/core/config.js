@@ -60,7 +60,7 @@ export const SCHEMA = [
   },
   {
     key: 'git.autoCommit', type: 'bool', default: false, label: '自动提交',
-    note: '每次写操作后自动 git commit。适合单人使用；多人协作建议关掉，攒成有意义的提交再 sync'
+    note: '每次写操作后自动提交一次。适合单人使用；多人协作建议关掉，攒成有意义的提交再同步'
   },
 
   // ---------- 业务规则 ----------

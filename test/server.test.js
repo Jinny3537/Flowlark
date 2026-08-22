@@ -338,6 +338,9 @@ describe('远端 API', () => {
     const r = await api.send('PUT', '/api/git/remote', { url: 'https://example.com/a.git' })
     t.assert.strictEqual(r.status, 400)
     t.assert.strictEqual(r.body.code, 'NOT_GIT_REPO')
-    t.assert.match(r.body.hint, /git init/)
+    // 提示必须指向 Flowlark 自己的命令。产品不再让用户去终端敲 git ——
+    // 这条断言就是那个约定的守门人：谁把裸 git 写回提示里，这里会红。
+    t.assert.match(r.body.hint, /flowlark git setup/)
+    t.assert.doesNotMatch(r.body.hint, /git init|git add|git commit/)
   })
 })

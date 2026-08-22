@@ -38,6 +38,7 @@ const COMMANDS = {
   history: cmdGit.history,
   blame: cmdGit.blame,
   resolve: cmdGit.resolveCmd,
+  git: gitAssistant,
   // 系统
   config: cmdAdmin.config,
   remote: cmdAdmin.remote,
@@ -58,7 +59,44 @@ const ALIASES = {
   push: 'sync', pull: 'sync', commit: 'sync',
   tags: 'tag', seen: 'read', vendor: 'offline', cmp: 'compare',
   settings: 'config', conf: 'config', cfg: 'config',
-  origin: 'remote', upload: 'attach', files: 'attach', network: 'lan'
+  origin: 'remote', upload: 'attach', files: 'attach', network: 'lan',
+  doctor: 'git', continue: 'git', abort: 'git', whoami: 'git'
+}
+
+/**
+ * `flowlark git [子命令]` —— Git 助手。
+ *
+ * 单独做成子命令组，是因为这些动作只在「Git 出状况」时才需要，
+ * 平铺到顶层会让 help 里挤进六七个大多数人一辈子用不上的名字。
+ * 不带子命令时做体检，这是最常见的入口：出问题了先敲 flowlark git。
+ *
+ * 顶层别名 doctor/continue/abort/whoami 会落到这里 ——
+ * 用户凭直觉敲 `flowlark continue` 也能work。
+ */
+const GIT_SUB = {
+  setup: cmdGit.setup,
+  init: cmdGit.setup,
+  whoami: cmdGit.whoami,
+  identity: cmdGit.whoami,
+  resolved: cmdGit.resolved,
+  done: cmdGit.resolved,
+  continue: cmdGit.continueCmd,
+  abort: cmdGit.abort,
+  cancel: cmdGit.abort,
+  brief: cmdGit.brief,
+  ai: cmdGit.brief,
+  doctor: cmdGit.doctor,
+  status: cmdGit.doctor
+}
+
+async function gitAssistant(pos, values, raw) {
+  // raw 是用户敲的原始命令名。`flowlark continue` 走到这里时 pos 里没有子命令，
+  // 得从命令名本身还原意图。
+  const alias = raw && GIT_SUB[raw] ? raw : null
+  const sub = alias || (pos[0] && GIT_SUB[pos[0]] ? pos[0] : null)
+  const handler = sub ? GIT_SUB[sub] : cmdGit.doctor
+  const rest = alias ? pos : pos.slice(sub ? 1 : 0)
+  return handler(rest, values)
 }
 
 const OPTIONS = {
@@ -90,6 +128,11 @@ const OPTIONS = {
   yes: { type: 'boolean', short: 'y' },
   'no-open': { type: 'boolean' },
   'no-push': { type: 'boolean' },
+  name: { type: 'string', multiple: true },
+  email: { type: 'string', multiple: true },
+  remote: { type: 'string', multiple: true },
+  intent: { type: 'string', multiple: true },
+  global: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' }
 }
 
@@ -133,7 +176,8 @@ export async function run(argv) {
   }
 
   try {
-    await handler(parsed.positionals, parsed.values)
+    // 第三个参数是用户敲的原始命令名，git 助手要靠它区分 `flowlark continue` 和 `flowlark git`
+    await handler(parsed.positionals, parsed.values, argv[0])
   } catch (e) {
     if (e instanceof PhError) {
       console.error(c.red('✗') + ' ' + e.message)

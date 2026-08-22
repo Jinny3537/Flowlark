@@ -1,4 +1,8 @@
+<img src="assets/brand/flowlark-mark.svg" width="72" alt="Flowlark">
+
 # Flowlark
+
+*Where prototypes flow*
 
 本地原型版本库。**CLI 管数据，浏览器看原型，数据是纯文本文件，直接进 Git。**
 
@@ -51,7 +55,7 @@ flowlark open
 ## 磁盘上长什么样
 
 ```
-我的原型/                          ← 你自己 git init 的目录
+我的原型/                          ← flowlark git setup 纳入 Git 的目录
 ├── flowlark.json                 仓库配置
 ├── .gitattributes                HTML 标为 binary；oplog 用 union 合并
 ├── projects/
@@ -180,6 +184,33 @@ $ flowlark resolve
 ```
 
 用户不需要理解 Git 的冲突标记，直接回答「保留哪个」就行。
+
+这里有个坑值得单独说：**rebase 期间 Git 的 `ours` / `theirs` 是反的**。rebase 把远端提交当基底、把你的提交重放上去，于是 `<<<<<<< HEAD` 那半边是**别人的**，`>>>>>>>` 那半边才是你的。照搬 Git 的用词，用户会稳定地选错基线。Flowlark 在读冲突时就把它翻译好了，界面上的「你这边」「对方」是字面意思。
+
+### 3.5 Git 助手 — 从不让用户去敲 git
+
+这个产品的使用者是产品经理和研发，不是所有人都熟 rebase。以前遇到「没纳入 Git」「同步卡住了」，界面只会印一行命令让人自己去终端处理 —— 那等于在最需要帮忙的时刻把人推开。
+
+现在每种处境都对应一个动作：
+
+```bash
+$ flowlark git                  # 体检：现在什么状况，下一件该做什么
+$ flowlark git setup            # 初始化 + 提交身份 + 首次提交，一步到位
+$ flowlark git whoami --name 张小雨 --email zxy@example.com
+$ flowlark git resolved <文件>   # 在编辑器里改好了，登记为已解决
+$ flowlark git continue         # 冲突都解决了，让这次同步走完
+$ flowlark git abort            # 放弃这次同步，回到操作之前
+```
+
+工作台的 Git 面板是同一套能力的按钮版本，不再有任何「请复制这条命令」。
+
+**关于 AI 助理。** Flowlark 自己不接 AI —— 不想为了生成一句提交说明就要求用户申请 API key、配置模型，更不想把仓库内容发给第三方。但用户手边多半已经有 Claude Code、Cursor 这类工具，它们能读仓库也能执行 git，缺的只是上下文：不知道 BASELINE 是一行文本、不知道 oplog 是 union 合并的、不知道哪些路径归 Flowlark 管，于是会给出错误的建议。
+
+```bash
+$ flowlark git brief | pbcopy   # 粘给你的 AI 助理
+```
+
+交出去的是**描述，不是数据**：仓库路径、分支、冲突文件、以及那几条「不知道就一定会做错」的约定，不含任何原型内容。
 
 ### 4. 局域网分享 — 读开放，写留本机
 
@@ -385,6 +416,12 @@ docs/V2-BLUEPRINT.md  v2.0 蓝图：需求驱动的全链路
 当前版本还是用「地点」近似角色（局域网只读、本机可写），把 Git 权限如实反映到界面上是下一步的第一优先级，见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ---
+
+## 品牌
+
+标记是 **glide** —— 一只滑翔的云雀，下面两道是它掠过的气流。云雀取自产品名，滑翔与气流对应 slogan 里的 flow：原型在版本之间流动。
+
+主色 `#0E9384`，取自标记渐变（`#0B5F55` → `#2ED3B7`）的中段而非任一端 —— 深端在小字上发闷，亮端在白底上对比度不到 4.5:1。资源与用法边界见 [`assets/brand/`](assets/brand/README.md)。
 
 ## 不做
 

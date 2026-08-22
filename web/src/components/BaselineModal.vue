@@ -17,7 +17,7 @@
         <ArrowRightOutlined style="color:rgba(0,0,0,.25);font-size:18px" />
         <div style="flex:1;text-align:center">
           <div class="text-secondary" style="font-size:12px">新基线</div>
-          <div class="mono" style="font-size:18px;font-weight:600;margin:4px 0;color:#1677ff">{{ target.versionNo }}</div>
+          <div class="mono" style="font-size:18px;font-weight:600;margin:4px 0;color:#0E9384">{{ target.versionNo }}</div>
           <a-tag color="blue">研发默认看到此版</a-tag>
         </div>
       </div>
