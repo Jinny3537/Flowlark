@@ -31,6 +31,8 @@ ${c.bold('检索与组织')}
   ${c.cyan('req')}                  需求：list / show / new / link / unlink
   ${c.cyan('milestone')}            迭代：list / show / new / add / rm
   ${c.cyan('export')}               导出需求或迭代静态交付包
+  ${c.cyan('workspace')}            工作区：list / add / clone / remove
+  ${c.cyan('mirror')}               只读镜像：status / refresh / serve
 
 ${c.bold('Git')}
   ${c.cyan('sync')}                提交 + 拉取 + 推送，一步到位

@@ -125,6 +125,16 @@ export const api = {
   testNotification: (body) => post('/api/notifications/test', body),
   setNotificationWebhook: (provider, webhookUrl) => put(`/api/notifications/${enc(provider)}/webhook`, { webhookUrl }),
   deleteNotificationWebhook: (provider) => del(`/api/notifications/${enc(provider)}/webhook`),
+  listWorkspaces: () => get('/api/workspaces'),
+  registerWorkspace: (body) => post('/api/workspaces/register', body),
+  cloneWorkspace: (body) => post('/api/workspaces/clone', body),
+  removeWorkspace: (path) => del(`/api/workspaces?path=${enc(path)}`),
+  buildWorkspaceIndex: () => get('/api/workspace-index'),
+  searchWorkspaces: (q, limit = 50) => get(`/api/workspace-search?q=${enc(q)}&limit=${limit}`),
+  checkUpdate: (currentVersion, manifestUrl) => post('/api/update/check', { currentVersion, manifestUrl }),
+  downloadUpdate: (manifest, targetDir) => post('/api/update/download', { manifest, targetDir }),
+  mirrorStatus: () => get('/api/mirror'),
+  refreshMirror: () => post('/api/mirror/refresh', {}),
 
   // ---- 标签 ----
   allTags: () => get('/api/tags'),

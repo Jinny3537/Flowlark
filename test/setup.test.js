@@ -1,0 +1,3 @@
+import { after,describe,test } from'node:test';import fs from'node:fs';import os from'node:os';import path from'node:path';import{cleanup,tmpRepo}from'./helpers.js';import{inspectSetup,registerExistingWorkspace}from'../src/core/setup.js'
+const dirs=[];after(()=>{dirs.forEach(cleanup);delete process.env.FLOWLARK_HOME})
+describe('首次设置',()=>{test('检查并注册已有仓库',(t)=>{const home=fs.mkdtempSync(path.join(os.tmpdir(),'flowlark-home-')),root=tmpRepo();dirs.push(home,root);process.env.FLOWLARK_HOME=home;t.assert.strictEqual(inspectSetup(root).isRepo,true);const item=registerExistingWorkspace(root,{name:'演示'});t.assert.strictEqual(item.name,'演示')})})

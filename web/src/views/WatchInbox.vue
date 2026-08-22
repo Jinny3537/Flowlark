@@ -1,7 +1,7 @@
 <template>
   <div class="page-pad watch-page">
     <div class="page-title-row">
-      <div><h2>草稿箱</h2><p class="text-secondary">由 flowlark watch 自动收集的原型记录</p></div>
+      <div><h2>草稿箱</h2><p class="text-secondary">自动收集的原型记录会在这里等待整理</p></div>
       <a-button :loading="loading" @click="load"><template #icon><ReloadOutlined /></template>刷新</a-button>
     </div>
     <a-alert type="info" show-icon class="stack-md" message="自动归档成功后可直接进入版本补充变更日志；失败项会保留原因并允许重试。" />

@@ -64,10 +64,12 @@ describe('watch 自动归档', () => {
     child.stdout.on('data', (c) => { out += c })
 
     try {
-      await sleep(800) // 全量并发测试时子进程启动会变慢，等 watcher 明确进入监听
+      const ready = await waitUntil(() => out.includes('Ctrl+C'), 30000)
+      t.assert.strictEqual(ready, true, `watch 子进程未进入监听状态；输出：${out}`)
+      await sleep(200)
 
       fs.writeFileSync(path.join(watchDir, '订单中心_v1.4.html'), html('自动归档'))
-      await waitUntil(() => hub.listVersions('ord').length === 1)
+      await waitUntil(() => hub.listVersions('ord').length === 1, 30000)
 
       const versions = hub.listVersions('ord')
       t.assert.strictEqual(versions.length, 1, `应归档 1 个版本，实际 ${versions.length}；输出：${out}`)

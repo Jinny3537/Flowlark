@@ -25,7 +25,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     // 让局域网用户点了按钮再收到 403，是很差的体验。
     const requestCanWrite = net.allowWrite({ lan: lanActive, readonlyFromLan: readonly, isLocal: net.isLocalRequest(req) })
     const gitPermission = hub.writePermission()
-    const canWrite = requestCanWrite && gitPermission.canWrite
+    const canWrite = !runtime.mirror && requestCanWrite && gitPermission.canWrite
     sendJson(res, 200, {
       ok: true,
       app: 'flowlark',
@@ -36,12 +36,14 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
       maxFileBytes: s.server.maxFileBytes,
       canWrite,
       readonly: !canWrite,
-      readonlyReason: !requestCanWrite ? 'lan' : !gitPermission.canWrite ? 'git' : null,
+      readonlyReason: runtime.mirror ? 'mirror' : !requestCanWrite ? 'lan' : !gitPermission.canWrite ? 'git' : null,
+      mirror: !!runtime.mirror,
       gitPermission,
       lan: lanActive,
       requirementUrlTemplate: s.ui.requirementUrlTemplate,
       defaultTags: s.ui.defaultTags,
       dateStyle: s.ui.dateStyle,
+      updateManifestUrl: s.integrations.updateManifestUrl,
       rules: { requireChangelog: s.rules.requireChangelog, lockBaseline: s.rules.lockBaseline }
     })
   })
@@ -137,6 +139,18 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   })
   r.delete('/api/notifications/:provider/webhook', async (req, res, p) =>
     sendJson(res, 200, hub.deleteNotificationWebhook(p.provider)))
+
+  // ---- 工作区、更新与镜像 ----
+  r.get('/api/workspaces', async (req, res) => sendJson(res, 200, hub.listWorkspaces()))
+  r.post('/api/workspaces/register', async (req, res) => { const body=await readJson(req,maxBody);sendJson(res,201,hub.registerWorkspace(body.path,body)) })
+  r.post('/api/workspaces/clone', async (req, res) => { const body=await readJson(req,maxBody);sendJson(res,201,hub.cloneWorkspace(body.url,body.path,body)) })
+  r.delete('/api/workspaces', async (req, res, p, url) => sendJson(res,200,hub.removeWorkspace(url.searchParams.get('path'))))
+  r.get('/api/workspace-index', async (req, res) => sendJson(res,200,hub.buildWorkspaceIndex()))
+  r.get('/api/workspace-search', async (req,res,p,url) => sendJson(res,200,hub.searchWorkspaces(url.searchParams.get('q')||'',{limit:Number(url.searchParams.get('limit'))||50})))
+  r.post('/api/update/check', async (req,res) => {const body=await readJson(req,maxBody);sendJson(res,200,await hub.checkUpdate(body.currentVersion,body.manifestUrl))})
+  r.post('/api/update/download', async (req,res) => {const body=await readJson(req,maxBody);sendJson(res,200,await hub.downloadUpdate(body.manifest,body.targetDir))})
+  r.get('/api/mirror', async (req,res) => sendJson(res,200,hub.mirrorStatus()))
+  r.post('/api/mirror/refresh', async (req,res) => sendJson(res,200,hub.refreshMirror()))
 
   r.put('/api/projects/:slug', async (req, res, p) => {
     const body = await readJson(req, maxBody)

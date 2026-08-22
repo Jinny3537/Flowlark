@@ -41,11 +41,13 @@
         <a-tag v-else-if="app.lan" color="cyan" class="lan-status">局域网已开放</a-tag>
         <a-tag v-if="app.connected" color="green">运行中</a-tag>
         <a-tag v-else color="red">服务已停止</a-tag>
+        <a-tag v-if="updateAvailable" color="cyan" class="update-status">可更新至 {{ updateAvailable.version }}</a-tag>
       </a-layout-header>
 
       <a-layout>
         <a-layout-sider :width="188" theme="light" class="app-sidebar">
           <a-menu mode="inline" :selected-keys="activeKey ? [activeKey] : []" class="app-menu" @click="({ key }) => $router.push('/' + key)">
+            <a-menu-item key="actions"><template #icon><ControlOutlined /></template>个人工作台</a-menu-item>
             <a-menu-item key="projects"><template #icon><FolderOutlined /></template>项目</a-menu-item>
             <a-menu-item key="requirements"><template #icon><ProfileOutlined /></template>需求</a-menu-item>
             <a-menu-item key="milestones"><template #icon><CalendarOutlined /></template>迭代</a-menu-item>
@@ -56,14 +58,13 @@
           </a-menu>
 
           <div class="app-sidebar-footer">
+            <a-button class="app-settings-button workspace-button" block @click="$router.push('/setup')">
+              <template #icon><AppstoreOutlined /></template>改稿台
+            </a-button>
             <a-button class="app-settings-button" block @click="settingsOpen = true">
               <template #icon><SettingOutlined /></template>
               设置
             </a-button>
-            <div class="text-secondary app-sidebar-note">
-              数据是纯文本文件，直接进 Git。<br>
-              CLI 能做的事这里都能做。
-            </div>
           </div>
         </a-layout-sider>
 
@@ -91,8 +92,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import {
-  FolderOutlined, HistoryOutlined, DeleteOutlined, InboxOutlined, ProfileOutlined, CalendarOutlined, SendOutlined,
-  SearchOutlined, BranchesOutlined, SettingOutlined, EyeOutlined
+  FolderOutlined, HistoryOutlined, DeleteOutlined, InboxOutlined, ProfileOutlined, CalendarOutlined, SendOutlined, AppstoreOutlined,
+  SearchOutlined, BranchesOutlined, SettingOutlined, EyeOutlined, ControlOutlined
 } from '@ant-design/icons-vue'
 import SearchPalette from './components/SearchPalette.vue'
 import GitPanel from './components/GitPanel.vue'
@@ -111,11 +112,13 @@ const searchOpen = ref(false)
 const gitOpen = ref(false)
 const settingsOpen = ref(false)
 const git = ref({ tracked: false, clean: true, files: [], conflicts: [] })
+const updateAvailable = ref(null)
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
 const activeKey = computed(() => {
   if (route.path.startsWith('/oplog')) return 'oplog'
+  if (route.path.startsWith('/actions')) return 'actions'
   if (route.path.startsWith('/requirements')) return 'requirements'
   if (route.path.startsWith('/milestones')) return 'milestones'
   if (route.path.startsWith('/deliveries')) return 'deliveries'
@@ -168,6 +171,14 @@ async function loadGitCached() {
   }
 }
 
+async function checkUpdate() {
+  if (!app.updateManifestUrl) return
+  try {
+    const result = await api.checkUpdate('0.6.5', app.updateManifestUrl)
+    updateAvailable.value = result.available ? result.manifest : null
+  } catch { updateAvailable.value = null }
+}
+
 function scheduleGitLoad() {
   if ('requestIdleCallback' in window) {
     window.requestIdleCallback(loadGit, { timeout: 1200 })
@@ -187,6 +198,7 @@ onMounted(async () => {
   await app.load()
   await loadGitCached()
   scheduleGitLoad()
+  checkUpdate()
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -276,10 +288,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   border-color: var(--fl-line-strong);
   background: #F6FAF9;
 }
-.app-sidebar-footer .app-sidebar-note {
-  position: static;
-  margin-top: var(--fl-s-3);
-}
 .settings-modal .ant-modal-body {
   max-height: min(72vh, 760px);
   overflow-y: auto;
@@ -294,9 +302,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   .app-header > .ant-divider,
   .app-header .repo-path,
   .app-header .lan-status { display: none; }
+  .app-header .update-status { display:none; }
   .search-trigger span,
   .search-trigger kbd {
     display: none;
   }
 }
+.workspace-button { margin-bottom:var(--fl-s-2); }
 </style>

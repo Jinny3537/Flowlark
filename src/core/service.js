@@ -21,6 +21,11 @@ import * as exporter from './exporter.js'
 import * as snapshots from './snapshots.js'
 import { suggestImpact as runImpact } from './impact.js'
 import * as notifications from './notifications.js'
+import * as workspaces from './workspaces.js'
+import * as setupx from './setup.js'
+import * as updater from './updater.js'
+import * as mirror from './mirror.js'
+import * as workspaceIndex from './workspace-index.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -433,6 +438,18 @@ export class Hub {
   }
   setNotificationWebhook(provider, value) { return secrets.setSecret(`webhook-${provider}`, value) }
   deleteNotificationWebhook(provider) { return secrets.deleteSecret(`webhook-${provider}`) }
+  listWorkspaces() { return workspaces.listWorkspaces() }
+  addWorkspace(input) { return workspaces.addWorkspace(input) }
+  removeWorkspace(pathname) { return workspaces.removeWorkspace(pathname) }
+  inspectSetup(pathname) { return setupx.inspectSetup(pathname) }
+  registerWorkspace(pathname, options) { return setupx.registerExistingWorkspace(pathname, options) }
+  cloneWorkspace(url, pathname, options) { return setupx.cloneWorkspace(url, pathname, options) }
+  checkUpdate(currentVersion, manifestUrl) { return updater.checkForUpdate(manifestUrl || this.settings.integrations.updateManifestUrl, currentVersion) }
+  downloadUpdate(manifest, targetDir) { return updater.downloadUpdate(manifest, targetDir) }
+  mirrorStatus() { return mirror.inspectMirror(this.root) }
+  refreshMirror() { return mirror.refreshMirror(this.root) }
+  buildWorkspaceIndex() { return workspaceIndex.buildWorkspaceIndex() }
+  searchWorkspaces(query, options) { return workspaceIndex.searchWorkspaces(query, options) }
 
   // ==================== 基线 ====================
 

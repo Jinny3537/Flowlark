@@ -433,6 +433,16 @@ describe('Git 远端配置', { skip: hasGit ? false : '环境无 git' }, () => {
     t.assert.strictEqual(hub.gitStatus().clean, true, '同步按钮不该因为旁边的草稿一直亮着')
   })
 
+  test('Git 体检不扫描旁边的草稿文件', (t) => {
+    const { root, hub } = gitRepo()
+    hub.gitSync({ message: 'init' })
+    fs.writeFileSync(path.join(root, '草稿.html'), '<html>x</html>')
+
+    const d = hub.gitDoctor()
+    t.assert.ok(d.checks.some((c) => c.title === '工作区' && c.level === 'ok'),
+      'Git 面板打开时应只看 Flowlark 自管路径')
+  })
+
   test('快速 Git 状态会写入并复用本地缓存', (t) => {
     const { root, hub } = gitRepo()
     hub.gitSync({ message: 'init' })

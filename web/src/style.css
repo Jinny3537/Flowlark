@@ -106,10 +106,6 @@ body {
   color: var(--fl-text-2);
   box-shadow: 1px 0 0 rgba(255,255,255,.78) inset;
 }
-.app-sidebar-note {
-  position: absolute; bottom: var(--fl-s-4); left: var(--fl-s-3); right: var(--fl-s-3);
-  font-size: var(--fl-fs-1); line-height: 1.8; color: var(--fl-text-3);
-}
 .app-sidebar .ant-layout-sider-children {
   position: relative;
   min-height: 100%;
@@ -197,20 +193,6 @@ body {
 .metric-value.is-primary { color: var(--fl-primary); }
 .metric-value.is-muted { color: var(--fl-text-3); }
 .metric-label { font-size: var(--fl-fs-2); color: var(--fl-text-2); }
-
-/* CLI 提示条 */
-.cli-hint {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: #1f1f1f; color: #d9d9d9; border-radius: var(--fl-r-2);
-  padding: 6px 10px; font-size: var(--fl-fs-2);
-  font-family: ui-monospace, Menlo, monospace;
-}
-.cli-hint .prompt { color: #52c41a; user-select: none; }
-.cli-hint button {
-  border: 0; background: transparent; color: #8c8c8c; cursor: pointer;
-  font-size: 12px; padding: 0 2px;
-}
-.cli-hint button:hover { color: #fff; }
 
 /* 分屏工作台
    舞台层单独存在，是为了让 loading 用绝对定位覆盖，而不是包一层容器 ——

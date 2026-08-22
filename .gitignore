@@ -4,6 +4,7 @@ node_modules/
 # 构建产物：由 npm run build:web 生成，不进版本库
 # （否则每次前端改动都会在 diff 里多出 1.5MB 压缩代码）
 web/dist/
+dist/
 
 # Vite 偶尔留下的临时配置
 web/vite.config.js.timestamp-*

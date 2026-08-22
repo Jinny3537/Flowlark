@@ -36,9 +36,6 @@
     <div v-if="list.length" class="text-secondary" style="font-size:12px;margin-top:12px">
       存放位置：<span class="mono">projects/{{ slug }}/versions/{{ versionNo }}.files/</span>
     </div>
-    <div style="margin-top:12px">
-      <CliHint :command="`flowlark attach ${slug} ${versionNo} <文件>`" />
-    </div>
   </div>
 </template>
 
@@ -46,7 +43,6 @@
 import { computed, ref } from 'vue'
 import { Modal, message, Empty } from 'ant-design-vue'
 import { UploadOutlined } from '@ant-design/icons-vue'
-import CliHint from './CliHint.vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
 import { fmtSize, fmtTime } from '../utils'

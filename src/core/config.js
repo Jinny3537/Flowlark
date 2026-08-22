@@ -120,6 +120,14 @@ export const SCHEMA = [
     default: '{{event}} · {{project}}{{version}} {{snapshot}}', label: '通知模板',
     note: '支持 event/project/version/requirement/milestone/snapshot/reviewStatus/url/changeCount'
   },
+  {
+    key: 'integrations.updateManifestUrl', type: 'string', default: '', label: '更新清单地址',
+    note: '后台检查 JSON 发布清单；下载后必须通过 SHA-256 校验'
+  },
+  {
+    key: 'integrations.mirrorIntervalSeconds', type: 'int', default: 60, min: 5, max: 86400,
+    label: '镜像刷新间隔（秒）'
+  },
 
   // ---------- 外观与默认值 ----------
   {

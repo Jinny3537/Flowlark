@@ -49,20 +49,3 @@ export function groupChanges(items) {
     .map((type) => ({ type, meta: CHANGE_META[type], items: items.filter((i) => i.type === type) }))
     .filter((g) => g.items.length > 0)
 }
-
-/** 把浏览器里的操作翻译成等价的 CLI 命令。CLI 是这个产品的主入口，网页顺带教会用户用它。 */
-export function cliFor(action, ...args) {
-  const q = (s) => (/[\s"']/.test(String(s)) ? `"${s}"` : s)
-  switch (action) {
-    case 'add': return `flowlark add <文件.html> -p ${args[0]} -n <版本号> -t ${q('标题')}`
-    case 'baseline': return `flowlark baseline ${args[0]} ${args[1]}`
-    case 'rollback': return `flowlark rollback ${args[0]}`
-    case 'change': return `flowlark change ${args[0]} ${args[1]} -m ${q('修改:位置:说明')}`
-    case 'spec': return `flowlark spec ${args[0]} ${args[1]} --edit`
-    case 'diff': return `flowlark diff ${args[0]} --from ${args[1]} --to ${args[2]}`
-    case 'rm': return `flowlark rm ${args[0]} ${args[1]}`
-    case 'restore': return `flowlark restore ${args[0]} ${args[1]}`
-    case 'new': return `flowlark new ${q('项目名')} --code <标识>`
-    default: return ''
-  }
-}

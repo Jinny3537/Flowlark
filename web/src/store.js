@@ -17,6 +17,8 @@ export const useAppStore = defineStore('app', {
     requirementUrlTemplate: '',
     defaultTags: [],
     dateStyle: 'relative',
+    updateManifestUrl: '',
+    mirror: false,
     rules: { requireChangelog: true, lockBaseline: true }
   }),
 
@@ -45,6 +47,8 @@ export const useAppStore = defineStore('app', {
         this.requirementUrlTemplate = h.requirementUrlTemplate || ''
         this.defaultTags = h.defaultTags || []
         this.dateStyle = h.dateStyle || 'relative'
+        this.updateManifestUrl = h.updateManifestUrl || ''
+        this.mirror = !!h.mirror
         this.rules = h.rules || this.rules
         this.connected = true
       } catch {

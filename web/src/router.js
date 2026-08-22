@@ -5,6 +5,7 @@ export default createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', redirect: '/projects' },
+    { path: '/actions', name: 'actions', component: () => import('./views/ActionCenter.vue') },
     { path: '/projects', name: 'projects', component: () => import('./views/ProjectList.vue') },
     {
       path: '/projects/:slug',
@@ -33,6 +34,7 @@ export default createRouter({
     { path: '/search', name: 'search-panel', component: () => import('./views/SearchPanel.vue') },
     { path: '/deliveries', name: 'deliveries', component: () => import('./views/DeliveryList.vue') },
     { path: '/deliveries/:name', name: 'delivery-detail', component: () => import('./views/DeliveryDetail.vue'), props: true },
+    { path: '/setup', name: 'setup', component: () => import('./views/SetupWizard.vue') },
     { path: '/trash', name: 'trash', component: () => import('./views/Trash.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/Settings.vue') }
   ]

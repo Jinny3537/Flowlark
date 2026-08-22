@@ -19,8 +19,6 @@
       </a-select>
     </div>
 
-    <div style="margin-bottom:16px"><CliHint :command="cliFor('diff', slug, from || '起点', to)" /></div>
-
     <a-spin :spinning="loading">
       <div v-if="result" class="text-secondary" style="font-size:13px;margin-bottom:14px">
         跨 <b>{{ result.versionCount }}</b> 个版本，共 <b>{{ result.itemCount }}</b> 条变更
@@ -33,9 +31,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import ChangeList from './ChangeList.vue'
-import CliHint from './CliHint.vue'
 import { api } from '../api'
-import { cliFor } from '../utils'
 
 const props = defineProps({
   open: Boolean,

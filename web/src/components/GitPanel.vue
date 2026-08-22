@@ -220,10 +220,10 @@ async function load() {
   try {
     doctor.value = await api.gitDoctor()
     if (doctor.value.stage !== 'no-git' && doctor.value.stage !== 'no-repo') {
-      const [st, cf, perm] = await Promise.all([api.gitStatus({ fast: true }), api.gitConflicts(), api.gitPermission()])
+      const st = await api.gitStatus({ fast: true })
       status.value = st
-      conflicts.value = cf
-      permission.value = perm
+      conflicts.value = st.conflicts || []
+      permission.value = st.permission || null
       if (doctor.value.identity) {
         form.value.name = form.value.name || doctor.value.identity.name
         form.value.email = form.value.email || doctor.value.identity.email

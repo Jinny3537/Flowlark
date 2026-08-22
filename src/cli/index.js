@@ -9,6 +9,7 @@ import * as cmdFeedback from './cmd-feedback.js'
 import * as cmdRequirements from './cmd-requirements.js'
 import * as cmdMilestones from './cmd-milestones.js'
 import * as cmdExport from './cmd-export.js'
+import * as cmdWorkspaces from './cmd-workspaces.js'
 import { HELP, COMMAND_HELP } from './help.js'
 
 const COMMANDS = {
@@ -41,6 +42,8 @@ const COMMANDS = {
   req: cmdRequirements.requirement,
   milestone: cmdMilestones.milestone,
   export: cmdExport.exportPackage,
+  workspace: cmdWorkspaces.workspace,
+  mirror: cmdWorkspaces.mirror,
   // Git
   sync: cmdGit.sync,
   history: cmdGit.history,
@@ -149,6 +152,7 @@ const OPTIONS = {
   owner: { type: 'string' },
   start: { type: 'string' },
   end: { type: 'string' },
+  mode: { type: 'string' },
   help: { type: 'boolean', short: 'h' }
 }
 

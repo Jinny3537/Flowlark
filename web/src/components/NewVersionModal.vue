@@ -4,7 +4,6 @@
     <a-alert type="info" show-icon class="new-version-alert">
       <template #message>
         新版本创建后处于编辑中；可以从文件、HTML 源码或公开 URL 导入。
-        <div class="stack-sm"><CliHint :command="cliCommand" /></div>
       </template>
     </a-alert>
 
@@ -65,10 +64,9 @@ import { message } from 'ant-design-vue'
 import { CloudDownloadOutlined, InboxOutlined, CheckCircleFilled } from '@ant-design/icons-vue'
 import ChangeEditor from './ChangeEditor.vue'
 import RequirementEditor from './RequirementEditor.vue'
-import CliHint from './CliHint.vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
-import { fmtSize, cliFor } from '../utils'
+import { fmtSize } from '../utils'
 
 const props = defineProps({ open: Boolean, slug: String })
 const emit = defineEmits(['update:open', 'created'])
@@ -86,7 +84,6 @@ const importing = ref(false)
 const impactLoading = ref(false)
 const impacts = ref([])
 const form = reactive({ versionNo: '', title: '', changes: [], requirements: [] })
-const cliCommand = computed(() => cliFor('add', props.slug))
 const sourceSummary = computed(() => html.value
   ? `${fmtSize(new Blob([html.value]).size)} · ${externalRefs.value.length ? `${externalRefs.value.length} 个外部依赖` : '无外部依赖'}`
   : '尚未读取 HTML')

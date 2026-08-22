@@ -32,7 +32,7 @@ const MIME = {
  *
  * 开放局域网时，写操作按来源拦截：只有 127.0.0.1 能写。详见 core/net.js。
  */
-export async function startServer(root, { port, previewPort, lan, host } = {}) {
+export async function startServer(root, { port, previewPort, lan, host, mirror = false } = {}) {
   const hub = new Hub(root)
   const s = hub.settings
 
@@ -75,6 +75,9 @@ export async function startServer(root, { port, previewPort, lan, host } = {}) {
           message: '局域网访问为只读模式，无法修改数据',
           hint: '请在运行 Flowlark 的那台机器上操作；或关闭只读保护（flowlark config server.readonlyFromLan false）'
         })
+      }
+      if (mirror && net.isWrite(req.method) && url.pathname !== '/api/mirror/refresh') {
+        return sendJson(res, 403, { code: 'MIRROR_READONLY', message: '镜像模式永久只读，不能修改仓库数据' })
       }
 
       const hit = api.match(req.method, url.pathname)
@@ -128,7 +131,7 @@ export async function startServer(root, { port, previewPort, lan, host } = {}) {
       const a = previewServer.address()
       return a ? a.port : pvPort
     },
-    runtime: { lan: lanEnabled, readonlyFromLan }
+    runtime: { lan: lanEnabled, readonlyFromLan, mirror }
   })
 
   await Promise.all([

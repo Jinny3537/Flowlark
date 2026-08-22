@@ -150,7 +150,6 @@
               <a-alert type="info" show-icon class="panel-alert">
                 <template #message>
                   规格书是活文档，版本确认后仍可编辑；原型文件与变更日志则已锁定。
-                  <div class="stack-sm"><CliHint :command="cliFor('spec', slug, versionNo)" /></div>
                 </template>
               </a-alert>
 
@@ -284,7 +283,6 @@
           </div>
         </a-timeline-item>
       </a-timeline>
-      <div class="stack-md"><CliHint :command="`flowlark history ${slug} ${versionNo}`" /></div>
     </a-drawer>
   </div>
 </template>
@@ -301,14 +299,13 @@ import ChangeList from '../components/ChangeList.vue'
 import ChangeEditor from '../components/ChangeEditor.vue'
 import RequirementEditor from '../components/RequirementEditor.vue'
 import BaselineModal from '../components/BaselineModal.vue'
-import CliHint from '../components/CliHint.vue'
 import Attachments from '../components/Attachments.vue'
 import AnnotationOverlay from '../components/AnnotationOverlay.vue'
 import FeedbackDrawer from '../components/FeedbackDrawer.vue'
 import ReviewStatusControl from '../components/ReviewStatusControl.vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
-import { fmtTime, fmtAbsolute, fmtSize, renderMarkdown, cliFor } from '../utils'
+import { fmtTime, fmtAbsolute, fmtSize, renderMarkdown } from '../utils'
 
 const props = defineProps({ slug: String, versionNo: String })
 const app = useAppStore()

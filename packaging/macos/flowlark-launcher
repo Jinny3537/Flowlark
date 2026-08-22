@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+CONTENTS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$CONTENTS_DIR/Resources/runtime/node" "$CONTENTS_DIR/Resources/app/scripts/launcher.mjs" "$@"

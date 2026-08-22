@@ -762,7 +762,7 @@ export function diagnose(root) {
     return { ok: false, stage: 'conflicted', checks, actions }
   }
 
-  const st = status(root)
+  const st = status(root, { includeForeign: false })
   const remote = getRemote(root)
   if (!remote) {
     push('warn', '没有配置远端', '只在本机留存，换台机器或团队协作需要远端仓库',

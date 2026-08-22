@@ -6,7 +6,6 @@
         <div class="text-secondary">共 {{ projects.length }} 个</div>
       </div>
       <div class="page-actions">
-        <CliHint :command="cliFor('new')" />
         <a-button type="primary" :disabled="!app.canWrite" @click="formOpen = true">
           <template #icon><PlusOutlined /></template>新建项目
         </a-button>
@@ -86,10 +85,9 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
-import CliHint from '../components/CliHint.vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
-import { fmtTime, cliFor } from '../utils'
+import { fmtTime } from '../utils'
 
 const app = useAppStore()
 const projects = ref([])
