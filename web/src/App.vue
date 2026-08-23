@@ -1,5 +1,5 @@
 <template>
-  <a-config-provider :locale="zhCN" :theme="theme">
+  <a-config-provider>
     <a-layout class="app-shell">
       <a-layout-header class="app-header">
         <div class="header-left">
@@ -17,35 +17,33 @@
         <div class="spacer"></div>
 
         <button class="search-trigger" type="button" @click="searchOpen = true">
-          <SearchOutlined />
+          <IconSearch />
           <span>搜索</span>
           <kbd>{{ isMac ? '⌘' : 'Ctrl' }}K</kbd>
         </button>
 
         <a-dropdown :trigger="['click']">
           <a-button type="primary" class="quick-create-button" :disabled="!app.canWrite">
-            <template #icon><PlusOutlined /></template>
+            <template #icon><IconPlus /></template>
             <span>快速创建</span>
           </a-button>
-          <template #overlay>
-            <a-menu @click="onQuickCreate">
-              <a-menu-item key="version">
-                <FileAddOutlined />
+          <template #content>
+            <a-doption value="version" @click="onQuickCreate({ key: 'version' })">
+                <IconFile />
                 导入原型
-              </a-menu-item>
-              <a-menu-item key="requirement">
-                <ProfileOutlined />
+            </a-doption>
+            <a-doption value="requirement" @click="onQuickCreate({ key: 'requirement' })">
+                <IconUserGroup />
                 新建需求
-              </a-menu-item>
-              <a-menu-item key="milestone">
-                <CalendarOutlined />
+            </a-doption>
+            <a-doption value="milestone" @click="onQuickCreate({ key: 'milestone' })">
+                <IconCalendar />
                 新建迭代
-              </a-menu-item>
-              <a-menu-item key="delivery">
-                <SendOutlined />
+            </a-doption>
+            <a-doption value="delivery" @click="onQuickCreate({ key: 'delivery' })">
+                <IconSend />
                 创建交付快照
-              </a-menu-item>
-            </a-menu>
+            </a-doption>
           </template>
         </a-dropdown>
 
@@ -56,8 +54,8 @@
                 <strong>待办与通知</strong>
                 <a-button type="link" size="small" @click="$router.push('/actions')">打开工作台</a-button>
               </div>
-              <a-empty v-if="!pendingNotifications.length" :image="null" description="暂无待重试通知" />
-              <a-list v-else size="small" :data-source="pendingNotifications.slice(0, 4)">
+              <a-empty v-if="!pendingNotifications.length" description="暂无待重试通知" />
+              <a-list v-else size="small" :data="pendingNotifications.slice(0, 4)">
                 <template #renderItem="{ item }">
                   <a-list-item>
                     <a-list-item-meta>
@@ -78,16 +76,19 @@
           </template>
           <a-badge :count="pendingNotifications.length" :offset="[-3, 4]" :number-style="{ backgroundColor: 'var(--fl-draft)' }">
             <a-button type="text" class="icon-text-button">
-              <template #icon><BellOutlined /></template>
+              <template #icon><IconNotification /></template>
               <span>待办</span>
             </a-button>
           </a-badge>
+          <span class="sr-only" role="status" aria-atomic="true">
+            {{ pendingNotifications.length }} 条交付通知待重试
+          </span>
         </a-popover>
 
         <a-tooltip :title="gitTooltip">
           <a-badge :count="gitBadge" :offset="[-4, 4]" :number-style="gitBadgeStyle">
             <a-button type="text" class="icon-text-button" @click="gitOpen = true">
-              <template #icon><BranchesOutlined /></template>
+              <template #icon><IconBranch /></template>
               {{ git.branch || 'Git' }}
             </a-button>
           </a-badge>
@@ -96,32 +97,32 @@
         <!-- 只读时必须显式告诉用户，否则会以为是功能坏了 -->
         <a-tooltip v-if="!app.canWrite"
                    :title="readonlyTooltip">
-          <a-tag color="orange"><EyeOutlined /> {{ readonlyLabel }}</a-tag>
+          <a-tag color="orange"><IconEye /> {{ readonlyLabel }}</a-tag>
         </a-tooltip>
         <a-tag v-else-if="app.lan" color="cyan" class="lan-status">局域网已开放</a-tag>
         <a-tag v-if="app.connected" color="green">运行中</a-tag>
         <a-tag v-else color="red">服务已停止</a-tag>
         <a-tag v-if="updateAvailable" color="cyan" class="update-status">可更新至 {{ updateAvailable.version }}</a-tag>
         <a-button type="text" class="header-settings-button" aria-label="打开设置" @click="settingsOpen = true">
-          <template #icon><SettingOutlined /></template>
+          <template #icon><IconSettings /></template>
         </a-button>
       </a-layout-header>
 
       <a-layout>
         <a-layout-sider :width="188" theme="light" class="app-sidebar">
-          <a-menu mode="inline" :selected-keys="activeKey ? [activeKey] : []" class="app-menu" @click="({ key }) => $router.push('/' + key)">
-            <a-menu-item key="actions"><template #icon><ControlOutlined /></template>个人工作台</a-menu-item>
-            <a-menu-item key="projects"><template #icon><FolderOutlined /></template>项目</a-menu-item>
-            <a-menu-item key="requirements"><template #icon><ProfileOutlined /></template>需求</a-menu-item>
-            <a-menu-item key="milestones"><template #icon><CalendarOutlined /></template>迭代</a-menu-item>
-            <a-menu-item key="deliveries"><template #icon><SendOutlined /></template>交付</a-menu-item>
-            <a-menu-item key="watch"><template #icon><InboxOutlined /></template>草稿箱</a-menu-item>
-            <a-menu-item key="trash"><template #icon><DeleteOutlined /></template>回收站</a-menu-item>
+          <a-menu :selected-keys="activeKey ? [activeKey] : []" class="app-menu" @menu-item-click="(key) => $router.push('/' + key)">
+            <a-menu-item key="actions"><template #icon><IconApps /></template>个人工作台</a-menu-item>
+            <a-menu-item key="projects"><template #icon><IconFolder /></template>项目</a-menu-item>
+            <a-menu-item key="requirements"><template #icon><IconFile /></template>需求</a-menu-item>
+            <a-menu-item key="milestones"><template #icon><IconCalendar /></template>迭代</a-menu-item>
+            <a-menu-item key="deliveries"><template #icon><IconSend /></template>交付</a-menu-item>
+            <a-menu-item key="watch"><template #icon><IconArchive /></template>草稿箱</a-menu-item>
+            <a-menu-item key="trash"><template #icon><IconDelete /></template>回收站</a-menu-item>
           </a-menu>
 
           <div class="app-sidebar-footer">
             <a-button class="app-settings-button" block @click="settingsOpen = true">
-              <template #icon><SettingOutlined /></template>
+              <template #icon><IconSettings /></template>
               设置
             </a-button>
           </div>
@@ -135,12 +136,12 @@
 
     <SearchPalette v-model:open="searchOpen" />
     <GitPanel v-model:open="gitOpen" @changed="loadGit" />
-    <a-modal v-model:open="settingsOpen"
+    <a-modal v-model:visible="settingsOpen"
              title="设置"
-             width="860px"
-             :footer="null"
-             class="settings-modal"
-             destroy-on-close>
+             :width="860"
+             :footer="false"
+             modal-class="settings-modal"
+             unmount-on-close>
       <SettingsView embedded />
     </a-modal>
   </a-config-provider>
@@ -149,21 +150,28 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import zhCN from 'ant-design-vue/es/locale/zh_CN'
-import { message } from 'ant-design-vue'
+import { notify } from './ui/feedback'
 import {
-  FolderOutlined, DeleteOutlined, InboxOutlined, ProfileOutlined, CalendarOutlined, SendOutlined,
-  SearchOutlined, BranchesOutlined, SettingOutlined, EyeOutlined, ControlOutlined, PlusOutlined, BellOutlined,
-  FileAddOutlined
-} from '@ant-design/icons-vue'
+  IconApps,
+  IconArchive,
+  IconBranch,
+  IconCalendar,
+  IconDelete,
+  IconEye,
+  IconFile,
+  IconFolder,
+  IconNotification,
+  IconPlus,
+  IconSearch,
+  IconSend,
+  IconSettings,
+  IconUserGroup
+} from '@arco-design/web-vue/es/icon/index.js'
 import SearchPalette from './components/SearchPalette.vue'
 import GitPanel from './components/GitPanel.vue'
 import BrandMark from './components/BrandMark.vue'
 import SettingsView from './views/Settings.vue'
-import { antdTheme } from './brand'
 import { useAppStore } from './store'
-
-const theme = antdTheme
 import { api } from './api'
 
 const app = useAppStore()
@@ -232,7 +240,7 @@ async function loadGitCached() {
 async function checkUpdate() {
   if (!app.updateManifestUrl) return
   try {
-    const result = await api.checkUpdate('0.6.5', app.updateManifestUrl)
+    const result = await api.checkUpdate(app.version || '0.0.0', app.updateManifestUrl)
     updateAvailable.value = result.available ? result.manifest : null
   } catch { updateAvailable.value = null }
 }
@@ -249,7 +257,7 @@ async function flushNotifications() {
   flushingNotifications.value = true
   try {
     await api.flushNotifications()
-    message.success('通知队列已处理')
+    notify.success('通知队列已处理')
     await loadNotifications()
   } finally {
     flushingNotifications.value = false
@@ -310,7 +318,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   font-family: inherit;
   white-space: nowrap;
 }
-.search-trigger .anticon,
+.search-trigger .arco-icon,
 .search-trigger span {
   display: inline-flex;
   align-items: center;
@@ -366,7 +374,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   color: var(--fl-text-2);
   padding-top: var(--fl-s-3);
 }
-.app-menu .ant-menu-item {
+.app-menu .arco-menu-item {
   position: relative;
   border-radius: var(--fl-r-2);
   margin-inline: var(--fl-s-2);
@@ -374,23 +382,23 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   color: var(--fl-text-2);
   transition: background-color .18s var(--fl-ease), color .18s var(--fl-ease);
 }
-.app-menu .ant-menu-item:hover {
+.app-menu .arco-menu-item:hover {
   color: var(--fl-primary-deep);
   background: var(--fl-surface-3);
 }
-.app-menu .ant-menu-item-selected {
+.app-menu .arco-menu-item-selected {
   background: #F3FAF8;
   color: var(--fl-ink);
   font-weight: 650;
   box-shadow: inset 0 0 0 1px rgba(14,147,132,.12);
 }
-.app-menu .ant-menu-item-selected:hover {
+.app-menu .arco-menu-item-selected:hover {
   background: #EDF8F5;
   color: var(--fl-ink);
 }
-.app-menu .ant-menu-item-selected::after { display: none; }
-.app-menu .ant-menu-item .anticon { color: var(--fl-text-3); }
-.app-menu .ant-menu-item-selected .anticon { color: var(--fl-primary); }
+.app-menu .arco-menu-item-selected::after { display: none; }
+.app-menu .arco-menu-item .arco-icon { color: var(--fl-text-3); }
+.app-menu .arco-menu-item-selected .arco-icon { color: var(--fl-primary); }
 .app-sidebar-footer {
   position: absolute;
   bottom: var(--fl-s-4);
@@ -409,7 +417,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   border-color: var(--fl-line-strong);
   background: #F6FAF9;
 }
-.settings-modal .ant-modal-body {
+.settings-modal .arco-modal-body {
   max-height: min(72vh, 760px);
   overflow-y: auto;
   padding: 0;
