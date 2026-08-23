@@ -2,7 +2,7 @@
   <a-drawer :open="open" title="记录原型反馈" placement="right" :width="460"
             @update:open="(value) => emit('update:open', value)">
     <a-alert type="info" show-icon class="feedback-alert">
-      <template #message>反馈会保存到当前版本上下文，提交后可在版本信息后查看。</template>
+      <template #message>反馈会保存到当前版本上下文，提交后可在右侧标注反馈列查看。</template>
     </a-alert>
 
     <a-form layout="vertical">
