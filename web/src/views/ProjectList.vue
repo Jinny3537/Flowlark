@@ -7,7 +7,7 @@
       </div>
       <div class="page-actions">
         <a-button type="primary" :disabled="!app.canWrite" @click="formOpen = true">
-          <template #icon><PlusOutlined /></template>新建项目
+          <template #icon><IconPlus /></template>新建项目
         </a-button>
       </div>
     </div>
@@ -64,17 +64,17 @@
       </a-row>
     </a-spin>
 
-    <a-modal v-model:open="formOpen" title="新建项目" :confirm-loading="saving" @ok="submit">
+    <a-modal v-model:visible="formOpen" title="新建项目" :confirm-loading="saving" @ok="submit">
       <a-form layout="vertical" class="stack-md">
         <a-form-item label="项目名称" required>
-          <a-input v-model:value="form.name" placeholder="例如：订单中心重构" :maxlength="60" />
+          <a-input v-model="form.name" placeholder="例如：订单中心重构" :maxlength="60" />
         </a-form-item>
         <a-form-item label="项目标识" required
                      help="同时是磁盘上的目录名，小写字母、数字、连字符">
-          <a-input v-model:value="form.code" class="mono" placeholder="order-center" :maxlength="40" />
+          <a-input v-model="form.code" class="mono" placeholder="order-center" :maxlength="40" />
         </a-form-item>
         <a-form-item label="描述">
-          <a-textarea v-model:value="form.description" :rows="3" :maxlength="500" show-count />
+          <a-textarea v-model="form.description" :rows="3" :maxlength="500" show-count />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -83,8 +83,8 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { notify } from '../ui/feedback'
+import { IconPlus } from '@arco-design/web-vue/es/icon/index.js'
 import { api } from '../api'
 import { useAppStore } from '../store'
 import { fmtTime } from '../utils'
@@ -106,11 +106,11 @@ async function load() {
 }
 
 async function submit() {
-  if (!form.name.trim()) return message.warning('请填写项目名称')
+  if (!form.name.trim()) return notify.warning('请填写项目名称')
   saving.value = true
   try {
     const p = await api.createProject({ ...form })
-    message.success(`项目 ${p.name} 已创建`)
+    notify.success(`项目 ${p.name} 已创建`)
     formOpen.value = false
     Object.assign(form, { name: '', code: '', description: '' })
     load()

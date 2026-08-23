@@ -2,10 +2,10 @@
   <div class="page-pad watch-page">
     <div class="page-title-row">
       <div><h2>草稿箱</h2><p class="text-secondary">自动收集的原型记录会在这里等待整理</p></div>
-      <a-button :loading="loading" @click="load"><template #icon><ReloadOutlined /></template>刷新</a-button>
+      <a-button :loading="loading" @click="load"><template #icon><IconRefresh /></template>刷新</a-button>
     </div>
     <a-alert type="info" show-icon class="stack-md" message="自动归档成功后可直接进入版本补充变更日志；失败项会保留原因并允许重试。" />
-    <a-table :data-source="items" :columns="columns" row-key="id" :loading="loading" :pagination="false" size="middle">
+    <a-table :data="items" :columns="columns" row-key="id" :loading="loading" :pagination="false" size="middle">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'file'">
           <div class="watch-file"><strong>{{ record.title }}</strong><span class="mono text-secondary">{{ record.filename }}</span></div>
@@ -25,8 +25,8 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { message } from 'ant-design-vue'
-import { ReloadOutlined } from '@ant-design/icons-vue'
+import { notify } from '../ui/feedback'
+import { IconRefresh } from '@arco-design/web-vue/es/icon/index.js'
 import { api } from '../api'
 import { useAppStore } from '../store'
 import { fmtTime } from '../utils'
@@ -49,16 +49,12 @@ async function load() {
   try { items.value = await api.watchInbox() } finally { loading.value = false }
 }
 async function retry(item) {
-  try { await api.retryWatchItem(item.id); message.success('已重新归档'); await load() } catch { /* api 已提示 */ }
+  try { await api.retryWatchItem(item.id); notify.success('已重新归档'); await load() } catch { /* api 已提示 */ }
 }
 onMounted(load)
 </script>
 
 <style scoped>
-.watch-page h2 { margin:0 0 var(--fl-s-1); font-size:var(--fl-fs-5); }
-.page-title-row { display:flex; align-items:center; gap:var(--fl-s-3); margin-bottom:var(--fl-s-4); }
-.page-title-row p { margin:0; }
-.page-title-row > div:first-child { flex:1; }
 .watch-file { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .watch-file .mono { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .error-text { margin-top:4px; color:var(--fl-danger); }

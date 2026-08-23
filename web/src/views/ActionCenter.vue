@@ -7,10 +7,10 @@
       </div>
       <div class="page-actions">
         <a-button @click="load" :loading="loading">
-          <template #icon><ReloadOutlined /></template>刷新
+          <template #icon><IconRefresh /></template>刷新
         </a-button>
         <a-button type="primary" @click="$router.push('/projects')">
-          <template #icon><FolderOpenOutlined /></template>进入项目
+          <template #icon><IconFolder /></template>进入项目
         </a-button>
       </div>
     </div>
@@ -44,13 +44,13 @@
             </div>
             <a-space wrap class="focus-actions">
               <a-button type="primary" :disabled="!selectedVersion" @click="goWorkbench">
-                <template #icon><EyeOutlined /></template>打开当前版本
+                <template #icon><IconEye /></template>打开当前版本
               </a-button>
               <a-button :disabled="!selectedProject" @click="goProject">
-                <template #icon><ProjectOutlined /></template>项目时间线
+                <template #icon><IconApps /></template>项目时间线
               </a-button>
               <a-button :disabled="!app.canWrite || !selectedProject" @click="newVersionOpen = true">
-                <template #icon><FileAddOutlined /></template>导入新版本
+                <template #icon><IconFile /></template>导入新版本
               </a-button>
             </a-space>
           </template>
@@ -133,15 +133,15 @@
           </div>
           <a-form layout="inline" class="context-form">
             <a-form-item label="项目">
-              <a-select v-model:value="selectedProject" class="context-select" placeholder="选择项目" @change="loadVersions">
-                <a-select-option v-for="p in projects" :key="p.slug" :value="p.slug">{{ p.name }} · {{ p.slug }}</a-select-option>
+              <a-select v-model="selectedProject" class="context-select" placeholder="选择项目" @change="loadVersions">
+                <a-option v-for="p in projects" :key="p.slug" :value="p.slug">{{ p.name }} · {{ p.slug }}</a-option>
               </a-select>
             </a-form-item>
             <a-form-item label="版本">
-              <a-select v-model:value="selectedVersion" class="version-select" placeholder="选择版本">
-                <a-select-option v-for="v in activeVersions" :key="v.versionNo" :value="v.versionNo">
+              <a-select v-model="selectedVersion" class="version-select" placeholder="选择版本">
+                <a-option v-for="v in activeVersions" :key="v.versionNo" :value="v.versionNo">
                   {{ v.versionNo }} · {{ v.title }}
-                </a-select-option>
+                </a-option>
               </a-select>
             </a-form-item>
           </a-form>
@@ -192,24 +192,24 @@
 
     <NewVersionModal v-model:open="newVersionOpen" :slug="selectedProject" @created="afterVersionCreated" />
     <GitPanel v-model:open="gitOpen" @changed="load" />
-    <a-modal v-model:open="newProjectOpen" title="新建项目" :confirm-loading="projectSaving" @ok="createProject">
+    <a-modal v-model:visible="newProjectOpen" title="新建项目" :confirm-loading="projectSaving" @ok="createProject">
       <a-form layout="vertical">
         <a-form-item label="项目名称" required>
-          <a-input v-model:value="projectForm.name" placeholder="例如：订单中心重构" :maxlength="60" />
+          <a-input v-model="projectForm.name" placeholder="例如：订单中心重构" :maxlength="60" />
         </a-form-item>
         <a-form-item label="项目标识" required help="同时是磁盘上的目录名，小写字母、数字、连字符">
-          <a-input v-model:value="projectForm.code" class="mono" placeholder="order-center" :maxlength="40" />
+          <a-input v-model="projectForm.code" class="mono" placeholder="order-center" :maxlength="40" />
         </a-form-item>
         <a-form-item label="描述">
-          <a-textarea v-model:value="projectForm.description" :rows="3" :maxlength="500" show-count />
+          <a-textarea v-model="projectForm.description" :rows="3" :maxlength="500" show-count />
         </a-form-item>
       </a-form>
     </a-modal>
-    <a-modal v-model:open="settingsOpen"
+    <a-modal v-model:visible="settingsOpen"
              title="设置"
-             width="860px"
-             :footer="null"
-             destroy-on-close>
+             :width="860"
+             :footer="false"
+             unmount-on-close>
       <SettingsView embedded />
     </a-modal>
   </div>
@@ -218,15 +218,14 @@
 <script setup>
 import { computed, markRaw, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { message, Modal } from 'ant-design-vue'
+import { confirmAction, confirmDanger, notify } from '../ui/feedback'
 import {
-  AppstoreOutlined, BarChartOutlined, BranchesOutlined, CloudDownloadOutlined, CodeOutlined,
-  ColumnWidthOutlined, DeleteOutlined, ExportOutlined, EyeOutlined, FileAddOutlined,
-  FolderAddOutlined, FolderOpenOutlined, InboxOutlined,
-  ProfileOutlined, ProjectOutlined, ReadOutlined, ReloadOutlined, SearchOutlined,
-  SendOutlined, SettingOutlined, ShareAltOutlined, SyncOutlined, UndoOutlined,
-  WarningOutlined
-} from '@ant-design/icons-vue'
+  IconApps, IconBarChart, IconBranch, IconCloudDownload, IconCode,
+  IconFullscreen, IconDelete, IconExport, IconEye, IconFile,
+  IconFolderAdd, IconFolder, IconArchive, IconBook, IconRefresh, IconSearch,
+  IconSend, IconSettings, IconShareExternal, IconUndo,
+  IconExclamationCircle
+} from '@arco-design/web-vue/es/icon/index.js'
 import NewVersionModal from '../components/NewVersionModal.vue'
 import GitPanel from '../components/GitPanel.vue'
 import SettingsView from './Settings.vue'
@@ -268,58 +267,58 @@ const reviewVersions = computed(() => projects.value.flatMap((project) =>
 ))
 
 const metrics = computed(() => [
-  metric('projects', ProjectOutlined, projects.value.length, '项目'),
-  metric('reviews', ReadOutlined, reviewVersions.value.length, '待评审版本'),
-  metric('requirements', ProfileOutlined, requirements.value.length, '需求'),
-  metric('git', BranchesOutlined, gitStatus.value.conflicts?.length || gitStatus.value.files?.length || 0, 'Git 待处理')
+  metric('projects', IconApps, projects.value.length, '项目'),
+  metric('reviews', IconBook, reviewVersions.value.length, '待评审版本'),
+  metric('requirements', IconFile, requirements.value.length, '需求'),
+  metric('git', IconBranch, gitStatus.value.conflicts?.length || gitStatus.value.files?.length || 0, 'Git 待处理')
 ])
 
 const attentionItems = computed(() => {
   const items = []
   if (!app.canWrite) {
-    items.push(task('readonly', EyeOutlined, '当前处于只读模式', '写入类动作已禁用，可继续查看评审和交付材料。', '查看设置', () => { settingsOpen.value = true }, { tone: 'warning' }))
+    items.push(task('readonly', IconEye, '当前处于只读模式', '写入类动作已禁用，可继续查看评审和交付材料。', '查看设置', () => { settingsOpen.value = true }, { tone: 'warning' }))
   }
   if (gitStatus.value.conflicts?.length) {
-    items.push(task('git-conflict', WarningOutlined, 'Git 同步存在冲突', `${gitStatus.value.conflicts.length} 个冲突需要先处理。`, '打开 Git', () => { gitOpen.value = true }, { tone: 'danger', danger: true, primary: true }))
+    items.push(task('git-conflict', IconExclamationCircle, 'Git 同步存在冲突', `${gitStatus.value.conflicts.length} 个冲突需要先处理。`, '打开 Git', () => { gitOpen.value = true }, { tone: 'danger', danger: true, primary: true }))
   } else if (gitStatus.value.tracked && (!gitStatus.value.clean || gitStatus.value.ahead || gitStatus.value.behind)) {
     const count = gitStatus.value.files?.length || 0
-    items.push(task('git-sync', BranchesOutlined, '本地与远端需要同步', count ? `${count} 处 Flowlark 数据变更待提交或同步。` : '远端状态有更新，建议同步一次。', '同步', gitSync, { write: true, tone: 'warning', primary: true }))
+    items.push(task('git-sync', IconBranch, '本地与远端需要同步', count ? `${count} 处 Flowlark 数据变更待提交或同步。` : '远端状态有更新，建议同步一次。', '同步', gitSync, { write: true, tone: 'warning', primary: true }))
   }
   for (const project of projects.value.filter((p) => !p.baselineVersionNo).slice(0, 2)) {
-    items.push(task(`baseline-${project.slug}`, ProjectOutlined, `${project.name} 尚未设置基线`, '研发默认依据还没有确定，建议从版本时间线选择确认版本。', '打开项目', () => router.push(`/projects/${project.slug}`), { tone: 'warning' }))
+    items.push(task(`baseline-${project.slug}`, IconApps, `${project.name} 尚未设置基线`, '研发默认依据还没有确定，建议从版本时间线选择确认版本。', '打开项目', () => router.push(`/projects/${project.slug}`), { tone: 'warning' }))
   }
   for (const row of reviewVersions.value.slice(0, 4)) {
-    items.push(task(`review-${row.project.slug}-${row.version.versionNo}`, ReadOutlined, `${row.project.name} · ${row.version.versionNo} 待评审`, row.version.title || '打开版本工作台补充规格、变更和审阅状态。', '打开', () => goVersion(row.version.versionNo, row.project.slug), { tone: row.version.reviewStatus === 'questions' ? 'danger' : 'normal', primary: row.version.reviewStatus === 'questions' }))
+    items.push(task(`review-${row.project.slug}-${row.version.versionNo}`, IconBook, `${row.project.name} · ${row.version.versionNo} 待评审`, row.version.title || '打开版本工作台补充规格、变更和审阅状态。', '打开', () => goVersion(row.version.versionNo, row.project.slug), { tone: row.version.reviewStatus === 'questions' ? 'danger' : 'normal', primary: row.version.reviewStatus === 'questions' }))
   }
   for (const notice of pendingNotifications.value.slice(0, 2)) {
-    items.push(task(`notice-${notice.id}`, SendOutlined, '交付通知待发送', notice.event?.event || '通知队列里仍有待重试项目。', '打开交付', () => router.push('/deliveries'), { tone: 'normal' }))
+    items.push(task(`notice-${notice.id}`, IconSend, '交付通知待发送', notice.event?.event || '通知队列里仍有待重试项目。', '打开交付', () => router.push('/deliveries'), { tone: 'normal' }))
   }
   return items.slice(0, 8)
 })
 
 const quickActions = computed(() => [
-  item('new-project', FolderAddOutlined, '新建项目', '创建项目目录、元信息和时间线入口。', '打开表单', () => { newProjectOpen.value = true }, { write: true, primary: true }),
-  item('add-version', FileAddOutlined, '导入原型', '从文件、HTML 源码或公开 URL 新建版本。', '导入', () => { newVersionOpen.value = true }, { write: true, needsProject: true, primary: true }),
-  item('baseline', ProjectOutlined, '设为基线', '把选中版本设为研发默认开发依据。', '设为基线', setBaseline, { write: true, needsProject: true, needsVersion: true }),
-  item('read', ReadOutlined, '标记已读', '记录你已经看到选中版本，累计变更会从这里计算。', '标记', markRead, { needsProject: true, needsVersion: true }),
-  item('diff', BarChartOutlined, '累计变更', '按区间聚合变更并标出反复修改区域。', '打开', () => goCompare(), { needsProject: true }),
-  item('compare', ColumnWidthOutlined, '并排对比', '在浏览器中并排查看两个版本。', '对比', () => goCompare(), { needsProject: true }),
-  item('offline', CloudDownloadOutlined, '生成离线版', '抓取外链资源，生成自包含 HTML 派生产物。', '生成', buildOffline, { needsProject: true, needsVersion: true }),
-  item('download', ExportOutlined, '下载 HTML', '下载选中版本的原型文件。', '下载', downloadHtml, { needsProject: true, needsVersion: true }),
-  item('requirements', ProfileOutlined, '需求池', '创建需求、查看状态和关联版本。', '打开', () => router.push('/requirements'), { primary: true }),
-  item('milestones', AppstoreOutlined, '迭代', '创建迭代、添加需求和检查范围。', '打开', () => router.push('/milestones'), { primary: true }),
-  item('deliveries', SendOutlined, '交付快照', '冻结评审材料、导出静态包并追踪通知。', '打开', () => router.push('/deliveries'), { primary: true }),
-  item('git', BranchesOutlined, 'Git 助手', '初始化、身份、同步、冲突、远端权限都在这里处理。', '打开', () => { gitOpen.value = true }, { primary: true }),
-  item('sync', SyncOutlined, '提交并同步', '提交 Flowlark 自有数据，并按远端状态拉取或推送。', '同步', gitSync, { write: true, primary: true }),
-  item('search', SearchOutlined, '全库搜索', '搜索标题、变更、规格书、需求号和附件。', '搜索', () => router.push('/search')),
-  item('watch', InboxOutlined, '草稿箱', '查看自动收集的 HTML 草稿并重试失败项。', '打开', () => router.push('/watch')),
-  item('trash', DeleteOutlined, '回收站', '查看、恢复被删除的版本。', '打开', () => router.push('/trash'), { danger: true }),
-  item('rollback', UndoOutlined, '回滚基线', '把当前基线退回上一版已确认版本。', '回滚', rollback, { write: true, needsProject: true, danger: true }),
-  item('settings', SettingOutlined, '设置', '配置端口、规则、远端、局域网、通知和集成。', '打开', () => { settingsOpen.value = true }),
-  item('lan', ShareAltOutlined, '局域网分享', '查看共享地址并切换只读保护。', '管理', () => { settingsOpen.value = true }),
-  item('workspace', AppstoreOutlined, '工作区', '注册、克隆、镜像和索引 Flowlark 工作区。', '设置', () => { settingsOpen.value = true }),
-  item('mirror', ReloadOutlined, '镜像刷新', '把只读镜像快进到远端最新版本。', '刷新', refreshMirror),
-  item('status', CodeOutlined, '运行状态', '查看当前仓库、服务、权限和 Git 状态。', '刷新', load)
+  item('new-project', IconFolderAdd, '新建项目', '创建项目目录、元信息和时间线入口。', '打开表单', () => { newProjectOpen.value = true }, { write: true, primary: true }),
+  item('add-version', IconFile, '导入原型', '从文件、HTML 源码或公开 URL 新建版本。', '导入', () => { newVersionOpen.value = true }, { write: true, needsProject: true, primary: true }),
+  item('baseline', IconApps, '设为基线', '把选中版本设为研发默认开发依据。', '设为基线', setBaseline, { write: true, needsProject: true, needsVersion: true }),
+  item('read', IconBook, '标记已读', '记录你已经看到选中版本，累计变更会从这里计算。', '标记', markRead, { needsProject: true, needsVersion: true }),
+  item('diff', IconBarChart, '累计变更', '按区间聚合变更并标出反复修改区域。', '打开', () => goCompare(), { needsProject: true }),
+  item('compare', IconFullscreen, '并排对比', '在浏览器中并排查看两个版本。', '对比', () => goCompare(), { needsProject: true }),
+  item('offline', IconCloudDownload, '生成离线版', '抓取外链资源，生成自包含 HTML 派生产物。', '生成', buildOffline, { needsProject: true, needsVersion: true }),
+  item('download', IconExport, '下载 HTML', '下载选中版本的原型文件。', '下载', downloadHtml, { needsProject: true, needsVersion: true }),
+  item('requirements', IconFile, '需求池', '创建需求、查看状态和关联版本。', '打开', () => router.push('/requirements'), { primary: true }),
+  item('milestones', IconApps, '迭代', '创建迭代、添加需求和检查范围。', '打开', () => router.push('/milestones'), { primary: true }),
+  item('deliveries', IconSend, '交付快照', '冻结评审材料、导出静态包并追踪通知。', '打开', () => router.push('/deliveries'), { primary: true }),
+  item('git', IconBranch, 'Git 助手', '初始化、身份、同步、冲突、远端权限都在这里处理。', '打开', () => { gitOpen.value = true }, { primary: true }),
+  item('sync', IconRefresh, '提交并同步', '提交 Flowlark 自有数据，并按远端状态拉取或推送。', '同步', gitSync, { write: true, primary: true }),
+  item('search', IconSearch, '全库搜索', '搜索标题、变更、规格书、需求号和附件。', '搜索', () => router.push('/search')),
+  item('watch', IconArchive, '草稿箱', '查看自动收集的 HTML 草稿并重试失败项。', '打开', () => router.push('/watch')),
+  item('trash', IconDelete, '回收站', '查看、恢复被删除的版本。', '打开', () => router.push('/trash'), { danger: true }),
+  item('rollback', IconUndo, '回滚基线', '把当前基线退回上一版已确认版本。', '回滚', rollback, { write: true, needsProject: true, danger: true }),
+  item('settings', IconSettings, '设置', '配置端口、规则、远端、局域网、通知和集成。', '打开', () => { settingsOpen.value = true }),
+  item('lan', IconShareExternal, '局域网分享', '查看共享地址并切换只读保护。', '管理', () => { settingsOpen.value = true }),
+  item('workspace', IconApps, '工作区', '注册、克隆、镜像和索引 Flowlark 工作区。', '设置', () => { settingsOpen.value = true }),
+  item('mirror', IconRefresh, '镜像刷新', '把只读镜像快进到远端最新版本。', '刷新', refreshMirror),
+  item('status', IconCode, '运行状态', '查看当前仓库、服务、权限和 Git 状态。', '刷新', load)
 ])
 
 function icon(raw) {
@@ -419,11 +418,11 @@ async function selectProject(slug) {
 }
 
 async function createProject() {
-  if (!projectForm.name.trim()) return message.warning('请填写项目名称')
+  if (!projectForm.name.trim()) return notify.warning('请填写项目名称')
   projectSaving.value = true
   try {
     const project = await api.createProject({ ...projectForm })
-    message.success(`项目 ${project.name} 已创建`)
+    notify.success(`项目 ${project.name} 已创建`)
     newProjectOpen.value = false
     Object.assign(projectForm, { name: '', code: '', description: '' })
     await load()
@@ -456,20 +455,20 @@ function goCompare() {
 async function setBaseline() {
   const versionNo = selectedVersion.value
   await api.setBaseline(selectedProject.value, versionNo)
-  message.success(`当前基线：${versionNo}`)
+  notify.success(`当前基线：${versionNo}`)
   await load()
 }
 
 async function rollback() {
   return new Promise((resolve) => {
-    Modal.confirm({
+    confirmDanger({
       title: '回滚当前基线？',
       content: '回滚后项目默认基线会退回上一版已确认版本。',
       okText: '回滚',
       okType: 'danger',
       async onOk() {
         const v = await api.rollback(selectedProject.value)
-        message.success(`已回滚到 ${v.versionNo}`)
+        notify.success(`已回滚到 ${v.versionNo}`)
         await load()
         resolve()
       },
@@ -484,12 +483,12 @@ async function markRead() {
 
 async function markVersionRead(versionNo) {
   await api.markRead(selectedProject.value, versionNo)
-  message.success(`已标记看到 ${versionNo}`)
+  notify.success(`已标记看到 ${versionNo}`)
 }
 
 async function buildOffline() {
   await api.buildOffline(selectedProject.value, selectedVersion.value)
-  message.success('离线版已生成')
+  notify.success('离线版已生成')
   await loadVersions()
 }
 
@@ -499,14 +498,14 @@ function downloadHtml() {
 
 async function gitSync() {
   const result = await api.gitSync()
-  if (result.conflicted) message.warning('同步产生冲突，请打开 Git 助手处理')
-  else message.success('已同步')
+  if (result.conflicted) notify.warning('同步产生冲突，请打开 Git 助手处理')
+  else notify.success('已同步')
   await load()
 }
 
 async function refreshMirror() {
   await api.refreshMirror()
-  message.success('镜像已刷新')
+  notify.success('镜像已刷新')
 }
 
 async function afterVersionCreated(version) {
@@ -721,7 +720,7 @@ onMounted(load)
   row-gap: var(--fl-s-2);
   min-width: 0;
 }
-.context-form :deep(.ant-form-item) {
+.context-form :deep(.arco-form-item) {
   margin-bottom: 0;
 }
 .context-select {
@@ -814,7 +813,7 @@ onMounted(load)
   font-size: var(--fl-fs-2);
   line-height: 1.6;
 }
-.quick-item .ant-btn {
+.quick-item .arco-btn {
   grid-column: 1 / -1;
   justify-self: stretch;
 }
@@ -843,7 +842,7 @@ onMounted(load)
   .project-row {
     grid-template-columns: 36px minmax(0, 1fr);
   }
-  .attention-item .ant-btn,
+  .attention-item .arco-btn,
   .project-row > .text-tertiary {
     grid-column: 2;
     justify-self: start;
@@ -853,7 +852,7 @@ onMounted(load)
     display: grid;
     grid-template-columns: 1fr;
   }
-  .context-form :deep(.ant-form-item) {
+  .context-form :deep(.arco-form-item) {
     margin-right: 0;
   }
   .context-select,

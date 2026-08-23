@@ -185,7 +185,7 @@ async function checkImpact() {
 .source-ready-copy { display:flex; flex:1; min-width:0; flex-direction:column; }
 .source-ready-copy span { color:var(--fl-text-2); font-size:var(--fl-fs-2); }
 .url-row { display:flex; }
-.url-row .ant-input { flex:1; }
+.url-row .arco-input { flex:1; }
 .source-meta { margin-top:var(--fl-s-2); font-size:var(--fl-fs-2); }
 .source-warning { margin-bottom:var(--fl-s-4); }
 .impact-button { margin-top:var(--fl-s-2); }

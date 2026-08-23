@@ -26,7 +26,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
+import { notify } from '../ui/feedback'
 import { api } from '../api'
 import { fmtTime } from '../utils'
 
@@ -38,7 +38,7 @@ async function load() {
 
 async function restore(t) {
   await api.restoreVersion(t.project, t.versionNo)
-  message.success(`${t.versionNo} 已恢复`)
+  notify.success(`${t.versionNo} 已恢复`)
   load()
 }
 

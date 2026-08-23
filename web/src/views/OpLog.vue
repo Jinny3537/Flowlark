@@ -6,7 +6,7 @@
       语义层面的动作（比如「设为基线」还是「回滚」）Git 自己推断不出来，所以单独记一份。
     </div>
 
-    <a-table :data-source="logs" :loading="loading" row-key="at" size="middle"
+    <a-table :data="logs" :loading="loading" row-key="at" size="middle"
              :scroll="{ x: 760 }"
              :pagination="{ pageSize: 20, showSizeChanger: false }">
       <a-table-column title="时间" data-index="at" :width="170">
