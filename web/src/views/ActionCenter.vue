@@ -178,7 +178,9 @@
               <h3>{{ item.title }}</h3>
               <p>{{ item.desc }}</p>
             </div>
-            <a-button :type="item.primary ? 'primary' : 'default'"
+            <a-button class="quick-action-button"
+                      size="small"
+                      :type="item.primary ? 'primary' : 'secondary'"
                       :status="item.danger ? 'danger' : undefined"
                       :disabled="disabled(item)"
                       :loading="busyKey === item.key"
@@ -312,7 +314,7 @@ const quickActions = computed(() => [
   item('sync', IconRefresh, '提交并同步', '提交 Flowlark 自有数据，并按远端状态拉取或推送。', '同步', gitSync, { write: true, primary: true }),
   item('search', IconSearch, '全库搜索', '搜索标题、变更、规格书、需求号和附件。', '搜索', () => router.push('/search')),
   item('watch', IconArchive, '草稿箱', '查看自动收集的 HTML 草稿并重试失败项。', '打开', () => router.push('/watch')),
-  item('trash', IconDelete, '回收站', '查看、恢复被删除的版本。', '打开', () => router.push('/trash'), { danger: true }),
+  item('trash', IconDelete, '回收站', '查看、恢复被删除的版本。', '打开', () => router.push('/trash')),
   item('rollback', IconUndo, '回滚基线', '把当前基线退回上一版已确认版本。', '回滚', rollback, { write: true, needsProject: true, danger: true }),
   item('settings', IconSettings, '设置', '配置端口、规则、远端、局域网、通知和集成。', '打开', () => { settingsOpen.value = true }),
   item('lan', IconShareExternal, '局域网分享', '查看共享地址并切换只读保护。', '管理', () => { settingsOpen.value = true }),
@@ -818,9 +820,29 @@ onMounted(load)
   font-size: var(--fl-fs-2);
   line-height: 1.6;
 }
-.quick-item .arco-btn {
+.quick-action-button {
   grid-column: 1 / -1;
   justify-self: stretch;
+  width: 100%;
+  min-height: 34px;
+  border-width: 1px !important;
+  border-radius: var(--fl-r-2);
+  font-size: var(--fl-fs-3);
+  font-weight: 650;
+}
+.quick-action-button.arco-btn-secondary,
+.quick-action-button.arco-btn-secondary[type='button'] {
+  color: var(--fl-ink) !important;
+  background: var(--fl-surface-2) !important;
+  border-color: var(--fl-line) !important;
+  box-shadow: none !important;
+}
+.quick-action-button.arco-btn-secondary:hover,
+.quick-action-button.arco-btn-secondary[type='button']:hover {
+  color: var(--fl-primary-deep) !important;
+  background: var(--fl-primary-bg) !important;
+  border-color: var(--fl-primary-border) !important;
+  box-shadow: var(--fl-shadow-1) !important;
 }
 @media (max-width: 1024px) {
   .workspace-hero,
