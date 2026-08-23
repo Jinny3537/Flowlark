@@ -1,4 +1,4 @@
-import { message } from 'ant-design-vue'
+import { notify } from './ui/feedback'
 
 /**
  * 工作台与 API 同源（都由 flowlark serve 提供），所以走相对路径，
@@ -15,7 +15,7 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body)
     })
   } catch {
-    message.error('无法连接本地服务，flowlark serve 可能已经停止')
+    notify.error('无法连接本地服务，flowlark serve 可能已经停止')
     throw new Error('NETWORK')
   }
 
@@ -25,7 +25,7 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
   if (!res.ok) {
     // 只读被拦时给一句更直白的话，用户多半是在别人的机器上操作或远端没有写权限
     if (data && (data.code === 'READONLY_FROM_LAN' || data.code === 'GIT_READONLY')) {
-      message.warning(data.code === 'READONLY_FROM_LAN'
+      notify.warning(data.code === 'READONLY_FROM_LAN'
         ? '这是别人共享出来的只读视图，只能查看不能修改'
         : '当前 Git 身份没有远端写权限，Flowlark 已进入只读模式')
       const e = new Error(data.message)
@@ -34,7 +34,7 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
     }
     // 服务端错误自带 hint（下一步该干什么），比单纯报错有用得多
     const detail = data && data.hint ? `${data.message}（${data.hint}）` : (data && data.message) || '请求失败'
-    message.error(detail)
+    notify.error(detail)
     const e = new Error(detail)
     e.code = data && data.code
     throw e
@@ -47,7 +47,7 @@ async function requestText(path) {
   try {
     res = await fetch(path)
   } catch {
-    message.error('无法连接本地服务，flowlark serve 可能已经停止')
+    notify.error('无法连接本地服务，flowlark serve 可能已经停止')
     throw new Error('NETWORK')
   }
 
@@ -56,7 +56,7 @@ async function requestText(path) {
     let data = null
     try { data = text ? JSON.parse(text) : null } catch { /* 非 JSON 错误直接走默认文案 */ }
     const detail = data && data.hint ? `${data.message}（${data.hint}）` : (data && data.message) || '请求失败'
-    message.error(detail)
+    notify.error(detail)
     const e = new Error(detail)
     e.code = data && data.code
     throw e
