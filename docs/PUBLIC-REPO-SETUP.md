@@ -1,8 +1,13 @@
 # 公共仓库设置清单
 
-这份清单用于把 Flowlark 源码仓库配置成适合团队共同维护的 GitHub public repository。
+这份清单用于把 Flowlark 源码仓库配置成适合团队共同维护的 GitHub public repository，并把 Flowlark 管理的原型数据放到独立数据仓库。
 
-## 创建仓库
+当前仓库：
+
+- 源码仓库：https://github.com/Jinny3537/Flowlark
+- 数据仓库：https://github.com/Jinny3537/Flowlark-data
+
+## 源码仓库
 
 ```bash
 gh auth login
@@ -16,7 +21,29 @@ git remote add origin https://github.com/<owner>/Flowlark.git
 git push -u origin main
 ```
 
-创建完成后，把 `package.json` 里的 `OWNER/flowlark` 替换成真实的 `<owner>/Flowlark`。
+本仓库已经配置为：
+
+```bash
+origin https://github.com/Jinny3537/Flowlark.git
+```
+
+## 数据仓库
+
+Flowlark 上传和管理的 HTML 原型、规格书、需求索引和操作日志不放在源码仓库里，使用独立数据仓库：
+
+```bash
+cd /Users/beluga/flowlark-repo
+git remote -v
+flowlark config git.remote
+flowlark sync
+```
+
+当前数据仓库配置：
+
+- 路径：`/Users/beluga/flowlark-repo`
+- 远端：`https://github.com/Jinny3537/Flowlark-data.git`
+- 分支：`main`
+- 可见性：private
 
 ## 必开设置
 

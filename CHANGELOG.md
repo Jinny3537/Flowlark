@@ -170,4 +170,4 @@
 - 端口 `0`（内核分配）被 `||` 判成假值 → 改用 `??` 并回填实际端口
 - `--lan` 临时开启时 `/api/health` 读的是配置文件，导致局域网访客看到可写界面 → 改为反映实际运行状态
 
-[1.0.0]: https://github.com/OWNER/flowlark/releases/tag/v1.0.0
+[1.0.0]: https://github.com/Jinny3537/Flowlark/releases/tag/v1.0.0
