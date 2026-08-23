@@ -9,15 +9,15 @@
   它带的是仓库处境和那几条不知道就一定会做错的约定，不是原型内容。
 -->
 <template>
-  <a-drawer :open="open" title="Git" placement="right" :width="520" @update:open="$emit('update:open', $event)">
+  <a-drawer :visible="open" title="Git" placement="right" :width="520" @update:visible="$emit('update:open', $event)">
     <a-spin :spinning="loading">
 
       <!-- 体检结论：任何时候进来，先看到「现在是什么状况」 -->
       <div v-if="doctor" class="git-checks">
         <div v-for="(chk, i) in doctor.checks" :key="i" class="git-check">
-          <CheckCircleOutlined v-if="chk.level === 'ok'" style="color:#52c41a" />
-          <ExclamationCircleOutlined v-else-if="chk.level === 'warn'" style="color:#faad14" />
-          <CloseCircleOutlined v-else style="color:#ff4d4f" />
+          <IconCheckCircle v-if="chk.level === 'ok'" style="color:#52c41a" />
+          <IconExclamationCircle v-else-if="chk.level === 'warn'" style="color:#faad14" />
+          <IconCloseCircle v-else style="color:#ff4d4f" />
           <div>
             <div>{{ chk.title }}</div>
             <div v-if="chk.detail" class="text-secondary" style="font-size:12px">{{ chk.detail }}</div>
@@ -30,7 +30,7 @@
         description="Flowlark 已提前隐藏或拦截写操作，避免产生推不上去的本地改动。">
         <template #action>
           <a-button size="small" :loading="busy" @click="refreshPermission">
-            <template #icon><SyncOutlined /></template>刷新
+            <template #icon><IconRefresh /></template>刷新
           </a-button>
         </template>
       </a-alert>
@@ -54,13 +54,13 @@
           description="纳入之后，团队协作、历史追溯、冲突处理都由 Git 承担。下面一步完成初始化、身份和首次提交。" />
         <a-form layout="vertical" style="margin-top:16px">
           <a-form-item label="你的名字">
-            <a-input v-model:value="form.name" placeholder="提交记录上显示的名字" />
+            <a-input v-model="form.name" placeholder="提交记录上显示的名字" />
           </a-form-item>
           <a-form-item label="你的邮箱">
-            <a-input v-model:value="form.email" placeholder="name@example.com" />
+            <a-input v-model="form.email" placeholder="name@example.com" />
           </a-form-item>
           <a-form-item label="远端地址">
-            <a-input v-model:value="form.remote" placeholder="可留空，之后在设置里配也行" />
+            <a-input v-model="form.remote" placeholder="可留空，之后在设置里配也行" />
           </a-form-item>
         </a-form>
         <a-button type="primary" block :loading="busy" :disabled="!canWrite" @click="doInit">纳入 Git 管理</a-button>
@@ -71,8 +71,8 @@
         <a-alert type="warning" show-icon message="还没有配置提交身份"
           description="Git 需要知道每次提交是谁做的，没有身份它会拒绝提交。填一次就好。" />
         <a-form layout="vertical" style="margin-top:16px">
-          <a-form-item label="你的名字"><a-input v-model:value="form.name" /></a-form-item>
-          <a-form-item label="你的邮箱"><a-input v-model:value="form.email" /></a-form-item>
+          <a-form-item label="你的名字"><a-input v-model="form.name" /></a-form-item>
+          <a-form-item label="你的邮箱"><a-input v-model="form.email" /></a-form-item>
         </a-form>
         <a-button type="primary" block :loading="busy" :disabled="!canWrite" @click="doIdentity">保存身份</a-button>
       </template>
@@ -144,7 +144,7 @@
           </div>
         </div>
 
-        <a-input v-model:value="message" placeholder="提交说明（留空则自动生成）" style="margin-bottom:8px"
+        <a-input v-model="message" placeholder="提交说明（留空则自动生成）" style="margin-bottom:8px"
                  :disabled="!canWrite" @press-enter="doSync" />
         <a-button size="small" type="link" style="padding:0;margin-bottom:10px" :disabled="status.clean" @click="fillSuggestion">
           帮我写一条
@@ -157,8 +157,8 @@
 
         <div v-if="steps.length" style="margin-top:16px">
           <div v-for="(s, i) in steps" :key="i" style="font-size:13px;line-height:2">
-            <CheckCircleOutlined v-if="s.ok" style="color:#52c41a" />
-            <CloseCircleOutlined v-else style="color:#ff4d4f" />
+            <IconCheckCircle v-if="s.ok" style="color:#52c41a" />
+            <IconCloseCircle v-else style="color:#ff4d4f" />
             <span style="margin-left:6px">{{ s.name }}</span>
             <span class="text-secondary" style="margin-left:8px;font-size:12px">{{ s.detail }}</span>
           </div>
@@ -178,10 +178,10 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { message as msg } from 'ant-design-vue'
+import { notify as msg } from '../ui/feedback'
 import {
-  CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, SyncOutlined
-} from '@ant-design/icons-vue'
+  IconCheckCircle, IconCloseCircle, IconExclamationCircle, IconRefresh
+} from '@arco-design/web-vue/es/icon/index.js'
 import { api } from '../api'
 import { useAppStore } from '../store'
 

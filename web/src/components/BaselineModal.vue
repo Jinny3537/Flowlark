@@ -1,7 +1,7 @@
 <template>
-  <a-modal :open="open" :confirm-loading="saving" @update:open="(v) => $emit('update:open', v)"
+  <a-modal :visible="open" :confirm-loading="saving" @update:visible="(v) => $emit('update:open', v)"
            @ok="submit" :ok-button-props="{ disabled: blocked }" ok-text="确认切换">
-    <template #title><WarningOutlined style="color:#faad14" /> 设为当前基线</template>
+    <template #title><IconExclamationCircle style="color:#faad14" /> 设为当前基线</template>
 
     <div v-if="target">
       <a-alert v-if="blocked" type="error" show-icon style="margin-bottom:16px"
@@ -14,7 +14,7 @@
           <div class="mono" style="font-size:18px;font-weight:600;margin:4px 0">{{ current || '无' }}</div>
           <a-tag v-if="current">将降为「历史版本」</a-tag>
         </div>
-        <ArrowRightOutlined style="color:rgba(0,0,0,.25);font-size:18px" />
+        <IconArrowRight style="color:rgba(0,0,0,.25);font-size:18px" />
         <div style="flex:1;text-align:center">
           <div class="text-secondary" style="font-size:12px">新基线</div>
           <div class="mono" style="font-size:18px;font-weight:600;margin:4px 0;color:#0E9384">{{ target.versionNo }}</div>
@@ -33,8 +33,8 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { message } from 'ant-design-vue'
-import { WarningOutlined, ArrowRightOutlined } from '@ant-design/icons-vue'
+import { notify } from '../ui/feedback'
+import { IconExclamationCircle, IconArrowRight } from '@arco-design/web-vue/es/icon/index.js'
 import { api } from '../api'
 
 const props = defineProps({
@@ -60,7 +60,7 @@ async function submit() {
   saving.value = true
   try {
     const v = await api.setBaseline(props.slug, props.target.versionNo)
-    message.success(`当前基线：${v.versionNo}`)
+    notify.success(`当前基线：${v.versionNo}`)
     emit('update:open', false)
     emit('done', v)
   } catch {

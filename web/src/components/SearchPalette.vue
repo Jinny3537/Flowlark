@@ -1,18 +1,18 @@
 <template>
-  <a-modal :open="open" :footer="null" :closable="false" width="680px"
-           :body-style="{ padding: 0 }" @update:open="close">
+  <a-modal :visible="open" :footer="false" :closable="false" :width="680"
+           :body-style="{ padding: 0 }" @update:visible="close">
     <div style="padding:14px 16px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:10px">
-      <SearchOutlined style="color:rgba(0,0,0,.45)" />
+      <IconSearch style="color:rgba(0,0,0,.45)" />
       <input ref="inputRef" v-model="q" class="palette-input"
              placeholder="搜索版本标题、变更日志、规格书正文、需求号…"
              @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)"
              @keydown.enter.prevent="go(active)" @keydown.esc="close(false)">
-      <a-select v-model:value="field" size="small" style="width:120px" @change="run">
-        <a-select-option value="">全部字段</a-select-option>
-        <a-select-option value="title,versionNo">标题/版本号</a-select-option>
-        <a-select-option value="change">变更日志</a-select-option>
-        <a-select-option value="spec">规格书</a-select-option>
-        <a-select-option value="requirement,tag">需求/标签</a-select-option>
+      <a-select v-model="field" size="small" style="width:120px" @change="run">
+        <a-option value="">全部字段</a-option>
+        <a-option value="title,versionNo">标题/版本号</a-option>
+        <a-option value="change">变更日志</a-option>
+        <a-option value="spec">规格书</a-option>
+        <a-option value="requirement,tag">需求/标签</a-option>
       </a-select>
     </div>
 
@@ -54,7 +54,7 @@
 <script setup>
 import { ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { SearchOutlined } from '@ant-design/icons-vue'
+import { IconSearch } from '@arco-design/web-vue/es/icon/index.js'
 import { api } from '../api'
 
 const props = defineProps({ open: Boolean })

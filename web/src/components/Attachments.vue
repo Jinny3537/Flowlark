@@ -7,12 +7,12 @@
       <div style="flex:1"></div>
       <a-upload v-if="app.canWrite" :before-upload="onPick" :show-upload-list="false" multiple>
         <a-button size="small" :loading="uploading">
-          <template #icon><UploadOutlined /></template>上传附件
+          <template #icon><IconUpload /></template>上传附件
         </a-button>
       </a-upload>
     </div>
 
-    <a-empty v-if="list.length === 0" description="还没有附件" :image="simpleImage" />
+    <a-empty v-if="list.length === 0" description="还没有附件" />
 
     <div v-for="a in list" :key="a.name" class="att-row">
       <span class="att-icon">{{ iconFor(a) }}</span>
@@ -41,8 +41,8 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { Modal, message, Empty } from 'ant-design-vue'
-import { UploadOutlined } from '@ant-design/icons-vue'
+import { confirmDanger, notify } from '../ui/feedback'
+import { IconUpload } from '@arco-design/web-vue/es/icon/index.js'
 import { api } from '../api'
 import { useAppStore } from '../store'
 import { fmtSize, fmtTime } from '../utils'
@@ -55,7 +55,6 @@ const props = defineProps({
 const emit = defineEmits(['changed'])
 
 const app = useAppStore()
-const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 const uploading = ref(false)
 const list = computed(() => props.attachments)
 
@@ -70,16 +69,16 @@ function iconFor(a) {
   return ICONS[ext] || '📎'
 }
 
-/** 返回 false 阻止 antd 自行上传：我们要用自己的原始请求体接口 */
+/** 返回 false 阻止组件自行上传：我们要用自己的原始请求体接口 */
 async function onPick(file) {
   if (file.size > app.maxFileBytes) {
-    message.error(`${file.name} 超过上限 ${fmtSize(app.maxFileBytes)}`)
+    notify.error(`${file.name} 超过上限 ${fmtSize(app.maxFileBytes)}`)
     return false
   }
   uploading.value = true
   try {
     await api.addAttachment(props.slug, props.versionNo, file)
-    message.success(`已上传 ${file.name}`)
+    notify.success(`已上传 ${file.name}`)
     emit('changed')
   } catch {
     /* api 层已提示 */
@@ -93,14 +92,13 @@ const open = (a) => window.open(api.attachmentUrl(props.slug, props.versionNo, a
 const download = (a) => window.open(api.attachmentUrl(props.slug, props.versionNo, a.name, true), '_blank')
 
 function remove(a) {
-  Modal.confirm({
+  confirmDanger({
     title: `删除附件 ${a.name}？`,
     content: '文件会从磁盘删除。已提交到 Git 的历史版本仍能找回。',
     okText: '删除',
-    okType: 'danger',
     onOk: async () => {
       await api.removeAttachment(props.slug, props.versionNo, a.name)
-      message.success('已删除')
+      notify.success('已删除')
       emit('changed')
     }
   })
