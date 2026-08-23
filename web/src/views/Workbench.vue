@@ -91,7 +91,7 @@
                 </template>
                 <template v-else>
                   断网或代理拦截时样式异常属正常现象。
-                  <a-button size="small" type="link" :loading="buildingOffline"
+                  <a-button size="small" type="text" :loading="buildingOffline"
                             :disabled="!app.canWrite" @click="buildOffline">
                     生成离线版
                   </a-button>
@@ -308,7 +308,7 @@
                     <a :href="item.url" target="_blank" rel="noopener">定位标注</a>
                     <a-popconfirm title="删除这条标注反馈？" ok-text="删除" cancel-text="取消"
                                   ok-type="danger" @confirm="removeFeedback(item.id)">
-                      <a-button type="link" size="small" danger>
+                      <a-button type="text" size="small" status="danger">
                         <template #icon><IconDelete /></template>删除
                       </a-button>
                     </a-popconfirm>

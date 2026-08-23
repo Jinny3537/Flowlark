@@ -39,7 +39,7 @@
         <a-tag :color="permission.mode === 'writable' ? 'green' : 'default'">
           {{ permission.mode === 'writable' ? '可写' : '未探测，暂按可写' }}
         </a-tag>
-        <a-button size="small" type="link" :loading="busy" @click="refreshPermission">刷新探测</a-button>
+        <a-button size="small" type="text" :loading="busy" @click="refreshPermission">刷新探测</a-button>
       </div>
 
       <!-- ① 还没纳入 Git -->
@@ -146,7 +146,7 @@
 
         <a-input v-model="message" placeholder="提交说明（留空则自动生成）" style="margin-bottom:8px"
                  :disabled="!canWrite" @press-enter="doSync" />
-        <a-button size="small" type="link" style="padding:0;margin-bottom:10px" :disabled="status.clean" @click="fillSuggestion">
+        <a-button size="small" type="text" class="inline-helper-button" :disabled="status.clean" @click="fillSuggestion">
           帮我写一条
         </a-button>
 
@@ -326,5 +326,9 @@ async function copyBrief(intent) {
 .permission-line {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 0 4px;
+}
+.inline-helper-button {
+  margin-bottom: var(--fl-s-2);
+  padding-inline: 0;
 }
 </style>

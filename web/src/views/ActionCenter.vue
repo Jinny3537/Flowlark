@@ -107,7 +107,7 @@
               <div class="section-label">项目脉搏</div>
               <h3>最近项目</h3>
             </div>
-            <a-button type="link" @click="$router.push('/projects')">全部项目</a-button>
+            <a-button type="text" @click="$router.push('/projects')">全部项目</a-button>
           </div>
           <a-empty v-if="recentProjects.length === 0" description="暂无项目" />
           <div v-else class="project-list">

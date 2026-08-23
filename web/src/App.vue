@@ -52,7 +52,7 @@
             <div class="notification-panel">
               <div class="notification-head">
                 <strong>待办与通知</strong>
-                <a-button type="link" size="small" @click="$router.push('/actions')">打开工作台</a-button>
+                <a-button type="text" size="small" @click="$router.push('/actions')">打开工作台</a-button>
               </div>
               <a-empty v-if="!pendingNotifications.length" description="暂无待重试通知" />
               <a-list v-else size="small" :data="pendingNotifications.slice(0, 4)">

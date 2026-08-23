@@ -303,7 +303,7 @@
                     <template #renderItem="{ item }">
                       <a-list-item>
                         <template #actions>
-                          <a-button size="small" type="link" @click="editMcpServer(item)">编辑</a-button>
+                          <a-button size="small" type="text" @click="editMcpServer(item)">编辑</a-button>
                           <a-button size="small" type="text" status="danger" :disabled="!app.canWrite" @click="removeMcpServer(item.id)">删除</a-button>
                         </template>
                         <a-list-item-meta>
@@ -444,7 +444,7 @@
                   <template #renderItem="{ item }">
                     <a-list-item>
                       <template #actions>
-                        <a-button size="small" type="link" @click="editMcpExtension(item.name, item.capability)">编辑</a-button>
+                        <a-button size="small" type="text" @click="editMcpExtension(item.name, item.capability)">编辑</a-button>
                         <a-button size="small" type="text" status="danger" :disabled="!app.canWrite" @click="removeMcpExtension(item.name)">删除</a-button>
                       </template>
                       <a-list-item-meta>
