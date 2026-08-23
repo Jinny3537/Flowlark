@@ -362,6 +362,21 @@ body {
   border: 0;
 }
 
+.status-pill {
+  white-space: nowrap;
+}
+
+.status-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.responsive-data-cards {
+  display: none;
+}
+
 @media (max-width: 1100px) {
   .slogan { display: none; }
   .brand-copy { flex-direction: row; align-items: center; }
@@ -377,6 +392,11 @@ body {
   .flow-page-actions {
     justify-content: flex-start;
     margin-top: var(--fl-s-3);
+  }
+  .responsive-data-table { display: none; }
+  .responsive-data-cards {
+    display: grid;
+    gap: var(--fl-s-3);
   }
 }
 
