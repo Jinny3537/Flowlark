@@ -110,15 +110,15 @@
 
 ## 图标
 
-统一用 `@ant-design/icons-vue`，线性风格。**不用 emoji 当图标** —— 跨平台渲染不一致，读屏软件会念出表情名。
+统一用 Arco Design Vue 图标或迁移期选定的单一线性图标族。**不用 emoji 当图标** —— 跨平台渲染不一致，读屏软件会念出表情名。
 
 现有代码里 `🔒 沙箱隔离`、`⇤ 全宽` 这类要换成图标组件。
 
 ## 技术栈约定
 
-Vue 3 `<script setup>` + Ant Design Vue 4 + Vite。
+Vue 3 `<script setup>` + Arco Design Vue + Vite。
 
-- token 定义在 `web/src/style.css` 的 `:root`，同时通过 `web/src/brand.js` 喂给 Ant Design 的主题 token —— 一处改色，两边同步。
+- token 定义在 `web/src/style.css` 的 `:root`，同时通过 `web/src/brand.js` 维护 Arco token bridge —— 一处改色，两边同步。
 - 组件里**不写字面量颜色和字号**，只引用 `var(--fl-*)`。
 - 现有 255 处内联 `style="..."` 逐步收进类名。判断标准：出现两次以上的样式组合就该有名字。
 - ARIA 属性动态绑定（`:aria-expanded="open"`），不写死。
