@@ -126,7 +126,7 @@
             <a-tab-pane key="reqs" :tab="`关联需求 ${version ? version.requirementCount : 0}`" />
             <a-tab-pane key="files" :tab="`附件 ${version ? version.attachments.length : 0}`" />
             <a-tab-pane key="info" tab="版本信息" />
-            <a-tab-pane key="feedback" :tab="`标注反馈 ${annotationFeedbacks.length}`" />
+            <a-tab-pane key="feedback" :tab="`标注反馈 ${versionFeedbacks.length}`" />
           </a-tabs>
 
           <div class="wb-panel-body">
@@ -290,13 +290,12 @@
 
             <template v-else-if="tab === 'feedback'">
               <div class="panel-tools feedback-head">
-                <strong>反馈</strong>
-                <a-tag>{{ activeFeedbacks.length }} 条</a-tag>
+                <strong>标注反馈</strong>
+                <a-tag>{{ versionFeedbacks.length }} 条</a-tag>
               </div>
-              <a-segmented v-model:value="feedbackTab" :options="feedbackTabOptions" block class="feedback-switch" />
-              <a-empty v-if="activeFeedbacks.length === 0" :description="feedbackTab === 'standard' ? '暂无标准反馈' : '暂无标注反馈'" />
+              <a-empty v-if="versionFeedbacks.length === 0" description="暂无标注反馈" />
               <div v-else class="feedback-list">
-                <article v-for="item in activeFeedbacks" :key="item.id" class="feedback-item">
+                <article v-for="item in versionFeedbacks" :key="item.id" class="feedback-item">
                   <div class="feedback-title-row">
                     <strong>{{ item.title }}</strong>
                     <span class="text-secondary code-sm">{{ fmtTime(item.createdAt) }}</span>
@@ -307,8 +306,8 @@
                     <a-tag v-if="item.hasScreenshot" color="green">含截图</a-tag>
                     <a v-if="item.hasScreenshot" :href="api.feedbackScreenshotUrl(item.id)" target="_blank" rel="noopener">查看截图</a>
                     <a :href="item.url" target="_blank" rel="noopener">定位标注</a>
-                    <a-popconfirm v-if="feedbackTab === 'annotation'" title="删除这条标注反馈？" ok-text="删除"
-                                  cancel-text="取消" ok-type="danger" @confirm="removeFeedback(item.id)">
+                    <a-popconfirm title="删除这条标注反馈？" ok-text="删除" cancel-text="取消"
+                                  ok-type="danger" @confirm="removeFeedback(item.id)">
                       <a-button type="link" size="small" danger>
                         <template #icon><DeleteOutlined /></template>删除
                       </a-button>
@@ -452,7 +451,6 @@ const annotationMode = ref(false)
 const prototypeEditMode = ref(false)
 const feedbackOpen = ref(false)
 const feedbacks = ref([])
-const feedbackTab = ref('annotation')
 const selectedAnchor = ref(null)
 const captureRect = ref(null)
 const previewCanvas = ref(null)
@@ -516,16 +514,6 @@ const olderSiblings = computed(() => {
 })
 const versionFeedbacks = computed(() => feedbacks.value
   .filter((item) => item.project === props.slug && item.version === props.versionNo))
-const annotationFeedbacks = computed(() => versionFeedbacks.value
-  .filter((item) => item.kind !== 'standard'))
-const standardFeedbacks = computed(() => versionFeedbacks.value
-  .filter((item) => item.kind === 'standard'))
-const activeFeedbacks = computed(() =>
-  feedbackTab.value === 'standard' ? standardFeedbacks.value : annotationFeedbacks.value)
-const feedbackTabOptions = computed(() => [
-  { label: `标准反馈 ${standardFeedbacks.value.length}`, value: 'standard' },
-  { label: `标注反馈 ${annotationFeedbacks.value.length}`, value: 'annotation' }
-])
 const htmlSourceOptions = [
   { label: '源码', value: 'code' },
   { label: '文件', value: 'file' },
@@ -1040,20 +1028,7 @@ onMounted(() => {
 .panel-alert { margin-bottom: var(--fl-s-3); }
 .html-editor-body { margin-top: var(--fl-s-4); }
 .html-source { font-size: var(--fl-fs-2); }
-.info-feedback-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
-  gap: var(--fl-s-4);
-  align-items: start;
-}
-.version-info-column { min-width: 0; }
-.feedback-column {
-  min-width: 0;
-  padding-left: var(--fl-s-4);
-  border-left: 1px solid var(--fl-line);
-}
 .feedback-head { margin-bottom: var(--fl-s-3); }
-.feedback-switch { margin-bottom: var(--fl-s-3); }
 .feedback-list { display: grid; gap: var(--fl-s-3); }
 .feedback-item {
   padding: var(--fl-s-3);
@@ -1064,15 +1039,6 @@ onMounted(() => {
 .feedback-title-row { display: flex; align-items: center; gap: var(--fl-s-3); justify-content: space-between; }
 .feedback-item p { margin: var(--fl-s-2) 0; color: var(--fl-text-2); line-height: 1.5; }
 .feedback-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--fl-s-2); }
-@media (max-width: 1180px) {
-  .info-feedback-grid { grid-template-columns: 1fr; }
-  .feedback-column {
-    padding-left: 0;
-    padding-top: var(--fl-s-4);
-    border-left: 0;
-    border-top: 1px solid var(--fl-line);
-  }
-}
 .drawer-actions {
   display: flex;
   justify-content: flex-end;
