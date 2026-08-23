@@ -91,7 +91,7 @@
               </div>
               <a-button size="small"
                         :type="taskItem.primary ? 'primary' : 'default'"
-                        :danger="taskItem.danger"
+                        :status="taskItem.danger ? 'danger' : undefined"
                         :disabled="taskItem.disabled"
                         :loading="busyKey === taskItem.key"
                         @click="runTask(taskItem)">
@@ -179,7 +179,7 @@
               <p>{{ item.desc }}</p>
             </div>
             <a-button :type="item.primary ? 'primary' : 'default'"
-                      :danger="item.danger"
+                      :status="item.danger ? 'danger' : undefined"
                       :disabled="disabled(item)"
                       :loading="busyKey === item.key"
                       @click="run(item)">

@@ -118,7 +118,7 @@
           </a-button>
           <a-button block @click="copyBrief('conflict')">复制给 AI 助理</a-button>
           <a-popconfirm title="回到同步之前的状态？本地已提交的内容不会丢。" ok-text="放弃" cancel-text="再想想" @confirm="doAbort">
-            <a-button block danger type="text" :disabled="!canWrite">放弃这次同步</a-button>
+            <a-button block status="danger" type="text" :disabled="!canWrite">放弃这次同步</a-button>
           </a-popconfirm>
         </a-space>
       </template>

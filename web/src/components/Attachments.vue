@@ -29,7 +29,7 @@
       <a-space>
         <a-button size="small" :disabled="a.missing" @click="open(a)">打开</a-button>
         <a-button size="small" :disabled="a.missing" @click="download(a)">下载</a-button>
-        <a-button v-if="app.canWrite" size="small" danger @click="remove(a)">删除</a-button>
+        <a-button v-if="app.canWrite" size="small" status="danger" @click="remove(a)">删除</a-button>
       </a-space>
     </div>
 

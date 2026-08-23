@@ -17,26 +17,37 @@
 
     <a-table
       :data="items"
-      :columns="columns"
       row-key="name"
       :loading="loading"
       :custom-row="rowProps"
       :scroll="{ x: 760 }"
     >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'name'">
+      <template #columns>
+        <a-table-column title="迭代">
+          <template #cell="{ record }">
           <div>
             <strong>{{ record.title }}</strong>
             <div class="mono text-secondary">{{ record.name }}</div>
           </div>
-        </template>
-        <template v-else-if="column.key === 'external'">
-          <a-tag :color="record.external ? 'blue' : 'default'">{{ record.external ? '已关联任务平台' : '本地' }}</a-tag>
-          <div v-if="record.external?.syncedAt" class="text-secondary sync-time">{{ fmtTime(record.external.syncedAt) }}</div>
-        </template>
-        <template v-else-if="column.key === 'status'">
-          <a-tag :color="record.ready ? 'green' : 'gold'">{{ record.ready ? '可交付' : `${record.warnings.length} 项风险` }}</a-tag>
-        </template>
+          </template>
+        </a-table-column>
+        <a-table-column title="周期" :width="240">
+          <template #cell="{ record }">{{ record.startAt || '-' }} -> {{ record.endAt || '-' }}</template>
+        </a-table-column>
+        <a-table-column title="版本数" :width="100">
+          <template #cell="{ record }">{{ record.items.length }}</template>
+        </a-table-column>
+        <a-table-column title="任务平台" :width="170">
+          <template #cell="{ record }">
+            <a-tag :color="record.external ? 'blue' : 'default'">{{ record.external ? '已关联任务平台' : '本地' }}</a-tag>
+            <div v-if="record.external?.syncedAt" class="text-secondary sync-time">{{ fmtTime(record.external.syncedAt) }}</div>
+          </template>
+        </a-table-column>
+        <a-table-column title="状态" :width="140">
+          <template #cell="{ record }">
+            <a-tag :color="record.ready ? 'green' : 'gold'">{{ record.ready ? '可交付' : `${record.warnings.length} 项风险` }}</a-tag>
+          </template>
+        </a-table-column>
       </template>
     </a-table>
 
@@ -86,13 +97,6 @@ const syncing = ref(false)
 const open = ref(false)
 const form = reactive({ name: '', title: '', startAt: '', endAt: '', syncExternal: false })
 
-const columns = [
-  { title: '迭代', key: 'name' },
-  { title: '周期', customRender: ({ record }) => `${record.startAt || '-'} -> ${record.endAt || '-'}`, width: 240 },
-  { title: '版本数', customRender: ({ record }) => record.items.length, width: 100 },
-  { title: '任务平台', key: 'external', width: 170 },
-  { title: '状态', key: 'status', width: 140 }
-]
 const rowProps = (record) => ({ class: 'clickable-row', onClick: () => router.push(`/milestones/${encodeURIComponent(record.name)}`) })
 
 async function load() {

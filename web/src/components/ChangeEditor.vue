@@ -9,7 +9,7 @@
       <a-input v-model="row.location" placeholder="位置（选填）" style="width:160px" :maxlength="50" />
       <a-input v-model="row.content" placeholder="改了什么，一句话说清" :maxlength="200" />
       <a-input v-model="row.requirement" placeholder="需求号" style="width:120px" class="mono" :maxlength="40" />
-      <a-button type="text" danger @click="rows.splice(i, 1)"><IconClose /></a-button>
+      <a-button type="text" status="danger" @click="rows.splice(i, 1)"><IconClose /></a-button>
     </div>
     <a-button block type="dashed" @click="add">
       <template #icon><IconPlus /></template>添加一条变更

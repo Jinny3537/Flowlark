@@ -98,7 +98,7 @@
                 <template #renderItem="{ item }">
                   <a-list-item>
                     <template #actions>
-                      <a-button type="text" danger size="small" @click="removeWorkspace(item.path)">移除</a-button>
+                      <a-button type="text" status="danger" size="small" @click="removeWorkspace(item.path)">移除</a-button>
                     </template>
                     <a-list-item-meta :title="item.name" :description="item.path" />
                     <a-tag :color="item.missing ? 'red' : item.mode === 'mirror' ? 'gold' : 'green'">
@@ -246,7 +246,7 @@
                 <a-button type="primary" :disabled="!app.canWrite || !remoteUrl.trim()" @click="saveRemote">
                   保存
                 </a-button>
-                <a-button danger :disabled="!app.canWrite || !currentRemote" @click="clearRemote">移除</a-button>
+                <a-button status="danger" :disabled="!app.canWrite || !currentRemote" @click="clearRemote">移除</a-button>
               </a-input-group>
               <div v-if="currentRemote" class="text-secondary" style="font-size:12px;margin-top:8px">
                 当前：<span class="mono">{{ currentRemote.url }}</span>
@@ -304,7 +304,7 @@
                       <a-list-item>
                         <template #actions>
                           <a-button size="small" type="link" @click="editMcpServer(item)">编辑</a-button>
-                          <a-button size="small" type="link" danger :disabled="!app.canWrite" @click="removeMcpServer(item.id)">删除</a-button>
+                          <a-button size="small" type="text" status="danger" :disabled="!app.canWrite" @click="removeMcpServer(item.id)">删除</a-button>
                         </template>
                         <a-list-item-meta>
                           <template #title>
@@ -359,7 +359,7 @@
                           <a-textarea v-model="mcpServerForm.headersText" :rows="4" class="mono" :disabled="!app.canWrite"
                                       placeholder='{"Authorization":"Bearer ${secret}"}' />
                         </a-form-item>
-                        <a-button danger :disabled="!app.canWrite || !mcpServerForm.id" @click="deleteMcpSecret">删除本机密钥</a-button>
+                        <a-button status="danger" :disabled="!app.canWrite || !mcpServerForm.id" @click="deleteMcpSecret">删除本机密钥</a-button>
                       </a-collapse-panel>
                     </a-collapse>
                   </a-form>
@@ -445,7 +445,7 @@
                     <a-list-item>
                       <template #actions>
                         <a-button size="small" type="link" @click="editMcpExtension(item.name, item.capability)">编辑</a-button>
-                        <a-button size="small" type="link" danger :disabled="!app.canWrite" @click="removeMcpExtension(item.name)">删除</a-button>
+                        <a-button size="small" type="text" status="danger" :disabled="!app.canWrite" @click="removeMcpExtension(item.name)">删除</a-button>
                       </template>
                       <a-list-item-meta>
                         <template #title>

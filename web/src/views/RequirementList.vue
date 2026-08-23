@@ -32,14 +32,27 @@
       </a-select>
     </div>
 
-    <a-table :data="filtered" :columns="columns" row-key="code" :loading="loading" size="middle" :custom-row="rowProps" :scroll="{ x: 980 }">
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'requirement'"><div class="entity-name"><span class="mono">{{ record.code }}</span><strong>{{ record.title }}</strong><span class="text-secondary">{{ record.description || '暂无描述' }}</span></div></template>
-        <template v-else-if="column.key === 'scope'"><div class="scope-cell"><strong>{{ record.project || '未分项目' }}</strong><span class="text-secondary">{{ record.module || '未分模块' }}</span></div></template>
-        <template v-else-if="column.key === 'classify'"><a-space size="small" wrap><a-tag v-if="record.type">{{ record.type }}</a-tag><a-tag v-if="record.priority" color="gold">{{ record.priority }}</a-tag><span v-if="!record.type && !record.priority" class="text-secondary">—</span></a-space></template>
-        <template v-else-if="column.key === 'status'"><a-tag :color="colors[record.derivedStatus]">{{ labels[record.derivedStatus] }}</a-tag><span v-if="record.manualStatus" class="text-secondary code-sm">手动</span></template>
-        <template v-else-if="column.key === 'pool'"><a-tag :color="record.external ? 'blue' : 'default'">{{ record.external ? '需求池' : '本地' }}</a-tag><span v-if="record.external?.status" class="text-secondary code-sm">{{ record.external.status }}</span></template>
-        <template v-else-if="column.key === 'versions'">{{ record.versions.length }} 个版本 · {{ projectCount(record) }} 个项目</template>
+    <a-table :data="filtered" row-key="code" :loading="loading" size="middle" :custom-row="rowProps" :scroll="{ x: 980 }">
+      <template #columns>
+        <a-table-column title="需求" :width="360">
+          <template #cell="{ record }"><div class="entity-name"><span class="mono">{{ record.code }}</span><strong>{{ record.title }}</strong><span class="text-secondary">{{ record.description || '暂无描述' }}</span></div></template>
+        </a-table-column>
+        <a-table-column title="项目 / 模块" :width="170">
+          <template #cell="{ record }"><div class="scope-cell"><strong>{{ record.project || '未分项目' }}</strong><span class="text-secondary">{{ record.module || '未分模块' }}</span></div></template>
+        </a-table-column>
+        <a-table-column title="类型 / 优先级" :width="140">
+          <template #cell="{ record }"><a-space size="small" wrap><a-tag v-if="record.type">{{ record.type }}</a-tag><a-tag v-if="record.priority" color="gold">{{ record.priority }}</a-tag><span v-if="!record.type && !record.priority" class="text-secondary">-</span></a-space></template>
+        </a-table-column>
+        <a-table-column title="本地状态" :width="150">
+          <template #cell="{ record }"><a-tag :color="colors[record.derivedStatus]">{{ labels[record.derivedStatus] }}</a-tag><span v-if="record.manualStatus" class="text-secondary code-sm">手动</span></template>
+        </a-table-column>
+        <a-table-column title="来源" :width="150">
+          <template #cell="{ record }"><a-tag :color="record.external ? 'blue' : 'default'">{{ record.external ? '需求池' : '本地' }}</a-tag><span v-if="record.external?.status" class="text-secondary code-sm">{{ record.external.status }}</span></template>
+        </a-table-column>
+        <a-table-column title="关联范围" :width="180">
+          <template #cell="{ record }">{{ record.versions.length }} 个版本 · {{ projectCount(record) }} 个项目</template>
+        </a-table-column>
+        <a-table-column title="负责人" data-index="owner" :width="130" />
       </template>
     </a-table>
 
@@ -102,7 +115,6 @@ const externalOpen=ref(false), externalLoading=ref(false), externalResults=ref([
 const external=reactive({provider:'mcp',query:'',token:''})
 const labels={not_started:'未开始',designing:'设计中',finalized:'已定稿',delivered:'已交付'}
 const colors={not_started:'default',designing:'gold',finalized:'cyan',delivered:'green'}
-const columns=[{title:'需求',key:'requirement',width:360},{title:'项目 / 模块',key:'scope',width:170},{title:'类型 / 优先级',key:'classify',width:140},{title:'本地状态',key:'status',width:150},{title:'来源',key:'pool',width:150},{title:'关联范围',key:'versions',width:180},{title:'负责人',dataIndex:'owner',width:130}]
 const poolCount=computed(()=>items.value.filter(item=>item.external).length)
 const linkedCount=computed(()=>items.value.filter(item=>item.versions.length).length)
 const projectOptions=computed(()=>[...new Set(items.value.map(item=>item.project).filter(Boolean))].sort())

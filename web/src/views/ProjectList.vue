@@ -16,13 +16,13 @@
              message="当前是只读模式"
              description="你仍然可以浏览项目、打开原型和查看规格；新建、上传、删除等写操作需要有 Git 写权限的成员执行。" />
 
-    <a-spin :spinning="loading">
+    <a-spin :spinning="loading" class="project-list-spin">
       <a-empty v-if="!loading && projects.length === 0" description="仓库里还没有项目">
         <a-button type="primary" :disabled="!app.canWrite" @click="formOpen = true">创建第一个项目</a-button>
       </a-empty>
 
-      <a-row :gutter="[16, 16]">
-        <a-col v-for="p in projects" :key="p.slug" :xs="24" :sm="12" :lg="8" :xxl="6">
+      <div class="project-grid">
+        <div v-for="p in projects" :key="p.slug" class="project-grid-item">
           <a-card hoverable class="fl-card project-card" :class="{ 'has-baseline': p.baselineVersionNo }"
                   @click="$router.push(`/projects/${p.slug}`)">
             <div class="project-card-head">
@@ -60,8 +60,8 @@
               {{ fmtTime(p.updatedAt) }} · {{ p.updatedBy || p.createdBy }}
             </div>
           </a-card>
-        </a-col>
-      </a-row>
+        </div>
+      </div>
     </a-spin>
 
     <a-modal v-model:visible="formOpen" title="新建项目" :confirm-loading="saving" @ok="submit">
@@ -130,6 +130,20 @@ onMounted(load)
   position: relative;
   overflow: hidden;
 }
+.project-grid {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--fl-s-4);
+}
+:deep(.project-list-spin),
+:deep(.project-list-spin > .arco-spin-children) {
+  display: block;
+  width: 100%;
+}
+.project-grid-item {
+  min-width: 0;
+}
 .project-card::before {
   content: '';
   position: absolute;
@@ -142,6 +156,10 @@ onMounted(load)
   display: flex;
   align-items: flex-start;
   gap: var(--fl-s-3);
+}
+.project-card-head .spacer {
+  min-width: 0;
+  flex: 1;
 }
 .project-mark {
   width: 34px;
@@ -160,6 +178,7 @@ onMounted(load)
   font-weight: 700;
   color: var(--fl-ink);
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .project-desc {
   margin-top: var(--fl-s-2);
@@ -168,4 +187,7 @@ onMounted(load)
   line-height: 1.5;
 }
 .project-divider { margin: 14px 0; }
+@media (max-width: 640px) {
+  .project-grid { grid-template-columns: 1fr; }
+}
 </style>

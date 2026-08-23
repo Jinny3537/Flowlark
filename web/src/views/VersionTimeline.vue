@@ -113,7 +113,7 @@
                   <a-menu-divider />
                   <a-menu-item v-if="v.display.key === 'VOID'" key="reopen" :disabled="!app.canWrite">恢复为编辑中</a-menu-item>
                   <a-menu-item v-else key="void" :disabled="!app.canWrite || v.isBaseline">废弃</a-menu-item>
-                  <a-menu-item key="remove" danger :disabled="!app.canWrite || v.isBaseline">删除</a-menu-item>
+                  <a-menu-item key="remove" class="danger-menu-item" :disabled="!app.canWrite || v.isBaseline">删除</a-menu-item>
                 </a-menu>
               </template>
             </a-dropdown>
@@ -260,6 +260,7 @@ onMounted(load)
 .timeline-alert { margin-bottom: var(--fl-s-4); }
 .baseline-side { text-align: right; }
 .row-actions { display: flex; gap: var(--fl-s-1); }
+:deep(.danger-menu-item:not(.arco-menu-disabled)) { color: var(--fl-danger); }
 .timeline-list {
   position: relative;
   margin-left: 18px;
