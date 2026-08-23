@@ -1,4 +1,24 @@
 :root {
+  --primary-1: 230,247,244;
+  --primary-2: 196,238,231;
+  --primary-3: 127,216,202;
+  --primary-4: 46,211,183;
+  --primary-5: 18,165,148;
+  --primary-6: 14,147,132;
+  --primary-7: 11,122,110;
+  --primary-8: 11,95,85;
+  --primary-9: 8,72,65;
+  --primary-10: 5,49,45;
+  --link-1: var(--primary-1);
+  --link-2: var(--primary-2);
+  --link-3: var(--primary-3);
+  --link-4: var(--primary-4);
+  --link-5: var(--primary-5);
+  --link-6: var(--primary-6);
+  --link-7: var(--primary-7);
+  --link-8: var(--primary-8);
+  --link-9: var(--primary-9);
+  --link-10: var(--primary-10);
   --fl-primary: #0E9384;
   --fl-primary-hover: #12A594;
   --fl-primary-active: #0B7A6E;
@@ -82,6 +102,34 @@ body {
     border-color .18s var(--fl-ease),
     box-shadow .18s var(--fl-ease),
     transform .18s var(--fl-ease);
+}
+.arco-btn-primary,
+.arco-btn-primary[type='button'],
+.arco-btn-primary[type='submit'] {
+  background-color: var(--fl-primary) !important;
+  border-color: var(--fl-primary) !important;
+}
+.arco-btn-primary:hover,
+.arco-btn-primary[type='button']:hover,
+.arco-btn-primary[type='submit']:hover {
+  background-color: var(--fl-primary-hover) !important;
+  border-color: var(--fl-primary-hover) !important;
+}
+.arco-btn-primary:active,
+.arco-btn-primary[type='button']:active,
+.arco-btn-primary[type='submit']:active {
+  background-color: var(--fl-primary-active) !important;
+  border-color: var(--fl-primary-active) !important;
+}
+.arco-btn-text,
+.arco-btn-link,
+.arco-link {
+  color: var(--fl-primary-deep) !important;
+}
+.arco-btn-text:hover,
+.arco-btn-link:hover,
+.arco-link:hover {
+  color: var(--fl-primary) !important;
 }
 .arco-btn:not(.arco-btn-link):not(.arco-btn-text):hover {
   transform: translateY(-1px);
@@ -291,6 +339,9 @@ body {
   background: #EEF8F5 !important;
   color: var(--fl-ink) !important;
   box-shadow: inset 0 0 0 1px rgba(14,147,132,.16);
+}
+.app-sidebar .arco-menu-light .arco-menu-item-selected .arco-icon {
+  color: var(--fl-primary) !important;
 }
 .app-sidebar .arco-menu-light .arco-menu-item-selected::after {
   display: none !important;

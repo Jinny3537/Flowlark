@@ -238,7 +238,7 @@
                 <a-empty v-if="!version || version.requirements.length === 0" description="未关联需求" />
                 <div v-for="(r, i) in (version ? version.requirements : [])" :key="i"
                      class="req-row">
-                  <a-tag color="blue" class="mono">{{ r.code }}</a-tag>
+                  <a-tag color="green" class="mono">{{ r.code }}</a-tag>
                   <span class="req-title">{{ r.title || '—' }}</span>
                   <a-button size="small" :disabled="!app.requirementUrl(r.code, r.url)"
                             @click="openUrl(app.requirementUrl(r.code, r.url))">
@@ -302,7 +302,7 @@
                   </div>
                   <p>{{ item.description }}</p>
                   <div class="feedback-meta">
-                    <a-tag v-for="req in item.requirements" :key="req" color="blue" class="mono">{{ req }}</a-tag>
+                    <a-tag v-for="req in item.requirements" :key="req" color="green" class="mono">{{ req }}</a-tag>
                     <a-tag v-if="item.hasScreenshot" color="green">含截图</a-tag>
                     <a v-if="item.hasScreenshot" :href="api.feedbackScreenshotUrl(item.id)" target="_blank" rel="noopener">查看截图</a>
                     <a :href="item.url" target="_blank" rel="noopener">定位标注</a>

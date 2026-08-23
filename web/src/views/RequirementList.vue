@@ -47,7 +47,7 @@
           <template #cell="{ record }"><a-tag :color="colors[record.derivedStatus]">{{ labels[record.derivedStatus] }}</a-tag><span v-if="record.manualStatus" class="text-secondary code-sm">手动</span></template>
         </a-table-column>
         <a-table-column title="来源" :width="150">
-          <template #cell="{ record }"><a-tag :color="record.external ? 'blue' : 'default'">{{ record.external ? '需求池' : '本地' }}</a-tag><span v-if="record.external?.status" class="text-secondary code-sm">{{ record.external.status }}</span></template>
+          <template #cell="{ record }"><a-tag :color="record.external ? 'green' : 'default'">{{ record.external ? '需求池' : '本地' }}</a-tag><span v-if="record.external?.status" class="text-secondary code-sm">{{ record.external.status }}</span></template>
         </a-table-column>
         <a-table-column title="关联范围" :width="180">
           <template #cell="{ record }">{{ record.versions.length }} 个版本 · {{ projectCount(record) }} 个项目</template>

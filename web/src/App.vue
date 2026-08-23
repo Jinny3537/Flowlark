@@ -334,12 +334,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   gap: var(--fl-s-1);
 }
 .icon-text-button {
-  color: var(--fl-text-2);
+  color: var(--fl-primary-deep) !important;
 }
 .header-settings-button {
   width: 32px;
   justify-content: center;
-  color: var(--fl-text-2);
+  color: var(--fl-primary-deep) !important;
 }
 .notification-panel {
   width: 320px;
@@ -397,8 +397,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   color: var(--fl-ink);
 }
 .app-menu .arco-menu-item-selected::after { display: none; }
-.app-menu .arco-menu-item .arco-icon { color: var(--fl-text-3); }
-.app-menu .arco-menu-item-selected .arco-icon { color: var(--fl-primary); }
+.app-menu .arco-menu-item .arco-icon { color: var(--fl-text-3) !important; }
+.app-menu .arco-menu-item-selected .arco-icon { color: var(--fl-primary) !important; }
 .app-sidebar-footer {
   position: absolute;
   bottom: var(--fl-s-4);

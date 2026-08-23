@@ -522,7 +522,7 @@
                   <div style="font-weight:500">
                     {{ item.label }}
                     <a-tag v-if="item.danger" color="red" style="margin-left:6px">高风险</a-tag>
-                    <a-tag v-if="!item.isDefault" color="blue" style="margin-left:6px">已修改</a-tag>
+                    <a-tag v-if="!item.isDefault" color="green" style="margin-left:6px">已修改</a-tag>
                   </div>
                   <div v-if="item.note" class="text-secondary" style="font-size:12.5px;line-height:1.8">
                     {{ item.note }}

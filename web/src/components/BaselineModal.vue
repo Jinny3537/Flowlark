@@ -18,7 +18,7 @@
         <div style="flex:1;text-align:center">
           <div class="text-secondary" style="font-size:12px">新基线</div>
           <div class="mono" style="font-size:18px;font-weight:600;margin:4px 0;color:#0E9384">{{ target.versionNo }}</div>
-          <a-tag color="blue">研发默认看到此版</a-tag>
+          <a-tag color="green">研发默认看到此版</a-tag>
         </div>
       </div>
 

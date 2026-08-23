@@ -48,7 +48,7 @@ const LABEL = {
 }
 const COLOR = {
   VERSION_ADD: 'green', VERSION_REMOVE: 'red', VERSION_VOID: 'red',
-  BASELINE_SET: 'blue', BASELINE_ROLLBACK: 'orange', VERSION_RESTORE: 'green'
+  BASELINE_SET: 'green', BASELINE_ROLLBACK: 'orange', VERSION_RESTORE: 'green'
 }
 
 onMounted(async () => {

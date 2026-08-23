@@ -37,7 +37,7 @@
            class="palette-item" :class="{ active: i === active }"
            @mouseenter="active = i" @click="go(i)">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-          <a-tag :color="item.versionStatus === 'BASELINE' ? 'blue' : 'default'" style="margin:0">
+          <a-tag :color="item.versionStatus === 'BASELINE' ? 'green' : 'default'" style="margin:0">
             {{ item.fieldLabel }}
           </a-tag>
           <span class="mono" style="font-weight:600">{{ item.versionNo || item.project }}</span>

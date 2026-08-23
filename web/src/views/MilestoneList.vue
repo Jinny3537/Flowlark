@@ -39,7 +39,7 @@
         </a-table-column>
         <a-table-column title="任务平台" :width="170">
           <template #cell="{ record }">
-            <a-tag :color="record.external ? 'blue' : 'default'">{{ record.external ? '已关联任务平台' : '本地' }}</a-tag>
+            <a-tag :color="record.external ? 'green' : 'default'">{{ record.external ? '已关联任务平台' : '本地' }}</a-tag>
             <div v-if="record.external?.syncedAt" class="text-secondary sync-time">{{ fmtTime(record.external.syncedAt) }}</div>
           </template>
         </a-table-column>

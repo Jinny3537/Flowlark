@@ -7,7 +7,7 @@ export const versionStatus = {
 
 export const reviewStatus = {
   unread: { label: '未读', color: 'orange' },
-  reviewing: { label: '审阅中', color: 'blue' },
+  reviewing: { label: '审阅中', color: 'gold' },
   approved: { label: '已确认', color: 'green' },
   obsolete: { label: '已过期', color: 'gray' }
 }
