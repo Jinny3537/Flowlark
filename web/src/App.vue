@@ -2,19 +2,17 @@
   <a-config-provider :locale="zhCN" :theme="theme">
     <a-layout class="app-shell">
       <a-layout-header class="app-header">
-        <button class="app-brand" type="button" @click="$router.push('/projects')" aria-label="回到项目列表">
-          <span class="brand-emblem" aria-hidden="true">
-            <BrandMark :size="28" />
-          </span>
-          <span class="brand-copy">
-            <span class="brand-name">Flowlark</span>
-            <span class="slogan">Where prototypes flow</span>
-          </span>
-        </button>
-        <a-divider type="vertical" />
-        <a-tooltip :title="app.repo">
-          <span class="repo-path text-secondary mono code-sm">{{ shortRepo }}</span>
-        </a-tooltip>
+        <div class="header-left">
+          <button class="app-brand" type="button" @click="$router.push('/projects')" aria-label="回到项目列表">
+            <span class="brand-emblem" aria-hidden="true">
+              <BrandMark :size="28" />
+            </span>
+            <span class="brand-copy">
+              <span class="brand-name">Flowlark</span>
+              <span class="slogan">Where prototypes flow</span>
+            </span>
+          </button>
+        </div>
 
         <div class="spacer"></div>
 
@@ -24,9 +22,71 @@
           <kbd>{{ isMac ? '⌘' : 'Ctrl' }}K</kbd>
         </button>
 
+        <a-dropdown :trigger="['click']">
+          <a-button type="primary" class="quick-create-button" :disabled="!app.canWrite">
+            <template #icon><PlusOutlined /></template>
+            <span>快速创建</span>
+          </a-button>
+          <template #overlay>
+            <a-menu @click="onQuickCreate">
+              <a-menu-item key="version">
+                <FileAddOutlined />
+                导入原型
+              </a-menu-item>
+              <a-menu-item key="requirement">
+                <ProfileOutlined />
+                新建需求
+              </a-menu-item>
+              <a-menu-item key="milestone">
+                <CalendarOutlined />
+                新建迭代
+              </a-menu-item>
+              <a-menu-item key="delivery">
+                <SendOutlined />
+                创建交付快照
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+
+        <a-popover trigger="click" placement="bottomRight" overlay-class-name="notification-popover">
+          <template #content>
+            <div class="notification-panel">
+              <div class="notification-head">
+                <strong>待办与通知</strong>
+                <a-button type="link" size="small" @click="$router.push('/actions')">打开工作台</a-button>
+              </div>
+              <a-empty v-if="!pendingNotifications.length" :image="null" description="暂无待重试通知" />
+              <a-list v-else size="small" :data-source="pendingNotifications.slice(0, 4)">
+                <template #renderItem="{ item }">
+                  <a-list-item>
+                    <a-list-item-meta>
+                      <template #title>{{ item.event?.event || '交付通知' }}</template>
+                      <template #description>{{ item.event?.project || '未知项目' }} {{ item.event?.version || item.event?.snapshot || '' }}</template>
+                    </a-list-item-meta>
+                    <a-tag color="gold">待重试</a-tag>
+                  </a-list-item>
+                </template>
+              </a-list>
+              <div class="notification-actions">
+                <a-button size="small" @click="$router.push('/deliveries')">查看交付</a-button>
+                <a-button size="small" type="primary" :loading="flushingNotifications" :disabled="!pendingNotifications.length" @click="flushNotifications">
+                  立即重试
+                </a-button>
+              </div>
+            </div>
+          </template>
+          <a-badge :count="pendingNotifications.length" :offset="[-3, 4]" :number-style="{ backgroundColor: 'var(--fl-draft)' }">
+            <a-button type="text" class="icon-text-button">
+              <template #icon><BellOutlined /></template>
+              <span>待办</span>
+            </a-button>
+          </a-badge>
+        </a-popover>
+
         <a-tooltip :title="gitTooltip">
           <a-badge :count="gitBadge" :offset="[-4, 4]" :number-style="gitBadgeStyle">
-            <a-button type="text" @click="gitOpen = true">
+            <a-button type="text" class="icon-text-button" @click="gitOpen = true">
               <template #icon><BranchesOutlined /></template>
               {{ git.branch || 'Git' }}
             </a-button>
@@ -42,6 +102,9 @@
         <a-tag v-if="app.connected" color="green">运行中</a-tag>
         <a-tag v-else color="red">服务已停止</a-tag>
         <a-tag v-if="updateAvailable" color="cyan" class="update-status">可更新至 {{ updateAvailable.version }}</a-tag>
+        <a-button type="text" class="header-settings-button" aria-label="打开设置" @click="settingsOpen = true">
+          <template #icon><SettingOutlined /></template>
+        </a-button>
       </a-layout-header>
 
       <a-layout>
@@ -53,14 +116,10 @@
             <a-menu-item key="milestones"><template #icon><CalendarOutlined /></template>迭代</a-menu-item>
             <a-menu-item key="deliveries"><template #icon><SendOutlined /></template>交付</a-menu-item>
             <a-menu-item key="watch"><template #icon><InboxOutlined /></template>草稿箱</a-menu-item>
-            <a-menu-item key="oplog"><template #icon><HistoryOutlined /></template>操作日志</a-menu-item>
             <a-menu-item key="trash"><template #icon><DeleteOutlined /></template>回收站</a-menu-item>
           </a-menu>
 
           <div class="app-sidebar-footer">
-            <a-button class="app-settings-button workspace-button" block @click="$router.push('/setup')">
-              <template #icon><AppstoreOutlined /></template>改稿台
-            </a-button>
             <a-button class="app-settings-button" block @click="settingsOpen = true">
               <template #icon><SettingOutlined /></template>
               设置
@@ -89,11 +148,13 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import { message } from 'ant-design-vue'
 import {
-  FolderOutlined, HistoryOutlined, DeleteOutlined, InboxOutlined, ProfileOutlined, CalendarOutlined, SendOutlined, AppstoreOutlined,
-  SearchOutlined, BranchesOutlined, SettingOutlined, EyeOutlined, ControlOutlined
+  FolderOutlined, DeleteOutlined, InboxOutlined, ProfileOutlined, CalendarOutlined, SendOutlined,
+  SearchOutlined, BranchesOutlined, SettingOutlined, EyeOutlined, ControlOutlined, PlusOutlined, BellOutlined,
+  FileAddOutlined
 } from '@ant-design/icons-vue'
 import SearchPalette from './components/SearchPalette.vue'
 import GitPanel from './components/GitPanel.vue'
@@ -107,17 +168,19 @@ import { api } from './api'
 
 const app = useAppStore()
 const route = useRoute()
+const router = useRouter()
 
 const searchOpen = ref(false)
 const gitOpen = ref(false)
 const settingsOpen = ref(false)
 const git = ref({ tracked: false, clean: true, files: [], conflicts: [] })
 const updateAvailable = ref(null)
+const notifications = ref([])
+const flushingNotifications = ref(false)
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
 const activeKey = computed(() => {
-  if (route.path.startsWith('/oplog')) return 'oplog'
   if (route.path.startsWith('/actions')) return 'actions'
   if (route.path.startsWith('/requirements')) return 'requirements'
   if (route.path.startsWith('/milestones')) return 'milestones'
@@ -126,12 +189,6 @@ const activeKey = computed(() => {
   if (route.path.startsWith('/trash')) return 'trash'
   if (route.path.startsWith('/settings')) return ''
   return 'projects'
-})
-
-const shortRepo = computed(() => {
-  if (!app.repo) return ''
-  const parts = app.repo.split(/[/\\]/).filter(Boolean)
-  return (parts.length > 2 ? '…/' : '') + parts.slice(-2).join('/')
 })
 
 // 冲突比「有未提交改动」紧急得多，用红色角标区分
@@ -154,6 +211,7 @@ const readonlyLabel = computed(() => app.readonlyReason === 'git' ? 'Git 只读'
 const readonlyTooltip = computed(() => app.readonlyReason === 'git'
   ? '当前 Git 身份没有远端写权限。Flowlark 已隐藏写操作，避免产生推不上去的本地改动。'
   : '这是别人共享出来的视图。写操作仅限运行 Flowlark 的那台机器。')
+const pendingNotifications = computed(() => notifications.value.filter((item) => item.status === 'pending'))
 
 async function loadGit() {
   try {
@@ -179,6 +237,35 @@ async function checkUpdate() {
   } catch { updateAvailable.value = null }
 }
 
+async function loadNotifications() {
+  try {
+    notifications.value = await api.listNotifications()
+  } catch {
+    notifications.value = []
+  }
+}
+
+async function flushNotifications() {
+  flushingNotifications.value = true
+  try {
+    await api.flushNotifications()
+    message.success('通知队列已处理')
+    await loadNotifications()
+  } finally {
+    flushingNotifications.value = false
+  }
+}
+
+function onQuickCreate({ key }) {
+  const targets = {
+    version: '/actions',
+    requirement: '/requirements',
+    milestone: '/milestones',
+    delivery: '/deliveries'
+  }
+  router.push(targets[key] || '/actions')
+}
+
 function scheduleGitLoad() {
   if ('requestIdleCallback' in window) {
     window.requestIdleCallback(loadGit, { timeout: 1200 })
@@ -197,6 +284,7 @@ function onKey(e) {
 onMounted(async () => {
   await app.load()
   await loadGitCached()
+  await loadNotifications()
   scheduleGitLoad()
   checkUpdate()
   window.addEventListener('keydown', onKey)
@@ -205,9 +293,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <style>
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--fl-s-3);
+  min-width: 0;
+}
 .search-trigger {
   display: flex; align-items: center; gap: var(--fl-s-2); cursor: pointer;
-  height: 32px; padding: 0 11px; border: 1px solid var(--fl-line); border-radius: var(--fl-r-2);
+  width: clamp(320px, 34vw, 520px);
+  height: 32px; padding: 0 10px 0 12px; border: 1px solid var(--fl-line); border-radius: var(--fl-r-2);
   color: var(--fl-text-2); font-size: var(--fl-fs-3); background: var(--fl-surface-2);
   transition: all .2s var(--fl-ease);
   line-height: 1;
@@ -221,16 +316,42 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   align-items: center;
   line-height: 1;
 }
-.repo-path {
-  display: inline-block;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
+.quick-create-button,
+.icon-text-button,
+.header-settings-button {
+  display: inline-flex;
+  align-items: center;
+}
+.quick-create-button {
+  gap: var(--fl-s-1);
+}
+.icon-text-button {
+  color: var(--fl-text-2);
+}
+.header-settings-button {
+  width: 32px;
+  justify-content: center;
+  color: var(--fl-text-2);
+}
+.notification-panel {
+  width: 320px;
+}
+.notification-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fl-s-3);
+  margin-bottom: var(--fl-s-2);
+}
+.notification-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--fl-s-2);
+  margin-top: var(--fl-s-3);
 }
 .search-trigger:hover { border-color: var(--fl-line-strong); color: var(--fl-primary); background: var(--fl-surface); box-shadow: var(--fl-shadow-1); }
 .search-trigger kbd {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   height: 18px;
@@ -294,19 +415,33 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   padding: 0;
 }
 
+@media (max-width: 1100px) {
+  .search-trigger {
+    width: clamp(240px, 28vw, 340px);
+  }
+}
+
 @media (max-width: 900px) {
-  .repo-path { max-width: 160px; }
+  .search-trigger {
+    width: 220px;
+  }
+  .quick-create-button span,
+  .icon-text-button span {
+    display: none;
+  }
 }
 
 @media (max-width: 768px) {
-  .app-header > .ant-divider,
-  .app-header .repo-path,
   .app-header .lan-status { display: none; }
   .app-header .update-status { display:none; }
+  .search-trigger {
+    width: 34px;
+    justify-content: center;
+    padding: 0;
+  }
   .search-trigger span,
   .search-trigger kbd {
     display: none;
   }
 }
-.workspace-button { margin-bottom:var(--fl-s-2); }
 </style>

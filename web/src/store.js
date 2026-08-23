@@ -62,9 +62,13 @@ export const useAppStore = defineStore('app', {
       if (!this.requirementUrlTemplate) return ''
       return this.requirementUrlTemplate.replace('{code}', encodeURIComponent(code))
     },
-    previewUrl(slug, versionNo, { offline = false } = {}) {
+    previewUrl(slug, versionNo, { offline = false, edit = false } = {}) {
       const base = `${this.previewOrigin}/p/${encodeURIComponent(slug)}/${encodeURIComponent(versionNo)}`
-      return offline ? `${base}?offline=1` : base
+      const params = new URLSearchParams()
+      if (offline) params.set('offline', '1')
+      if (edit) params.set('edit', '1')
+      const qs = params.toString()
+      return qs ? `${base}?${qs}` : base
     }
   }
 })

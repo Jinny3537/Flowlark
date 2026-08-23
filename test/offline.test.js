@@ -146,4 +146,14 @@ describe('离线版本生成', () => {
     hub.clearOffline('off', 'v1.0')
     t.assert.strictEqual(hub.hasOffline('off', 'v1.0'), false)
   })
+
+  test('替换原型文件后清理旧离线版', async (t) => {
+    const { hub } = repo()
+    hub.addVersion('off', { versionNo: 'v1.0', title: 'x', html: '<html><body>旧版</body></html>' })
+    await hub.buildOffline('off', 'v1.0')
+    t.assert.strictEqual(hub.hasOffline('off', 'v1.0'), true)
+
+    hub.replaceHtml('off', 'v1.0', { html: '<html><body>新版</body></html>' })
+    t.assert.strictEqual(hub.hasOffline('off', 'v1.0'), false)
+  })
 })

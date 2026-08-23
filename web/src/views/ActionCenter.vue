@@ -519,7 +519,9 @@ onMounted(load)
 
 <style scoped>
 .action-page {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
 }
 .action-head {
   align-items: flex-start;
@@ -532,10 +534,13 @@ onMounted(load)
   grid-template-columns: minmax(0, 1.55fr) minmax(320px, .9fr);
   gap: var(--fl-s-4);
   margin-bottom: var(--fl-s-4);
+  min-width: 0;
 }
 .focus-panel,
 .work-panel,
 .metric-panel {
+  min-width: 0;
+  box-sizing: border-box;
   background: var(--fl-surface);
   border: 1px solid var(--fl-line);
   border-radius: var(--fl-r-3);
@@ -594,6 +599,7 @@ onMounted(load)
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
   gap: var(--fl-s-4);
   margin-bottom: var(--fl-s-4);
+  min-width: 0;
 }
 .work-panel {
   padding: var(--fl-s-4);
@@ -604,6 +610,7 @@ onMounted(load)
   justify-content: space-between;
   gap: var(--fl-s-3);
   margin-bottom: var(--fl-s-4);
+  min-width: 0;
 }
 .panel-head h3 {
   margin: 0;
@@ -711,6 +718,11 @@ onMounted(load)
 }
 .context-form {
   justify-content: flex-end;
+  row-gap: var(--fl-s-2);
+  min-width: 0;
+}
+.context-form :deep(.ant-form-item) {
+  margin-bottom: 0;
 }
 .context-select {
   width: 240px;
@@ -766,8 +778,9 @@ onMounted(load)
 }
 .quick-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: var(--fl-s-3);
+  min-width: 0;
 }
 .quick-item {
   min-height: 138px;
@@ -809,6 +822,13 @@ onMounted(load)
   .workspace-hero,
   .workspace-grid {
     grid-template-columns: 1fr;
+  }
+  .panel-head {
+    flex-wrap: wrap;
+  }
+  .context-form {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 @media (max-width: 768px) {

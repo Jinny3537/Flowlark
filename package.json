@@ -1,6 +1,6 @@
 {
   "name": "flowlark",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "description": "Flowlark — Where prototypes flow。本地原型版本库：CLI 管数据，浏览器看原型，数据是纯文本文件直接进 Git",
   "type": "module",
   "license": "MIT",

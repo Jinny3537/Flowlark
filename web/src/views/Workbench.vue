@@ -56,6 +56,19 @@
             <a-button size="small" :type="annotationMode ? 'primary' : 'default'" @click="toggleAnnotation">
               <template #icon><HighlightOutlined /></template>{{ annotationMode ? '退出标注' : '标注反馈' }}
             </a-button>
+            <a-button size="small" :type="prototypeEditMode ? 'primary' : 'default'" :disabled="!editable"
+                      @click="togglePrototypeEdit">
+              <template #icon><CodeOutlined /></template>{{ prototypeEditMode ? '退出编辑' : '在线编辑' }}
+            </a-button>
+            <a-button v-if="prototypeEditMode" size="small" type="primary" :loading="htmlSaving"
+                      @click="savePrototypeHtml">
+              <template #icon><SaveOutlined /></template>保存
+            </a-button>
+            <a-tooltip :title="editable ? '替换当前编辑中版本的原型 HTML' : '只有编辑中版本可以修改原型文件'">
+              <a-button size="small" :disabled="!editable" @click="openHtmlEditor">
+                <template #icon><CodeOutlined /></template>修改原型
+              </a-button>
+            </a-tooltip>
             <a-divider type="vertical" class="compact-divider" />
             <a-tooltip :title="docsCollapsed ? '恢复分屏' : '收起右侧文档，预览占满'">
               <a-button type="text" size="small" :aria-label="docsCollapsed ? '恢复分屏' : '全宽预览'"
@@ -93,10 +106,10 @@
 
           <div v-if="version" ref="previewCanvas" class="preview-canvas">
             <!-- 不给 allow-same-origin：脚本跑得起来，但读不到工作台任何东西 -->
-            <iframe class="wb-frame" :src="previewSrc"
+            <iframe ref="prototypeFrame" class="wb-frame" :src="prototypeEditMode ? editPreviewSrc : previewSrc"
                     sandbox="allow-scripts allow-forms allow-popups allow-modals"
                     referrerpolicy="no-referrer"></iframe>
-            <AnnotationOverlay :active="annotationMode" :anchor="selectedAnchor"
+            <AnnotationOverlay :active="annotationMode && !prototypeEditMode" :anchor="selectedAnchor"
                                @select="selectAnnotation" @cancel="cancelAnnotation" />
           </div>
         </div>
@@ -133,9 +146,17 @@
                   <template #icon><EditOutlined /></template>编辑
                 </a-button>
                 <template v-else>
+                  <a-button size="small" @click="applySpecTemplate">
+                    <template #icon><FileTextOutlined /></template>编写模板
+                  </a-button>
                   <a-button size="small" @click="specEditing = false">取消</a-button>
                   <a-button size="small" type="primary" :loading="saving" :disabled="!app.canWrite" @click="saveSpec">保存</a-button>
                 </template>
+                <a-upload v-if="app.canWrite" :before-upload="importSpecFile" :show-upload-list="false" accept=".md,.markdown,.txt,text/markdown,text/plain">
+                  <a-button size="small" :loading="importingSpec">
+                    <template #icon><UploadOutlined /></template>上传导入
+                  </a-button>
+                </a-upload>
               </div>
 
               <!-- 回看历史时明确标出「这不是当前内容」，否则很容易误读 -->
@@ -154,11 +175,18 @@
               </a-alert>
 
               <a-textarea v-if="specEditing" v-model:value="specDraft" :rows="24" class="mono"
-                          placeholder="用 Markdown 写清楚这一版的产品规则…" />
+                          placeholder="用 Markdown 写清楚这一版的产品规则、接口约束、验收口径和风险说明…" />
               <div v-else-if="specAtContent !== null" class="md" v-html="renderMarkdown(specAtContent)"></div>
               <div v-else-if="version && version.spec" class="md" v-html="specHtml"></div>
               <a-empty v-else description="本版本尚未编写规格书">
-                <a-button type="primary" :disabled="!app.canWrite" @click="startEditSpec">开始编写</a-button>
+                <a-space>
+                  <a-button type="primary" :disabled="!app.canWrite" @click="startEditSpec">开始编写</a-button>
+                  <a-upload v-if="app.canWrite" :before-upload="importSpecFile" :show-upload-list="false" accept=".md,.markdown,.txt,text/markdown,text/plain">
+                    <a-button :loading="importingSpec">
+                      <template #icon><UploadOutlined /></template>上传规格书
+                    </a-button>
+                  </a-upload>
+                </a-space>
               </a-empty>
             </template>
 
@@ -257,6 +285,28 @@
                   <span class="mono code-sm break-all">{{ previewSrc }}</span>
                 </a-descriptions-item>
               </a-descriptions>
+              <div class="feedback-section">
+                <div class="panel-tools feedback-head">
+                  <strong>标注反馈</strong>
+                  <a-tag>{{ versionFeedbacks.length }} 条</a-tag>
+                </div>
+                <a-empty v-if="versionFeedbacks.length === 0" description="暂无反馈" />
+                <div v-else class="feedback-list">
+                  <article v-for="item in versionFeedbacks" :key="item.id" class="feedback-item">
+                    <div class="feedback-title-row">
+                      <strong>{{ item.title }}</strong>
+                      <span class="text-secondary code-sm">{{ fmtTime(item.createdAt) }}</span>
+                    </div>
+                    <p>{{ item.description }}</p>
+                    <div class="feedback-meta">
+                      <a-tag v-for="req in item.requirements" :key="req" color="blue" class="mono">{{ req }}</a-tag>
+                      <a-tag v-if="item.hasScreenshot" color="green">含截图</a-tag>
+                      <a v-if="item.hasScreenshot" :href="api.feedbackScreenshotUrl(item.id)" target="_blank" rel="noopener">查看截图</a>
+                      <a :href="item.url" target="_blank" rel="noopener">定位标注</a>
+                    </div>
+                  </article>
+                </div>
+              </div>
             </template>
           </div>
         </div>
@@ -266,7 +316,65 @@
     <BaselineModal v-model:open="blOpen" :slug="slug" :target="version"
                    :current="currentBaselineNo" :total-versions="siblings.length" @done="reload" />
     <FeedbackDrawer v-model:open="feedbackOpen" :context="feedbackContext" :capture-rect="captureRect"
-                    @submitted="annotationMode = false" />
+                    @submitted="afterFeedbackSubmitted" />
+    <a-drawer v-model:open="htmlEditorOpen" title="修改原型文件" placement="right" :width="620"
+              destroy-on-close>
+      <a-spin :spinning="htmlEditorLoading">
+        <a-alert v-if="version && version.hasOffline" type="warning" show-icon class="panel-alert"
+                 message="保存后会清理旧离线版，需要时可重新生成。" />
+        <a-alert v-if="!editable" type="info" show-icon class="panel-alert"
+                 message="当前版本不可修改原型文件；请先恢复为编辑中或新建版本。" />
+
+        <a-segmented v-model:value="htmlSourceMode" :options="htmlSourceOptions" block />
+
+        <div class="html-editor-body">
+          <template v-if="htmlSourceMode === 'code'">
+            <div class="panel-tools">
+              <span class="text-secondary code-sm">{{ htmlSummary }}</span>
+              <div class="spacer"></div>
+              <a-button size="small" :loading="htmlInspecting" @click="inspectPrototypeDraft(true)">检查依赖</a-button>
+            </div>
+            <a-textarea v-model:value="htmlDraft" :rows="20" class="mono html-source"
+                        placeholder="在这里修改完整 HTML 源码，保存后刷新左侧预览。" />
+          </template>
+
+          <template v-else-if="htmlSourceMode === 'file'">
+            <a-upload-dragger :before-upload="importPrototypeFile" :show-upload-list="false" accept=".html,.htm">
+              <p class="upload-icon"><UploadOutlined /></p>
+              <p>点击或拖拽 HTML 文件替换当前原型</p>
+              <p class="text-secondary code-sm">上限 {{ fmtSize(app.maxFileBytes) }}</p>
+            </a-upload-dragger>
+            <div v-if="htmlFileName" class="source-ready compact">
+              <CheckCircleFilled />
+              <div><strong>{{ htmlFileName }}</strong><span>{{ htmlSummary }}</span></div>
+            </div>
+          </template>
+
+          <template v-else>
+            <a-input-group compact class="url-row">
+              <a-input v-model:value="htmlSourceUrl" placeholder="https://example.com/prototype" @press-enter="loadPrototypeUrl" />
+              <a-button :loading="htmlImporting" @click="loadPrototypeUrl">
+                <template #icon><CloudDownloadOutlined /></template>读取
+              </a-button>
+            </a-input-group>
+            <div v-if="htmlDraft" class="source-ready compact">
+              <CheckCircleFilled />
+              <div><strong>原型已读取</strong><span>{{ htmlSummary }}</span></div>
+            </div>
+          </template>
+
+          <a-alert v-if="htmlExternalRefs.length" type="warning" show-icon class="stack-sm"
+                   :message="`检测到 ${htmlExternalRefs.length} 个外部依赖，保存后可在预览区重新生成离线版。`" />
+        </div>
+
+        <div class="drawer-actions">
+          <a-button @click="htmlEditorOpen = false">取消</a-button>
+          <a-button type="primary" :loading="htmlSaving" :disabled="!editable || !htmlDraft.trim()" @click="savePrototypeHtml">
+            <template #icon><SaveOutlined /></template>保存并刷新预览
+          </a-button>
+        </div>
+      </a-spin>
+    </a-drawer>
 
     <a-drawer v-model:open="historyOpen" title="这一版的演进历史" placement="right" :width="520">
       <a-empty v-if="commits.length === 0" description="还没有 Git 提交记录">
@@ -293,7 +401,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   LeftOutlined, LinkOutlined, HistoryOutlined, DesktopOutlined, LockOutlined,
-  ColumnWidthOutlined, FullscreenOutlined, EditOutlined, ExportOutlined, HighlightOutlined
+  ColumnWidthOutlined, FullscreenOutlined, EditOutlined, ExportOutlined, HighlightOutlined,
+  UploadOutlined, FileTextOutlined, CodeOutlined, CloudDownloadOutlined, SaveOutlined,
+  CheckCircleFilled
 } from '@ant-design/icons-vue'
 import ChangeList from '../components/ChangeList.vue'
 import ChangeEditor from '../components/ChangeEditor.vue'
@@ -330,10 +440,23 @@ const buildingOffline = ref(false)
 const tagDraft = ref([])
 const allTags = ref([])
 const annotationMode = ref(false)
+const prototypeEditMode = ref(false)
 const feedbackOpen = ref(false)
+const feedbacks = ref([])
 const selectedAnchor = ref(null)
 const captureRect = ref(null)
 const previewCanvas = ref(null)
+const prototypeFrame = ref(null)
+const htmlEditorOpen = ref(false)
+const htmlEditorLoading = ref(false)
+const htmlSaving = ref(false)
+const htmlInspecting = ref(false)
+const htmlImporting = ref(false)
+const htmlSourceMode = ref('code')
+const htmlSourceUrl = ref('')
+const htmlDraft = ref('')
+const htmlFileName = ref('')
+const htmlExternalRefs = ref([])
 
 // 原型是这个页面的主角，默认给它多一点。右侧文档区 min-width 340px 兜底可读性。
 const DEFAULT_SPLIT = 68
@@ -344,6 +467,7 @@ const wbRef = ref(null)
 
 const specEditing = ref(false)
 const specDraft = ref('')
+const importingSpec = ref(false)
 const cumFrom = ref(null)
 const changeItems = ref([])
 const changeLocCounts = ref({})
@@ -354,8 +478,13 @@ const reqDraft = ref([])
 
 const previewSrc = computed(() =>
   version.value ? app.previewUrl(props.slug, props.versionNo, { offline: useOffline.value }) : '')
+const editPreviewSrc = computed(() =>
+  version.value ? app.previewUrl(props.slug, props.versionNo, { edit: true }) : '')
 const tagOptions = computed(() => allTags.value.map((t) => ({ value: t.tag, label: `${t.tag} (${t.count})` })))
 const specHtml = computed(() => renderMarkdown(version.value && version.value.spec))
+const htmlSummary = computed(() => htmlDraft.value
+  ? `${fmtSize(new Blob([htmlDraft.value]).size)} · ${htmlExternalRefs.value.length} 个外部依赖`
+  : '尚未读取 HTML')
 const currentBaselineNo = computed(() => {
   const b = siblings.value.find((v) => v.isBaseline)
   return b ? b.versionNo : null
@@ -375,6 +504,13 @@ const olderSiblings = computed(() => {
   const i = siblings.value.findIndex((v) => v.versionNo === props.versionNo)
   return i < 0 ? [] : siblings.value.slice(i + 1)
 })
+const versionFeedbacks = computed(() => feedbacks.value
+  .filter((item) => item.project === props.slug && item.version === props.versionNo))
+const htmlSourceOptions = [
+  { label: '源码', value: 'code' },
+  { label: '文件', value: 'file' },
+  { label: 'URL', value: 'url' }
+]
 
 async function reload() {
   loading.value = true
@@ -412,6 +548,7 @@ async function reload() {
     // 默认对比起点取上一版：研发最常问的就是「比上版改了什么」
     cumFrom.value = olderSiblings.value.length ? olderSiblings.value[0].versionNo : null
     await loadChanges()
+    await loadFeedbacks()
   } finally {
     loading.value = false
   }
@@ -464,6 +601,7 @@ function annotationLink(anchor) {
 }
 
 function toggleAnnotation() {
+  if (prototypeEditMode.value) return message.info('请先退出在线编辑，再进行标注反馈')
   annotationMode.value = !annotationMode.value
   if (annotationMode.value) selectedAnchor.value = null
 }
@@ -483,6 +621,15 @@ function selectAnnotation(anchor) {
 
 function cancelAnnotation() {
   annotationMode.value = false
+}
+
+async function loadFeedbacks() {
+  feedbacks.value = await api.listFeedbackDrafts().catch(() => [])
+}
+
+async function afterFeedbackSubmitted() {
+  annotationMode.value = false
+  await loadFeedbacks()
 }
 const openExternal = () => window.open(previewSrc.value, '_blank', 'noopener')
 const openUrl = (url) => url && window.open(url, '_blank', 'noopener')
@@ -521,6 +668,134 @@ function onOfflineToggle() {
   // 切换只影响 iframe 的 src，previewSrc 是 computed，会自动重新加载
 }
 
+async function togglePrototypeEdit() {
+  if (!editable.value) return message.info('只有编辑中版本可以在线编辑')
+  if (prototypeEditMode.value) {
+    prototypeEditMode.value = false
+    return
+  }
+  htmlEditorLoading.value = true
+  try {
+    htmlDraft.value = await api.getHtml(props.slug, props.versionNo)
+    await inspectPrototypeDraft(false)
+    annotationMode.value = false
+    useOffline.value = false
+    prototypeEditMode.value = true
+  } finally {
+    htmlEditorLoading.value = false
+  }
+}
+
+function requestEditedPrototypeHtml() {
+  return new Promise((resolve, reject) => {
+    const frameWindow = prototypeFrame.value && prototypeFrame.value.contentWindow
+    if (!frameWindow) return reject(new Error('NO_FRAME'))
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const timer = window.setTimeout(() => {
+      window.removeEventListener('message', onMessage)
+      reject(new Error('EDIT_HTML_TIMEOUT'))
+    }, 3000)
+    function onMessage(event) {
+      if (event.source !== frameWindow) return
+      const data = event.data || {}
+      if (data.type !== 'flowlark:edit-html' || data.id !== id) return
+      window.clearTimeout(timer)
+      window.removeEventListener('message', onMessage)
+      resolve(String(data.html || ''))
+    }
+    window.addEventListener('message', onMessage)
+    frameWindow.postMessage({ type: 'flowlark:get-edit-html', id }, '*')
+  })
+}
+
+async function openHtmlEditor() {
+  if (!editable.value) return message.info('只有编辑中版本可以修改原型文件')
+  htmlEditorOpen.value = true
+  htmlEditorLoading.value = true
+  htmlSourceMode.value = 'code'
+  htmlSourceUrl.value = ''
+  htmlFileName.value = ''
+  try {
+    htmlDraft.value = await api.getHtml(props.slug, props.versionNo)
+    await inspectPrototypeDraft(false)
+  } finally {
+    htmlEditorLoading.value = false
+  }
+}
+
+async function inspectPrototypeDraft(noisy = false) {
+  if (!htmlDraft.value.trim()) {
+    htmlExternalRefs.value = []
+    return
+  }
+  htmlInspecting.value = true
+  try {
+    const result = await api.inspectHtml(htmlDraft.value)
+    htmlExternalRefs.value = result.externalRefs || []
+    if (noisy) message.success('原型依赖已检查')
+  } finally {
+    htmlInspecting.value = false
+  }
+}
+
+async function importPrototypeFile(file) {
+  if (!editable.value) {
+    message.info('当前版本不可修改原型文件')
+    return false
+  }
+  if (file.size > app.maxFileBytes) {
+    message.error(`${file.name} 超过上限 ${fmtSize(app.maxFileBytes)}`)
+    return false
+  }
+  if (!/\.html?$/i.test(file.name)) {
+    message.error('请上传 .html 或 .htm 文件')
+    return false
+  }
+  try {
+    htmlDraft.value = await readFileText(file)
+    htmlFileName.value = file.name
+    await inspectPrototypeDraft(false)
+  } catch {
+    message.error(`读取 ${file.name} 失败`)
+  }
+  return false
+}
+
+async function loadPrototypeUrl() {
+  if (!htmlSourceUrl.value.trim()) return message.warning('请输入公开 URL')
+  htmlImporting.value = true
+  try {
+    const result = await api.importUrl(htmlSourceUrl.value.trim())
+    htmlDraft.value = result.html || ''
+    htmlExternalRefs.value = result.externalRefs || []
+    htmlFileName.value = ''
+  } finally {
+    htmlImporting.value = false
+  }
+}
+
+async function savePrototypeHtml() {
+  if (!editable.value) return message.info('当前版本不可修改原型文件')
+  if (prototypeEditMode.value) {
+    try {
+      htmlDraft.value = await requestEditedPrototypeHtml()
+    } catch {
+      return message.error('读取在线编辑内容失败，请重试')
+    }
+  }
+  if (!htmlDraft.value.trim()) return message.warning('请先提供原型 HTML')
+  htmlSaving.value = true
+  try {
+    version.value = await api.replaceHtml(props.slug, props.versionNo, htmlDraft.value)
+    useOffline.value = false
+    prototypeEditMode.value = false
+    htmlEditorOpen.value = false
+    message.success('原型文件已保存，预览已刷新')
+  } finally {
+    htmlSaving.value = false
+  }
+}
+
 async function loadSpecAt(ref) {
   if (!ref) {
     specAtContent.value = null
@@ -542,6 +817,97 @@ function startEditSpec() {
   specEditing.value = true
   specRef.value = null
   specAtContent.value = null
+}
+
+function specTemplate() {
+  const title = version.value && version.value.title ? version.value.title : props.versionNo
+  const reqs = version.value && version.value.requirements && version.value.requirements.length
+    ? version.value.requirements.map((r) => `- ${r.code} ${r.title || ''}`.trim()).join('\n')
+    : '- 暂无'
+  return `# ${props.versionNo} 技术规格书：${title}
+
+## 1. 背景与目标
+
+- 业务目标：
+- 适用范围：
+- 不在本次范围：
+
+## 2. 关联需求
+
+${reqs}
+
+## 3. 功能规则
+
+| 模块 | 规则 | 异常处理 |
+|---|---|---|
+|  |  |  |
+
+## 4. 数据与接口
+
+- 输入：
+- 输出：
+- 权限：
+- 审计记录：
+
+## 5. 验收标准
+
+- [ ] 原型行为符合规格
+- [ ] 关键状态和异常路径已覆盖
+- [ ] 相关需求已完成评审
+
+## 6. 风险与待确认
+
+- 风险：
+- 待确认：
+`
+}
+
+function applySpecTemplate() {
+  if (!specDraft.value || window.confirm('当前草稿会被模板覆盖，继续？')) {
+    specDraft.value = specTemplate()
+  }
+}
+
+function readFileText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error || new Error('READ_FILE_FAILED'))
+    reader.readAsText(file)
+  })
+}
+
+async function importSpecFile(file) {
+  if (!app.canWrite) {
+    message.info('当前是只读模式，不能上传规格书')
+    return false
+  }
+  if (file.size > app.maxFileBytes) {
+    message.error(`${file.name} 超过上限 ${fmtSize(app.maxFileBytes)}`)
+    return false
+  }
+  const name = file.name.toLowerCase()
+  if (!/\.(md|markdown|txt)$/.test(name)) {
+    message.error('请上传 Markdown 或文本格式的规格书')
+    return false
+  }
+  importingSpec.value = true
+  try {
+    const markdown = await readFileText(file)
+    if (specEditing.value) {
+      specDraft.value = markdown
+      message.success(`已导入 ${file.name}，保存后生效`)
+    } else {
+      version.value = await api.setSpec(props.slug, props.versionNo, markdown)
+      specDraft.value = markdown
+      message.success(`已上传并保存 ${file.name}`)
+    }
+  } catch {
+    message.error(`读取 ${file.name} 失败`)
+  } finally {
+    importingSpec.value = false
+  }
+  return false
 }
 
 async function saveSpec() {
@@ -645,6 +1011,44 @@ onMounted(() => {
   display: flex; align-items: center; gap: var(--fl-s-2); margin-bottom: 14px;
 }
 .panel-alert { margin-bottom: var(--fl-s-3); }
+.html-editor-body { margin-top: var(--fl-s-4); }
+.html-source { font-size: var(--fl-fs-2); }
+.feedback-section { margin-top: var(--fl-s-4); }
+.feedback-head { margin-bottom: var(--fl-s-3); }
+.feedback-list { display: grid; gap: var(--fl-s-3); }
+.feedback-item {
+  padding: var(--fl-s-3);
+  border: 1px solid var(--fl-line);
+  border-radius: var(--fl-r-3);
+  background: var(--fl-surface);
+}
+.feedback-title-row { display: flex; align-items: center; gap: var(--fl-s-3); justify-content: space-between; }
+.feedback-item p { margin: var(--fl-s-2) 0; color: var(--fl-text-2); line-height: 1.5; }
+.feedback-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--fl-s-2); }
+.drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--fl-s-2);
+  margin-top: var(--fl-s-4);
+  padding-top: var(--fl-s-4);
+  border-top: 1px solid var(--fl-line);
+}
+.upload-icon { margin: 8px 0; color: var(--fl-text-3); font-size: 28px; }
+.source-ready {
+  display: flex;
+  align-items: center;
+  gap: var(--fl-s-3);
+  padding: 14px 16px;
+  border: 1px solid var(--fl-primary-border);
+  border-radius: var(--fl-r-3);
+  background: var(--fl-primary-bg);
+  color: var(--fl-primary-deep);
+}
+.source-ready.compact { margin-top: var(--fl-s-3); padding: 9px 12px; }
+.source-ready div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.source-ready span { color: var(--fl-text-2); font-size: var(--fl-fs-2); }
+.url-row { display: flex; }
+.url-row .ant-input { flex: 1; }
 .history-select { width: 190px; }
 .flex-select { flex: 1; }
 .full-width { width: 100%; }

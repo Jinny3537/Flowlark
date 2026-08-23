@@ -125,6 +125,30 @@ export const SCHEMA = [
     note: '后台检查 JSON 发布清单；下载后必须通过 SHA-256 校验'
   },
   {
+    key: 'integrations.requirementProvider', type: 'string', default: 'none',
+    enum: ['none', 'hubpool', 'custom'], label: '需求平台',
+    note: 'Hubpool 可直接接入；custom 预留给自建任务平台'
+  },
+  {
+    key: 'integrations.requirementBaseUrl', type: 'string', default: '', label: '需求平台 API 地址',
+    note: 'Hubpool 留空使用默认地址；自建任务平台必须填写'
+  },
+  {
+    key: 'integrations.requirementProject', type: 'string', default: '', label: '需求平台项目'
+  },
+  {
+    key: 'integrations.requirementSearchPath', type: 'string', default: '', label: '需求搜索路径',
+    note: '自建平台可填 /requirements/search?q={q}；留空使用默认约定'
+  },
+  {
+    key: 'integrations.requirementDetailPath', type: 'string', default: '', label: '需求详情路径',
+    note: '自建平台可填 /requirements/{key}'
+  },
+  {
+    key: 'integrations.requirementCommentPath', type: 'string', default: '', label: '需求评论路径',
+    note: '自建平台可填 /requirements/{key}/comments'
+  },
+  {
     key: 'integrations.mirrorIntervalSeconds', type: 'int', default: 60, min: 5, max: 86400,
     label: '镜像刷新间隔（秒）'
   },

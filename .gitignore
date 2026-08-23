@@ -16,6 +16,9 @@ data/
 # 本地设计评审会话，不进入产品源码
 .superpowers/
 
+# 本地应用缓存
+.flowlark/
+
 # 编辑器与系统
 .DS_Store
 .idea/

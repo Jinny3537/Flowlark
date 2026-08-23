@@ -10,8 +10,10 @@ import * as offline from './offline.js'
 import * as permissions from './permissions.js'
 import * as feedback from './feedback.js'
 import * as issuex from './integrations/issues/index.js'
+import * as reqIntegration from './integrations/requirements/index.js'
 import * as secrets from './secrets.js'
 import * as importer from './importer.js'
+import * as drafts from './drafts.js'
 import * as watchbox from './watch-inbox.js'
 import * as reqx from './requirements.js'
 import * as migrate from './migrate.js'
@@ -234,6 +236,7 @@ export class Hub {
     v.externalRefs = detectExternalRefs(content)
     v.updatedAt = new Date().toISOString()
     store.writeVersion(this.root, slug, v)
+    offline.clearOffline(this.root, slug, versionNo)
     this.#log(slug, versionNo, 'VERSION_REPLACE_FILE', `替换 ${versionNo} 的原型文件`)
     return this.getVersion(slug, versionNo)
   }
@@ -418,6 +421,18 @@ export class Hub {
     return item
   }
   suggestImpact(changes, options) { return runImpact(this.root, changes, options) }
+
+  draftVersionFromHtml(slug, baseVersionNo, { html, title = '' } = {}) {
+    const base = this.getVersion(slug, baseVersionNo)
+    const beforeHtml = store.readHtml(this.root, slug, baseVersionNo)
+    if (!beforeHtml) throw err.notFound(`${baseVersionNo} 的原型文件`)
+    return drafts.draftFromHtml({
+      beforeHtml: beforeHtml.toString('utf8'),
+      afterHtml: String(html || ''),
+      title: title || base.title,
+      requirements: base.requirements || []
+    })
+  }
 
   notificationConfig(overrides = {}) {
     const s = this.settings.integrations
@@ -1106,6 +1121,64 @@ export class Hub {
 
   deleteIssueToken(provider) {
     return secrets.deleteSecret(provider)
+  }
+
+  requirementProviders() {
+    return reqIntegration.requirementProviders()
+  }
+
+  requirementConfig(provider, overrides = {}) {
+    const s = this.settings.integrations
+    const selected = provider || overrides.provider || s.requirementProvider
+    const env = { hubpool: 'FLOWLARK_HUBPOOL_TOKEN', custom: 'FLOWLARK_CUSTOM_TASK_TOKEN' }[selected]
+    return {
+      provider: selected,
+      baseUrl: overrides.baseUrl || s.requirementBaseUrl,
+      project: overrides.project || s.requirementProject,
+      searchPath: overrides.searchPath || s.requirementSearchPath,
+      detailPath: overrides.detailPath || s.requirementDetailPath,
+      commentPath: overrides.commentPath || s.requirementCommentPath,
+      tokenHeader: overrides.tokenHeader,
+      token: overrides.token || secrets.getSecret(`requirement-${selected}`, { envKey: env })
+    }
+  }
+
+  testRequirementConnection(provider, overrides = {}) {
+    return reqIntegration.testRequirementConnection(provider, this.requirementConfig(provider, overrides))
+  }
+
+  searchExternalRequirements(provider, query, overrides = {}) {
+    return reqIntegration.searchRequirements(provider, this.requirementConfig(provider, overrides), query)
+  }
+
+  async importExternalRequirement(provider, key, overrides = {}) {
+    this.#assertWritable('导入外部需求')
+    const remote = await reqIntegration.fetchRequirement(provider, this.requirementConfig(provider, overrides), key)
+    const input = {
+      code: remote.code,
+      title: remote.title,
+      description: remote.description,
+      owner: remote.owner,
+      url: remote.url,
+      external: { provider, key: remote.code, url: remote.url, status: remote.status }
+    }
+    const item = reqx.requirementExists(this.root, remote.code)
+      ? reqx.updateRequirement(this.root, remote.code, input)
+      : reqx.createRequirement(this.root, input)
+    this.#log(null, null, 'REQUIREMENT_IMPORT', `导入外部需求 ${item.code}`)
+    return reqx.requirementDetail(this.root, item.code)
+  }
+
+  postRequirementComment(provider, key, body, overrides = {}) {
+    return reqIntegration.postRequirementComment(provider, this.requirementConfig(provider, overrides), key, body)
+  }
+
+  setRequirementToken(provider, token) {
+    return secrets.setSecret(`requirement-${provider}`, token)
+  }
+
+  deleteRequirementToken(provider) {
+    return secrets.deleteSecret(`requirement-${provider}`)
   }
 
   inspectImportedHtml(html) {

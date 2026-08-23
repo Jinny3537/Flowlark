@@ -23,6 +23,45 @@ const MIME = {
   '.woff2': 'font/woff2'
 }
 
+function editablePreviewHtml(buf) {
+  const bridge = `<script id="flowlark-edit-bridge">
+(() => {
+  const serialize = () => {
+    const bridge = document.getElementById('flowlark-edit-bridge')
+    if (bridge) bridge.remove()
+    const previousEditable = document.body && document.body.getAttribute('contenteditable')
+    if (document.body) document.body.removeAttribute('contenteditable')
+    const dt = document.doctype
+    const doctype = dt ? '<!DOCTYPE ' + dt.name + (dt.publicId ? ' PUBLIC "' + dt.publicId + '"' : '') + (dt.systemId ? ' "' + dt.systemId + '"' : '') + '>' : '<!DOCTYPE html>'
+    const html = doctype + '\\n' + document.documentElement.outerHTML
+    if (document.body && previousEditable != null) document.body.setAttribute('contenteditable', previousEditable)
+    document.documentElement.appendChild(bridge)
+    return html
+  }
+  const enable = () => {
+    try {
+      document.designMode = 'on'
+      if (document.body) {
+        document.body.setAttribute('contenteditable', 'true')
+        document.body.spellcheck = false
+      }
+    } catch {}
+  }
+  window.addEventListener('message', (event) => {
+    const data = event.data || {}
+    if (data.type !== 'flowlark:get-edit-html') return
+    event.source && event.source.postMessage({ type: 'flowlark:edit-html', id: data.id, html: serialize() }, event.origin || '*')
+  })
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', enable, { once: true })
+  else enable()
+})()
+</script>`
+  const html = buf.toString('utf8')
+  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, `${bridge}</body>`)
+  if (/<\/html\s*>/i.test(html)) return html.replace(/<\/html\s*>/i, `${bridge}</html>`)
+  return `${html}\n${bridge}`
+}
+
 /**
  * 启动本地服务。
  *
@@ -103,6 +142,7 @@ export async function startServer(root, { port, previewPort, lan, host, mirror =
     const slug = decodeURIComponent(m[1])
     const no = decodeURIComponent(m[2])
     const wantOffline = url.searchParams.get('offline') === '1'
+    const editMode = url.searchParams.get('edit') === '1'
 
     let buf = null
     try {
@@ -120,7 +160,7 @@ export async function startServer(root, { port, previewPort, lan, host, mirror =
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'no-store'
     })
-    res.end(buf)
+    res.end(editMode ? editablePreviewHtml(buf) : buf)
   })
 
   // previewPort 传 0 时真实端口要等 listen 之后才知道，所以用取值函数延迟解析，

@@ -1,8 +1,8 @@
 <template>
-  <a-drawer :open="open" title="提交原型反馈" placement="right" :width="460"
+  <a-drawer :open="open" title="记录原型反馈" placement="right" :width="460"
             @update:open="(value) => emit('update:open', value)">
     <a-alert type="info" show-icon class="feedback-alert">
-      <template #message>反馈会携带项目、版本、需求和标注区域；Issue 不可用时可直接导出 Markdown。</template>
+      <template #message>反馈会保存到当前版本上下文，提交后可在版本信息后查看。</template>
     </a-alert>
 
     <a-form layout="vertical">
@@ -11,12 +11,6 @@
       </a-form-item>
       <a-form-item label="问题描述" required>
         <a-textarea v-model:value="form.description" :rows="6" :maxlength="5000" placeholder="说明预期、现象和复现方式" />
-      </a-form-item>
-      <a-form-item label="提交方式">
-        <a-select v-model:value="form.provider" class="full-width">
-          <a-select-option value="markdown">Markdown</a-select-option>
-          <a-select-option v-for="provider in providers" :key="provider" :value="provider">{{ providerLabels[provider] }}</a-select-option>
-        </a-select>
       </a-form-item>
       <a-form-item label="区域截图">
         <div class="capture-row">
@@ -33,12 +27,10 @@
       <a-descriptions-item label="需求">{{ (context.requirements || []).join(', ') || '无' }}</a-descriptions-item>
     </a-descriptions>
 
-    <a-textarea v-if="markdown" :value="markdown" readonly :rows="10" class="mono feedback-markdown" />
-
     <template #footer>
       <div class="drawer-actions">
         <a-button @click="emit('update:open', false)">取消</a-button>
-        <a-button type="primary" :loading="saving" @click="submit">{{ form.provider === 'markdown' ? '生成 Markdown' : '创建 Issue' }}</a-button>
+        <a-button type="primary" :loading="saving" @click="submit">保存反馈</a-button>
       </div>
     </template>
   </a-drawer>
@@ -52,25 +44,16 @@ import { api } from '../api'
 
 const props = defineProps({ open: Boolean, context: { type: Object, required: true }, captureRect: { type: Object, default: null } })
 const emit = defineEmits(['update:open', 'submitted'])
-const providers = ref([])
 const saving = ref(false)
 const capturing = ref(false)
 const screenshotBase64 = ref('')
-const markdown = ref('')
-const form = reactive({ title: '', description: '', provider: 'markdown' })
-const providerLabels = { github: 'GitHub Issue', gitlab: 'GitLab Issue', gitee: 'Gitee Issue' }
+const form = reactive({ title: '', description: '' })
 
-watch(() => props.open, async (value) => {
+watch(() => props.open, (value) => {
   if (!value) return
   form.title = ''
   form.description = ''
   screenshotBase64.value = ''
-  markdown.value = ''
-  try {
-    const result = await api.issueIntegrations()
-    providers.value = result.providers || []
-    form.provider = result.selected || 'markdown'
-  } catch { form.provider = 'markdown' }
 })
 
 async function capture() {
@@ -103,17 +86,9 @@ async function submit() {
   saving.value = true
   try {
     const draft = await api.createFeedbackDraft({ ...props.context, title: form.title.trim(), description: form.description.trim(), screenshotBase64: screenshotBase64.value || undefined })
-    try {
-      const result = await api.submitFeedback(draft.id, { provider: form.provider })
-      if (result.markdown) markdown.value = result.markdown
-      message.success(result.fallback ? 'Markdown 已生成' : 'Issue 已创建')
-      emit('submitted', result)
-      if (!result.fallback) emit('update:open', false)
-    } catch {
-      const result = await api.feedbackMarkdown(draft.id)
-      markdown.value = result.markdown
-      message.warning('Issue 创建失败，已保留草稿并生成 Markdown')
-    }
+    message.success('反馈已保存')
+    emit('submitted', draft)
+    emit('update:open', false)
   } finally { saving.value = false }
 }
 </script>
@@ -121,6 +96,5 @@ async function submit() {
 <style scoped>
 .feedback-alert { margin-bottom:var(--fl-s-4); }
 .capture-row { display:flex; align-items:center; gap:var(--fl-s-2); flex-wrap:wrap; }
-.feedback-markdown { margin-top:var(--fl-s-4); }
 .drawer-actions { display:flex; justify-content:flex-end; gap:var(--fl-s-2); }
 </style>

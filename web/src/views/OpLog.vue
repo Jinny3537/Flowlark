@@ -1,12 +1,13 @@
 <template>
-  <div class="page-pad">
-    <h2 style="margin:0 0 4px;font-size:20px">操作日志</h2>
-    <div class="text-secondary" style="margin-bottom:20px">
+  <div :class="{ 'page-pad': !embedded }">
+    <h2 v-if="!embedded" style="margin:0 0 4px;font-size:20px">操作日志</h2>
+    <div class="text-secondary" :style="{ marginBottom: embedded ? '12px' : '20px' }">
       记录在 <span class="mono">.flowlark/oplog.ndjson</span>，append-only，随 Git 一起提交。
       语义层面的动作（比如「设为基线」还是「回滚」）Git 自己推断不出来，所以单独记一份。
     </div>
 
     <a-table :data-source="logs" :loading="loading" row-key="at" size="middle"
+             :scroll="{ x: 760 }"
              :pagination="{ pageSize: 20, showSizeChanger: false }">
       <a-table-column title="时间" data-index="at" :width="170">
         <template #default="{ text }">{{ fmtAbsolute(text) }}</template>
@@ -29,6 +30,10 @@
 import { ref, onMounted } from 'vue'
 import { api } from '../api'
 import { fmtAbsolute } from '../utils'
+
+defineProps({
+  embedded: { type: Boolean, default: false }
+})
 
 const logs = ref([])
 const loading = ref(false)

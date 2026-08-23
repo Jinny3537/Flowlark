@@ -53,6 +53,20 @@
                 这里管理本机可打开的 Flowlark 仓库。注册表只保存在本机，用于切换、镜像和跨工作区搜索。
               </div>
 
+              <div class="current-workspace-card">
+                <div class="current-workspace-main">
+                  <AppstoreOutlined />
+                  <div>
+                    <div class="current-workspace-title">当前工作区</div>
+                    <div class="mono current-workspace-path">{{ app.repo || '尚未加载工作区' }}</div>
+                  </div>
+                </div>
+                <a-button size="small" :disabled="!app.repo" @click="copy(app.repo)">
+                  <template #icon><CopyOutlined /></template>
+                  复制路径
+                </a-button>
+              </div>
+
               <a-tabs v-model:activeKey="workspaceMode" class="settings-tabs">
                 <a-tab-pane key="existing" tab="已有仓库" />
                 <a-tab-pane key="clone" tab="从 Git clone" />
@@ -176,6 +190,15 @@
             </a-card>
           </section>
 
+          <section v-else-if="activeSection === 'oplog'" class="settings-section">
+            <a-card>
+              <template #title>
+                <span class="card-title"><HistoryOutlined />操作日志</span>
+              </template>
+              <OpLog embedded />
+            </a-card>
+          </section>
+
           <section v-for="g in visibleGroups" :key="g.key" class="settings-section">
             <a-card>
               <template #title>
@@ -239,20 +262,24 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Modal, message, Empty } from 'ant-design-vue'
 import {
   ApiOutlined, AppstoreOutlined, BranchesOutlined, CheckCircleOutlined, CopyOutlined, DesktopOutlined,
-  ExperimentOutlined, ReloadOutlined, ShareAltOutlined, SlidersOutlined, SyncOutlined, UndoOutlined
+  ExperimentOutlined, HistoryOutlined, ReloadOutlined, ShareAltOutlined, SlidersOutlined, SyncOutlined, UndoOutlined
 } from '@ant-design/icons-vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
+import OpLog from './OpLog.vue'
 
-defineProps({
+const props = defineProps({
   embedded: { type: Boolean, default: false }
 })
 
 const app = useAppStore()
+const route = useRoute()
+const router = useRouter()
 const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 
 const items = ref([])
@@ -289,6 +316,7 @@ const SECTION_DESCRIPTIONS = {
   workspace: '注册、克隆、镜像和索引本机 Flowlark 工作区。',
   lan: '给同网段成员开放查看入口，并控制局域网写入权限。',
   gitRemote: '设置团队同步用的 Git origin 地址。',
+  oplog: '查看随仓库提交的 append-only 操作记录。',
   server: '管理工作台端口、预览端口和上传体积限制。',
   git: '配置默认分支、提交身份和自动提交策略。',
   rules: '控制基线、变更日志和离线归档相关的业务约束。',
@@ -334,6 +362,13 @@ const sections = computed(() => [
     icon: BranchesOutlined,
     description: SECTION_DESCRIPTIONS.gitRemote,
     modified: modifiedCount(['git.remote'])
+  },
+  {
+    key: 'oplog',
+    label: '操作日志',
+    icon: HistoryOutlined,
+    description: SECTION_DESCRIPTIONS.oplog,
+    modified: 0
   },
   ...groups.value.map((g) => ({
     key: g.key,
@@ -395,6 +430,9 @@ function numberMax(item) {
 
 function selectSection(key) {
   activeSection.value = key
+  if (!props.embedded && route.params.section !== key) {
+    router.replace(key === 'workspace' ? '/settings' : `/settings/${key}`)
+  }
 }
 
 async function save(key, value) {
@@ -510,7 +548,18 @@ function copy(text) {
     .catch(() => message.error('复制失败，请手动选中'))
 }
 
-onMounted(load)
+function syncSectionFromRoute() {
+  if (props.embedded) return
+  const section = typeof route.params.section === 'string' ? route.params.section : 'workspace'
+  if (sections.value.some((item) => item.key === section)) activeSection.value = section
+}
+
+onMounted(async () => {
+  await load()
+  syncSectionFromRoute()
+})
+
+watch(() => route.params.section, syncSectionFromRoute)
 </script>
 
 <style>
@@ -616,6 +665,40 @@ onMounted(load)
 .workspace-form {
   max-width: 640px;
 }
+.current-workspace-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fl-s-3);
+  padding: var(--fl-s-3);
+  margin-bottom: var(--fl-s-3);
+  border: 1px solid var(--fl-line);
+  border-radius: var(--fl-r-3);
+  background: var(--fl-surface-2);
+}
+.current-workspace-main {
+  display: flex;
+  align-items: center;
+  gap: var(--fl-s-3);
+  min-width: 0;
+}
+.current-workspace-main svg {
+  color: var(--fl-primary-deep);
+  flex: 0 0 auto;
+}
+.current-workspace-title {
+  font-weight: 650;
+  color: var(--fl-ink);
+}
+.current-workspace-path {
+  max-width: 430px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fl-text-2);
+  font-size: var(--fl-fs-2);
+}
 .workspace-form-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px;
@@ -651,6 +734,15 @@ onMounted(load)
   }
   .workspace-form-grid {
     display: block;
+  }
+  .current-workspace-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .current-workspace-path {
+    max-width: min(100%, 420px);
+    white-space: normal;
+    word-break: break-all;
   }
 }
 </style>

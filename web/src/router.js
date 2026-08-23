@@ -25,7 +25,7 @@ export default createRouter({
       component: () => import('./views/Workbench.vue'),
       props: true
     },
-    { path: '/oplog', name: 'oplog', component: () => import('./views/OpLog.vue') },
+    { path: '/oplog', redirect: '/settings/oplog' },
     { path: '/watch', name: 'watch', component: () => import('./views/WatchInbox.vue') },
     { path: '/requirements', name: 'requirements', component: () => import('./views/RequirementList.vue') },
     { path: '/requirements/:code', name: 'requirement-detail', component: () => import('./views/RequirementDetail.vue'), props: true },
@@ -34,8 +34,8 @@ export default createRouter({
     { path: '/search', name: 'search-panel', component: () => import('./views/SearchPanel.vue') },
     { path: '/deliveries', name: 'deliveries', component: () => import('./views/DeliveryList.vue') },
     { path: '/deliveries/:name', name: 'delivery-detail', component: () => import('./views/DeliveryDetail.vue'), props: true },
-    { path: '/setup', name: 'setup', component: () => import('./views/SetupWizard.vue') },
     { path: '/trash', name: 'trash', component: () => import('./views/Trash.vue') },
-    { path: '/settings', name: 'settings', component: () => import('./views/Settings.vue') }
+    { path: '/settings', name: 'settings', component: () => import('./views/Settings.vue') },
+    { path: '/settings/:section', name: 'settings-section', component: () => import('./views/Settings.vue') }
   ]
 })

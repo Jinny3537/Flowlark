@@ -42,6 +42,28 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
   return data
 }
 
+async function requestText(path) {
+  let res
+  try {
+    res = await fetch(path)
+  } catch {
+    message.error('无法连接本地服务，flowlark serve 可能已经停止')
+    throw new Error('NETWORK')
+  }
+
+  const text = await res.text()
+  if (!res.ok) {
+    let data = null
+    try { data = text ? JSON.parse(text) : null } catch { /* 非 JSON 错误直接走默认文案 */ }
+    const detail = data && data.hint ? `${data.message}（${data.hint}）` : (data && data.message) || '请求失败'
+    message.error(detail)
+    const e = new Error(detail)
+    e.code = data && data.code
+    throw e
+  }
+  return text
+}
+
 const get = (p) => request('GET', p)
 const post = (p, b) => request('POST', p, b)
 const put = (p, b) => request('PUT', p, b)
@@ -65,6 +87,7 @@ export const api = {
   /** 原型内容直接放在 JSON 里。本地 loopback 传几 MB 文本毫无压力，换来零依赖、单次原子请求 */
   addVersion: (slug, body) => post(`/api/projects/${enc(slug)}/versions`, body),
   updateVersion: (slug, no, body) => put(`/api/versions/${enc(slug)}/${enc(no)}`, body),
+  getHtml: (slug, no) => requestText(`/api/versions/${enc(slug)}/${enc(no)}/download`),
   replaceHtml: (slug, no, html) => put(`/api/versions/${enc(slug)}/${enc(no)}/html`, { html }),
   setSpec: (slug, no, markdown) => put(`/api/versions/${enc(slug)}/${enc(no)}/spec`, { markdown }),
   setChanges: (slug, no, items) => put(`/api/versions/${enc(slug)}/${enc(no)}/changes`, { items }),
@@ -154,14 +177,23 @@ export const api = {
   listFeedbackDrafts: () => get('/api/feedback/drafts'),
   createFeedbackDraft: (body) => post('/api/feedback/drafts', body),
   feedbackMarkdown: (id) => get(`/api/feedback/drafts/${enc(id)}/markdown`),
+  feedbackScreenshotUrl: (id) => `/api/feedback/drafts/${enc(id)}/screenshot`,
   submitFeedback: (id, body) => post(`/api/feedback/drafts/${enc(id)}/submit`, body),
   removeFeedbackDraft: (id) => del(`/api/feedback/drafts/${enc(id)}`),
   issueIntegrations: () => get('/api/integrations/issues'),
   testIssueIntegration: (provider, body = {}) => post(`/api/integrations/issues/${enc(provider)}/test`, body),
   setIssueToken: (provider, token) => put(`/api/integrations/issues/${enc(provider)}/token`, { token }),
   deleteIssueToken: (provider) => del(`/api/integrations/issues/${enc(provider)}/token`),
+  requirementIntegrations: () => get('/api/integrations/requirements'),
+  testRequirementIntegration: (provider, body = {}) => post(`/api/integrations/requirements/${enc(provider)}/test`, body),
+  searchExternalRequirements: (provider, query, config = {}) => post(`/api/integrations/requirements/${enc(provider)}/search`, { query, config }),
+  importExternalRequirement: (provider, key, config = {}) => post(`/api/integrations/requirements/${enc(provider)}/import`, { key, config }),
+  postRequirementComment: (provider, key, body, config = {}) => post(`/api/integrations/requirements/${enc(provider)}/comment`, { key, body, config }),
+  setRequirementToken: (provider, token) => put(`/api/integrations/requirements/${enc(provider)}/token`, { token }),
+  deleteRequirementToken: (provider) => del(`/api/integrations/requirements/${enc(provider)}/token`),
   inspectHtml: (html) => post('/api/import/html', { html }),
   importUrl: (url) => post('/api/import/url', { url }),
+  draftVersion: (body) => post('/api/drafts/version', body),
   watchInbox: () => get('/api/watch/inbox'),
   retryWatchItem: (id) => post(`/api/watch/inbox/${enc(id)}/retry`, {}),
 

@@ -75,6 +75,37 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.delete('/api/requirements/:code/links/:slug/:no', async (req, res, p) =>
     sendJson(res, 200, hub.unlinkRequirement(p.code, p.slug, p.no)))
 
+  r.get('/api/integrations/requirements', async (req, res) =>
+    sendJson(res, 200, { providers: hub.requirementProviders(), selected: hub.settings.integrations.requirementProvider }))
+
+  r.post('/api/integrations/requirements/:provider/test', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.testRequirementConnection(p.provider, body))
+  })
+
+  r.post('/api/integrations/requirements/:provider/search', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.searchExternalRequirements(p.provider, body.query || '', body.config || body))
+  })
+
+  r.post('/api/integrations/requirements/:provider/import', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 201, await hub.importExternalRequirement(p.provider, body.key || body.code, body.config || body))
+  })
+
+  r.post('/api/integrations/requirements/:provider/comment', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.postRequirementComment(p.provider, body.key || body.code, body.body || body.content || '', body.config || body))
+  })
+
+  r.put('/api/integrations/requirements/:provider/token', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.setRequirementToken(p.provider, body.token))
+  })
+
+  r.delete('/api/integrations/requirements/:provider/token', async (req, res, p) =>
+    sendJson(res, 200, hub.deleteRequirementToken(p.provider)))
+
   // ---- 迭代 ----
   r.get('/api/milestones', async (req, res) => sendJson(res, 200, hub.listMilestones()))
   r.post('/api/milestones', async (req, res) => {
@@ -121,6 +152,11 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.post('/api/impact', async (req, res) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.suggestImpact(body.changes || [], { limit: body.limit }))
+  })
+
+  r.post('/api/drafts/version', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.draftVersionFromHtml(body.project, body.baseVersionNo, body))
   })
 
   // ---- 团队通知 ----

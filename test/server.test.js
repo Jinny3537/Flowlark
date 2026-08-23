@@ -117,6 +117,15 @@ describe('沙箱隔离', () => {
     t.assert.match(await r.text(), /首版/)
   })
 
+  test('编辑预览仍走预览端口，并注入编辑桥接脚本', async (t) => {
+    const r = await fetch(`${previewBase}/p/ord/v1.0?edit=1`)
+    t.assert.strictEqual(r.status, 200)
+    const body = await r.text()
+    t.assert.match(body, /首版/)
+    t.assert.match(body, /flowlark-edit-bridge/)
+    t.assert.match(body, /flowlark:get-edit-html/)
+  })
+
   test('主端口拒绝 /p/ —— 否则原型可被同源加载，隔离就白做了', async (t) => {
     const r = await fetch(`${base}/p/ord/v1.0`)
     t.assert.strictEqual(r.status, 404)
