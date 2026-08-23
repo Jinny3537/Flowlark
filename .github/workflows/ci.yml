@@ -131,3 +131,15 @@ jobs:
           node "$PH" sync -m "CI 冒烟"
           git --git-dir="$BARE" ls-tree -r -z --name-only HEAD | tr '\0' '\n' | grep '需求.md'
           echo "✅ 端到端通过"
+
+  required:
+    name: required
+    runs-on: ubuntu-latest
+    needs: [test, build-web, smoke]
+    if: always()
+    steps:
+      - name: 汇总必需检查
+        run: |
+          test "${{ needs.test.result }}" = "success"
+          test "${{ needs.build-web.result }}" = "success"
+          test "${{ needs.smoke.result }}" = "success"
