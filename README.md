@@ -12,6 +12,15 @@ macOS 安装、更新与恢复见 [安装](docs/INSTALL-MACOS.md)、[更新](doc
 
 给需要在一堆 HTML 原型迭代里说清楚「现在到底按哪一版开发」的产品经理和研发。
 
+## 团队公共仓库
+
+这个仓库适合公开 Flowlark 源码、讨论问题和接收 PR。团队日常使用时，建议把**源码仓库**和**原型数据仓库**分开：
+
+- 源码仓库：公开，开启 PR、CI、Issue 模板、Dependabot 和安全报告。
+- 原型数据仓库：按业务敏感度决定是否公开；包含未发布产品、客户信息或内部评审记录时应保持私有。
+
+新贡献者请先读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题按 [SECURITY.md](SECURITY.md) 私下报告，普通问题走 GitHub issue 模板。
+
 ## 最快的开始方式
 
 ```bash

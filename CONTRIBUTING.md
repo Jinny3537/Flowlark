@@ -8,7 +8,7 @@ Node **18.17+**（`parseArgs` 要 18.3、`fetch` 要 18）。仓库带了 `.nvmr
 
 ```bash
 git clone <仓库地址> && cd flowlark
-npm test                 # 167 项，不需要装任何依赖
+npm test                 # 全量测试，不需要装任何运行时依赖
 npm run build:web        # 构建浏览器工作台（首次约 1-2 分钟）
 node bin/flowlark.js --help
 ```
@@ -58,3 +58,14 @@ node --test --test-name-pattern="基线" test/*.test.js
 ## 提交
 
 提交信息用中文或英文都行，说清楚「改了什么」比格式重要。涉及业务规则变动时，请在 PR 描述里说明取舍理由——`README.md` 里那些「为什么这么设计」的段落就是这么积累起来的。
+
+## 公共仓库协作设置
+
+建议在 GitHub 上至少开启这些设置：
+
+- `main` 分支保护：要求 PR、要求 CI 通过、禁止直接强推。
+- Issues：保留 bug 和 feature 模板，安全问题不要走公开 issue。
+- Dependabot：让 `web/` 依赖和 GitHub Actions 每周自动出升级 PR。
+- Security：开启 private vulnerability reporting。
+
+Flowlark 源码可以公开；团队实际原型数据仓库需要按业务敏感度单独判断。包含未公开产品、客户信息或内部评审记录的数据仓库，不建议设为 public。
