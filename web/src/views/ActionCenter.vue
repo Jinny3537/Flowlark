@@ -19,7 +19,7 @@
              message="当前是只读模式"
              description="你仍然可以查看项目、评审材料和交付状态；新建、同步、回滚等写操作会被禁用。" />
 
-    <a-spin :spinning="loading">
+    <a-spin :spinning="loading" class="action-page-spin">
       <section class="workspace-hero">
         <div class="focus-panel">
           <div class="panel-kicker">当前焦点</div>
@@ -528,6 +528,11 @@ onMounted(load)
 .action-alert {
   margin-bottom: var(--fl-s-4);
 }
+:deep(.action-page-spin),
+:deep(.action-page-spin > .arco-spin-children) {
+  display: block;
+  width: 100%;
+}
 .workspace-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(320px, .9fr);
@@ -837,6 +842,10 @@ onMounted(load)
   }
   .metric-panel {
     grid-template-columns: 1fr;
+  }
+  .metric-tile {
+    min-height: 84px;
+    padding: var(--fl-s-3) var(--fl-s-4);
   }
   .attention-item,
   .project-row {
