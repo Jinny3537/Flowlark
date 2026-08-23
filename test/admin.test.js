@@ -272,8 +272,9 @@ describe('版本附件', () => {
     const { root, hub } = repo()
     const v = hub.addAttachment('ord', 'v1.0', { name: '../../../etc/passwd', content: 'x' })
     t.assert.strictEqual(v.attachments[0].name, 'passwd')
-    t.assert.ok(fs.existsSync(path.join(root, 'projects/ord/versions/v1.0.files/passwd')))
-    t.assert.ok(!fs.existsSync(path.join(root, '../../../etc/passwd')))
+    const filesDir = path.join(root, 'projects/ord/versions/v1.0.files')
+    t.assert.ok(fs.existsSync(path.join(filesDir, 'passwd')))
+    t.assert.ok(!fs.existsSync(path.join(filesDir, 'etc/passwd')))
   })
 
   test('超过上限被拒，并提示怎么调大', (t) => {
