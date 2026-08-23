@@ -5,13 +5,13 @@
   "type": "module",
   "license": "MIT",
   "author": "flowlark contributors",
-  "homepage": "https://github.com/OWNER/flowlark#readme",
+  "homepage": "https://github.com/Jinny3537/Flowlark#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/flowlark.git"
+    "url": "git+https://github.com/Jinny3537/Flowlark.git"
   },
   "bugs": {
-    "url": "https://github.com/OWNER/flowlark/issues"
+    "url": "https://github.com/Jinny3537/Flowlark/issues"
   },
   "bin": {
     "flowlark": "bin/flowlark.js",
