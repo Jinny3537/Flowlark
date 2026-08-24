@@ -64,6 +64,18 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 - Code-path review confirms create with optional post-create sync, a payload that excludes the UI-only `syncExternal` field, bulk sync counts, read-only guards, requirement/project/version scope selection, draft-preserving operation errors, warning text, linked workbench navigation, add/remove writes, export, and single-milestone sync.
 - Remaining UI verification: exercise create with and without synchronization; bulk synchronization with both success and partial-failure results; add/remove using real requirement, project, and version data; export and single synchronization; operation failures with retained modal drafts; read-only disabled states; and both pages at desktop and 390px widths. Milestones and Milestone detail therefore remain `gap` until this evidence is recorded.
 
+## Task 9 Verification Evidence
+
+2026-08-25:
+
+- React code-path review confirms delivery snapshot creation and notification-queue retry remain available with write guards and explicit failures; notification settings now support the backend's canonical `wecom`, `dingtalk`, and `slack` providers, password-style Webhook entry, test and save actions, and failure-retained form input.
+- React code-path review confirms the watch inbox uses `WATCH_STATUS`, renders filename/project/suggested version/error/collection time, navigates archived items to the version workbench, and exposes a write-aware failed-item retry with an explicit operation error.
+- React code-path review confirms trash restoration requires confirmation, explains the restored editing state, reports failures without removing the retained item, reloads only after success, and is disabled in read-only mode.
+- `node --test test/notifications.test.js test/watch.test.js test/rules.test.js`: 43 tests passed, covering all three notification providers, pending retry retention, watch inbox failure details, trash restore, conflict refusal, and restored content.
+- `node --test web/src/domain/status.test.js`: 3 tests passed, including canonical watch labels and readable unknown-state fallback.
+- `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
+- Remaining browser verification: exercise snapshot success/failure draft retention; notification test/save success and failure, saved-value clearing, partial retry failures, and read-only states; archived watch navigation plus retry success/failure/read-only states; trash confirmation plus restore success/failure item retention/read-only states; and all three pages at desktop and 390px widths. Deliveries, Watch inbox, and Trash therefore remain `gap` until this evidence is recorded.
+
 ## Legacy API Reference Audit
 
 ```bash
