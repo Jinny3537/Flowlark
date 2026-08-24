@@ -50,8 +50,6 @@ type NewVersionForm = {
   project?: string;
   versionNo?: string;
   title?: string;
-  changes?: ChangeItem[];
-  requirements?: RequirementLink[];
 };
 
 export type NewVersionDialogProps = {
@@ -83,8 +81,8 @@ export function NewVersionDialog({
 }: NewVersionDialogProps) {
   const { message } = App.useApp();
   const [form] = Form.useForm<NewVersionForm>();
-  const changes = Form.useWatch('changes', form) || [];
-  const requirements = Form.useWatch('requirements', form) || [];
+  const [changes, setChanges] = useState<ChangeItem[]>([]);
+  const [requirements, setRequirements] = useState<RequirementLink[]>([]);
   const [mode, setMode] = useState<SourceMode>('file');
   const [fileName, setFileName] = useState('');
   const [fileDraft, setFileDraft] = useState('');
@@ -116,11 +114,9 @@ export function NewVersionDialog({
   useEffect(() => {
     if (!open) return;
     form.resetFields();
-    form.setFieldsValue({
-      project: slug || undefined,
-      changes: [],
-      requirements: [],
-    });
+    form.setFieldsValue({ project: slug || undefined });
+    setChanges([]);
+    setRequirements([]);
     setMode('file');
     resetSource();
   }, [form, open, slug]);
@@ -248,13 +244,12 @@ export function NewVersionDialog({
   };
 
   const updateChanges = (value: ChangeItem[]) => {
-    form.setFieldValue('changes', value);
+    setChanges(value);
     setImpacts([]);
     setImpactChecked(false);
   };
 
   const checkImpact = async () => {
-    const changes = form.getFieldValue('changes') || [];
     setImpactLoading(true);
     try {
       setImpacts(await api.suggestImpact(changes) as any[]);
@@ -298,8 +293,8 @@ export function NewVersionDialog({
         versionNo,
         title,
         html: acceptedHtml,
-        changes: (values.changes || []).filter((item: any) => item.content?.trim()),
-        requirements: (values.requirements || []).filter((item: any) => item.code?.trim()),
+        changes: changes.filter((item) => item.content?.trim()),
+        requirements: requirements.filter((item) => item.code?.trim()),
       });
       message.success(`版本 ${versionNo} 已创建`);
       onCreated(project, versionNo);
@@ -545,7 +540,7 @@ export function NewVersionDialog({
 
         <Form.Item label="关联需求">
           <div className="fl-new-version-editor">
-            <RequirementEditor value={requirements} onChange={(value) => form.setFieldValue('requirements', value)} />
+            <RequirementEditor value={requirements} onChange={setRequirements} />
           </div>
         </Form.Item>
 
