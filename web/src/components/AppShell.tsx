@@ -15,13 +15,14 @@ import {
   BellOutlined,
   BranchesOutlined,
 } from '@ant-design/icons';
-import { App, Badge, Button, Drawer, Dropdown, Form, Grid, Input, Layout, List, Menu, Modal, Popover, Select, Space, Tag, Tooltip } from 'antd';
+import { App, Badge, Button, Drawer, Dropdown, Grid, Layout, List, Menu, Popover, Space, Tag, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { GitDrawer } from './GitDrawer';
+import { NewVersionDialog } from './NewVersionDialog';
 
 const { Header, Sider, Content } = Layout;
 
@@ -63,10 +64,8 @@ export function AppShell({ children }: AppShellProps) {
   const [gitOpen, setGitOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
-  const [savingVersion, setSavingVersion] = useState(false);
   const [flushingNotifications, setFlushingNotifications] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<any>(null);
-  const [versionForm] = Form.useForm();
   const selected = location.pathname.split('/')[1] || 'actions';
   const pageName = pageNames[selected] || '工作台';
   const canWrite = health?.canWrite !== false;
@@ -143,29 +142,6 @@ export function AppShell({ children }: AppShellProps) {
     if (key === 'requirement') navigate('/requirements');
     if (key === 'milestone') navigate('/milestones');
     if (key === 'delivery') navigate('/deliveries');
-  };
-
-  const createVersion = async () => {
-    const values = await versionForm.validateFields();
-    setSavingVersion(true);
-    try {
-      let html = values.html;
-      if (!html && values.url) {
-        const imported: any = await api.importUrl(values.url);
-        html = imported.html;
-      }
-      await api.addVersion(values.project, {
-        versionNo: values.versionNo,
-        title: values.title,
-        html,
-      });
-      message.success(`版本 ${values.versionNo} 已导入`);
-      setVersionOpen(false);
-      versionForm.resetFields();
-      navigate(`/projects/${encodeURIComponent(values.project)}/versions/${encodeURIComponent(values.versionNo)}`);
-    } finally {
-      setSavingVersion(false);
-    }
   };
 
   const flushNotifications = async () => {
@@ -348,42 +324,16 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </Drawer>
       <GitDrawer open={gitOpen} onClose={() => setGitOpen(false)} onChanged={reload} />
-      <Modal
-        title="导入原型版本"
+      <NewVersionDialog
         open={versionOpen}
-        confirmLoading={savingVersion}
-        onOk={createVersion}
-        onCancel={() => setVersionOpen(false)}
-        destroyOnClose
-      >
-        <Form form={versionForm} layout="vertical">
-          <Form.Item name="project" label="项目" rules={[{ required: true, message: '请选择项目' }]}>
-            <Select
-              showSearch
-              options={projects.map((item) => ({ value: item.slug, label: `${item.name} · ${item.slug}` }))}
-              placeholder="选择项目"
-            />
-          </Form.Item>
-          <Form.Item name="versionNo" label="版本号" rules={[{ required: true, message: '请填写版本号' }]}>
-            <Input className="fl-mono" placeholder="v1.2" />
-          </Form.Item>
-          <Form.Item name="title" label="标题"><Input /></Form.Item>
-          <Form.Item name="url" label="从 URL 导入"><Input placeholder="https://example.com/prototype.html" /></Form.Item>
-          <Form.Item
-            name="html"
-            label="或粘贴 HTML"
-            dependencies={['url']}
-            rules={[({ getFieldValue }) => ({
-              validator(_, value) {
-                if (value || getFieldValue('url')) return Promise.resolve();
-                return Promise.reject(new Error('请填写 URL 或粘贴 HTML'));
-              },
-            })]}
-          >
-            <Input.TextArea rows={6} placeholder="<!doctype html>..." />
-          </Form.Item>
-        </Form>
-      </Modal>
+        projects={projects}
+        maxFileBytes={health?.maxFileBytes || 10 * 1024 * 1024}
+        onClose={() => setVersionOpen(false)}
+        onCreated={(project, versionNo) => {
+          setVersionOpen(false);
+          navigate(`/projects/${encodeURIComponent(project)}/versions/${encodeURIComponent(versionNo)}`);
+        }}
+      />
     </Layout>
   );
 }

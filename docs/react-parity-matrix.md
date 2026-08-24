@@ -35,6 +35,15 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 - Code-path review confirms the React shell now exposes Ctrl/Cmd+K, notification detail/retry, explicit online/read-only/LAN/version/update labels, cached/quick/full Git status wording, and all planned Git assistant API actions.
 - Remaining manual verification: exercise all four state groups (`no-git`, `no-repo`, missing identity, and conflict-or-ready) against fixtures or mocked responses, including both the conflicted and ready subpaths, clipboard denial, and notification retry failure. Shell and Git therefore remain `gap`; they must not be changed to `verified` until this evidence is recorded.
 
+## Task 6 Verification Evidence
+
+2026-08-25:
+
+- `node --test web/src/components/newVersionModel.test.js`: 3 tests passed, covering `.html` / `.htm` acceptance, extension and byte-limit rejection, UTF-8 source size summaries, and external-dependency counts.
+- `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
+- Code-path review confirms one React `NewVersionDialog` now serves both the shell and the project-fixed version entry. It covers file reads plus `inspectHtml`, paste inspection on blur and submit, server-side URL import, dependency disclosure, change and requirement editors, impact suggestions, filtered create payloads, created-version routing/selection, and API-error handling that leaves the dialog and draft open.
+- Remaining UI verification: exercise file, paste, and public-URL imports in a browser; invalid extension, oversized file, invalid HTML, and import failure; dependency-list expansion; impact results and the no-result state; successful creation from both entries; and save-failure draft retention at desktop and 390px widths. Versions therefore remains `gap` until this evidence is recorded.
+
 ## Legacy API Reference Audit
 
 ```bash

@@ -1560,6 +1560,109 @@ button:active,
   background: transparent !important;
 }
 
+.fl-new-version-dialog .ant-modal-body {
+  max-height: calc(100dvh - 190px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.fl-new-version-intro,
+.fl-new-version-source-alert {
+  margin-bottom: var(--fl-s-4);
+}
+
+.fl-new-version-source-ready {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--fl-s-3);
+  padding: var(--fl-s-3) var(--fl-s-4);
+  border: 1px solid var(--fl-primary-border);
+  border-radius: var(--fl-r-3);
+  background: var(--fl-primary-bg);
+  color: var(--fl-primary-deep);
+}
+
+.fl-new-version-source-ready.is-compact {
+  margin-top: var(--fl-s-2);
+  padding: var(--fl-s-2) var(--fl-s-3);
+}
+
+.fl-new-version-source-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.fl-new-version-source-copy strong,
+.fl-new-version-source-copy span {
+  overflow-wrap: anywhere;
+}
+
+.fl-new-version-source-copy span,
+.fl-new-version-source-meta {
+  color: var(--fl-text-2);
+  font-size: var(--fl-fs-2);
+}
+
+.fl-new-version-source-meta {
+  margin-top: var(--fl-s-2);
+  line-height: 1.5;
+}
+
+.fl-new-version-source {
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.fl-new-version-url-row .ant-input {
+  min-width: 0;
+}
+
+.fl-new-version-refs-toggle {
+  height: auto;
+  margin-top: var(--fl-s-1);
+  padding: 0;
+}
+
+.fl-new-version-ref-list {
+  max-height: 112px;
+  overflow: auto;
+  margin: var(--fl-s-2) 0 0;
+  padding-left: var(--fl-s-5);
+  font-family: var(--pw-font-family-mono);
+  font-size: var(--fl-fs-1);
+  overflow-wrap: anywhere;
+}
+
+.fl-new-version-impact-button {
+  margin-top: var(--fl-s-2);
+}
+
+.fl-new-version-impact-list {
+  display: grid;
+  gap: var(--fl-s-1);
+  margin-top: var(--fl-s-1);
+}
+
+.fl-new-version-impact-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--fl-s-2);
+  font-size: var(--fl-fs-2);
+}
+
+.fl-new-version-impact-row > span {
+  overflow-wrap: anywhere;
+}
+
+.fl-new-version-save-note {
+  display: block;
+  margin-top: calc(var(--fl-s-2) * -1);
+}
+
 .ant-descriptions .ant-descriptions-item-label {
   color: var(--pw-color-text-secondary);
 }
@@ -1579,6 +1682,27 @@ button:active,
 }
 
 @media (max-width: 767px) {
+  .fl-new-version-dialog .ant-modal-body {
+    max-height: calc(100dvh - 160px);
+  }
+
+  .fl-new-version-source-ready {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .fl-new-version-source-copy {
+    flex-basis: calc(100% - 32px);
+  }
+
+  .fl-new-version-source-ready > .ant-space {
+    width: 100%;
+  }
+
+  .fl-new-version-impact-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .fl-app-header {
     height: 60px;
     padding: 0 var(--pw-space-16);

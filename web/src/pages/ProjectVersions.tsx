@@ -20,6 +20,7 @@ import {
   FileTextOutlined,
   LinkOutlined,
   MoreOutlined,
+  PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
   ThunderboltOutlined,
@@ -27,6 +28,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
+import { NewVersionDialog } from '@/components/NewVersionDialog';
 import { api, type HealthInfo } from '@/services/api';
 import { fmtTime, textOf } from '@/utils/format';
 import { adjacentVersionNo, filterVersions } from './projectVersionsModel';
@@ -70,6 +72,7 @@ export default function ProjectVersions() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [newVersionOpen, setNewVersionOpen] = useState(false);
 
   const selectedVersionNoRef = useRef<string | null>(null);
   const detailCacheRef = useRef(new Map<string, any>());
@@ -478,6 +481,14 @@ export default function ProjectVersions() {
             <Checkbox checked={includeVoid} onChange={(event) => setIncludeVoid(event.target.checked)}>
               显示已废弃
             </Checkbox>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              disabled={!canWrite}
+              onClick={() => setNewVersionOpen(true)}
+            >
+              新建版本
+            </Button>
           </Space>
         )}
       />
@@ -488,7 +499,7 @@ export default function ProjectVersions() {
           type="info"
           showIcon
           message="当前是只读模式"
-          description="可以浏览、标记已读和下载；设置基线、回滚、废弃和删除需要写权限。"
+          description="可以浏览、标记已读和下载；新建版本、设置基线、回滚、废弃和删除需要写权限。"
         />
       ) : null}
 
@@ -645,6 +656,18 @@ export default function ProjectVersions() {
       >
         {renderVersionSummary('mobile-version-summary')}
       </Drawer>
+      <NewVersionDialog
+        open={newVersionOpen}
+        slug={slug}
+        maxFileBytes={health?.maxFileBytes || 10 * 1024 * 1024}
+        onClose={() => setNewVersionOpen(false)}
+        onCreated={(_, versionNo) => {
+          setNewVersionOpen(false);
+          selectedVersionNoRef.current = versionNo;
+          setSelectedVersionNo(versionNo);
+          void reloadAll();
+        }}
+      />
     </main>
   );
 }
