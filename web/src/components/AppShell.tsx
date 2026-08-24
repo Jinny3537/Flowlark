@@ -15,10 +15,11 @@ import {
   BellOutlined,
   BranchesOutlined,
 } from '@ant-design/icons';
-import { App, Badge, Button, Drawer, Dropdown, Form, Grid, Input, Layout, Menu, Modal, Select, Space, Tooltip } from 'antd';
+import { App, Badge, Button, Drawer, Dropdown, Form, Grid, Input, Layout, List, Menu, Modal, Popover, Select, Space, Tag, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
+import { errorText } from '@/services/requestModel.js';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { GitDrawer } from './GitDrawer';
 
@@ -63,16 +64,50 @@ export function AppShell({ children }: AppShellProps) {
   const [versionOpen, setVersionOpen] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
   const [savingVersion, setSavingVersion] = useState(false);
+  const [flushingNotifications, setFlushingNotifications] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState<any>(null);
   const [versionForm] = Form.useForm();
   const selected = location.pathname.split('/')[1] || 'actions';
   const pageName = pageNames[selected] || '工作台';
   const canWrite = health?.canWrite !== false;
   const pendingNotifications = notifications.filter((item) => item.status === 'pending');
   const gitBadge = git?.conflicts?.length || git?.files?.length || 0;
+  const gitTooltip = !git?.tracked
+    ? '未纳入 Git'
+    : git?.conflicts?.length
+      ? `${git.conflicts.length} 个冲突待解决`
+      : `${git.clean ? '工作区干净' : `${git.files?.length || 0} 处未提交改动`}（${git.cached ? '缓存状态，后台会刷新' : git.fast ? '快速状态，仅统计 Flowlark 文件' : '完整状态'}）`;
 
   useEffect(() => {
     setDrawerOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        navigate('/search');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!health?.updateManifestUrl) {
+      setUpdateAvailable(null);
+      return () => { cancelled = true; };
+    }
+    void api.checkUpdate(health.version || '0.0.0', health.updateManifestUrl)
+      .then((result: any) => {
+        if (!cancelled) setUpdateAvailable(result.available ? result.manifest : null);
+      })
+      .catch(() => {
+        if (!cancelled) setUpdateAvailable(null);
+      });
+    return () => { cancelled = true; };
+  }, [health?.updateManifestUrl, health?.version]);
 
   const menu = useMemo(() => (
     <Menu
@@ -134,9 +169,16 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const flushNotifications = async () => {
-    await api.flushNotifications();
-    message.success('通知队列已处理');
-    await reload();
+    setFlushingNotifications(true);
+    try {
+      await api.flushNotifications();
+      message.success('通知队列已处理');
+      await reload();
+    } catch (nextError) {
+      message.error(errorText(nextError, '通知重试失败'));
+    } finally {
+      setFlushingNotifications(false);
+    }
   };
 
   const brand = (
@@ -154,6 +196,36 @@ export function AppShell({ children }: AppShellProps) {
         <small>{health?.repoName || '本地原型工作区'}</small>
       </span>
     </button>
+  );
+
+  const notificationContent = (
+    <div className="fl-notification-popover">
+      <List
+        size="small"
+        dataSource={pendingNotifications.slice(0, 4)}
+        locale={{ emptyText: '暂无待重试通知' }}
+        renderItem={(item: any) => (
+          <List.Item extra={<Tag color="warning">待重试</Tag>}>
+            <List.Item.Meta
+              title={item.event?.event || '交付通知'}
+              description={`${item.event?.project || '未知项目'} ${item.event?.version || item.event?.snapshot || ''}`.trim()}
+            />
+          </List.Item>
+        )}
+      />
+      <Space className="fl-drawer-actions" wrap>
+        <Button size="small" onClick={() => navigate('/deliveries')}>查看交付</Button>
+        <Button
+          size="small"
+          type="primary"
+          loading={flushingNotifications}
+          disabled={!pendingNotifications.length}
+          onClick={() => void flushNotifications()}
+        >
+          立即重试
+        </Button>
+      </Space>
+    </div>
   );
 
   return (
@@ -209,18 +281,17 @@ export function AppShell({ children }: AppShellProps) {
                 {!mobile ? '快速创建' : null}
               </Button>
             </Dropdown>
-            <Tooltip title={pendingNotifications.length ? '通知待重试' : '暂无待重试通知'}>
+            <Popover content={notificationContent} title="待办与通知" trigger="click" placement="bottomRight">
               <Badge count={pendingNotifications.length} size="small">
                 <Button
                   className="fl-header-icon"
                   type="text"
                   icon={<BellOutlined />}
                   aria-label="待办与通知"
-                  onClick={() => pendingNotifications.length ? void flushNotifications() : navigate('/deliveries')}
                 />
               </Badge>
-            </Tooltip>
-            <Tooltip title={git?.tracked ? `${gitBadge} 个 Git 项` : 'Git 状态'}>
+            </Popover>
+            <Tooltip title={gitTooltip}>
               <Badge count={gitBadge} size="small">
                 <Button
                   className="fl-header-icon"
@@ -241,10 +312,19 @@ export function AppShell({ children }: AppShellProps) {
               />
             </Tooltip>
           </div>
-          <div className="fl-header-status" aria-label="运行状态">
+          <div className="fl-header-status fl-runtime-tags" aria-label="运行状态">
             <span className={`fl-status-dot ${health ? 'is-online' : ''}`} aria-hidden="true" />
             <span>{health ? '已连接' : '离线'}</span>
+            {health?.canWrite === false ? (
+              <Tooltip title={health.readonlyReason === 'git'
+                ? '当前 Git 身份没有远端写权限，写操作已被禁用。'
+                : '当前视图只读，写操作仅限运行 Flowlark 的机器。'}>
+                <Tag color="warning">{health.readonlyReason === 'git' ? 'Git 只读' : '只读'}</Tag>
+              </Tooltip>
+            ) : null}
+            {health?.lan ? <Tag color="cyan">局域网已开放</Tag> : null}
             {health?.version ? <code>v{health.version}</code> : null}
+            {updateAvailable?.version ? <Tag color="cyan">可更新至 {updateAvailable.version}</Tag> : null}
           </div>
         </Header>
 

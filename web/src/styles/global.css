@@ -637,6 +637,37 @@ button:active,
   margin-top: var(--pw-space-16);
 }
 
+.fl-git-checks,
+.fl-git-steps {
+  display: grid;
+  gap: var(--fl-s-2);
+}
+
+.fl-git-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fl-s-2);
+  padding-block: var(--fl-s-2);
+}
+
+.fl-git-conflict {
+  margin-block: var(--fl-s-4);
+  padding: var(--fl-s-3);
+  border: 1px solid var(--fl-line);
+  border-radius: var(--fl-r-2);
+}
+
+.fl-notification-popover {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.fl-runtime-tags {
+  display: flex;
+  align-items: center;
+  gap: var(--fl-s-2);
+  flex-wrap: wrap;
+}
+
 .fl-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));

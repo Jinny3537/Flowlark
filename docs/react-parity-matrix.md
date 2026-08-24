@@ -26,6 +26,15 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 | MCP | service CRUD, secret set/delete, capability CRUD/test | mcp/* | Settings/McpSection | gap |
 | Setup wizard | no route or production entry | drafts/version | none | delete-unreachable |
 
+## Task 5 Verification Evidence
+
+2026-08-25:
+
+- `node --test web/src/components/gitModel.test.js`: 3 tests passed, covering doctor/conflict stage precedence, application and remote read-only guards, and all four sync labels.
+- `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
+- Code-path review confirms the React shell now exposes Ctrl/Cmd+K, notification detail/retry, explicit online/read-only/LAN/version/update labels, cached/quick/full Git status wording, and all planned Git assistant API actions.
+- Remaining manual verification: exercise all four state groups (`no-git`, `no-repo`, missing identity, and conflict-or-ready) against fixtures or mocked responses, including both the conflicted and ready subpaths, clipboard denial, and notification retry failure. Shell and Git therefore remain `gap`; they must not be changed to `verified` until this evidence is recorded.
+
 ## Legacy API Reference Audit
 
 ```bash
