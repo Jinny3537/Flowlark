@@ -1359,6 +1359,17 @@ button:active,
   font-weight: 600;
 }
 
+.fl-milestone-sync-state {
+  display: grid;
+  justify-items: start;
+  gap: var(--pw-space-4);
+}
+
+.fl-milestone-warnings ul {
+  margin: var(--pw-space-4) 0 0;
+  padding-left: var(--pw-space-20);
+}
+
 .fl-inline-metrics {
   display: flex;
   align-items: center;

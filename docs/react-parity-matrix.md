@@ -54,6 +54,16 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 - Code-path review confirms current and cross-workspace search, project/requirement/milestone/field filters, saved-view create/apply behavior, cross-workspace source disclosure and navigation guard, full local requirement creation fields, MCP token/search/import/sync actions, requirement editing/export, read-only guards, linked-version navigation, and operation errors that preserve open forms and drafts.
 - Remaining UI verification: exercise current and cross-workspace result sets against a built workspace index; create and reapply both current and cross-workspace saved views; confirm the foreign-workspace source notice; exercise every structured filter; create a requirement and force a save failure to confirm draft retention; use a configured MCP provider to save a token, search, import, and sync including partial failure counts; edit and export a requirement; open each linked version; and check the three pages at desktop and 390px widths. Search, Requirements, and Requirement detail therefore remain `gap` until this evidence is recorded.
 
+## Task 8 Verification Evidence
+
+2026-08-25:
+
+- `node --test web/src/pages/milestoneModel.test.js`: 2 tests passed, covering persisted scope-field normalization and exact item removal.
+- `node --test test/milestones.test.js test/v04-api.test.js test/mcp-config.test.js`: 8 focused contract tests passed for milestone validation and warnings, HTTP creation, and MCP pull/push synchronization.
+- `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
+- Code-path review confirms create with optional post-create sync, a payload that excludes the UI-only `syncExternal` field, bulk sync counts, read-only guards, requirement/project/version scope selection, draft-preserving operation errors, warning text, linked workbench navigation, add/remove writes, export, and single-milestone sync.
+- Remaining UI verification: exercise create with and without synchronization; bulk synchronization with both success and partial-failure results; add/remove using real requirement, project, and version data; export and single synchronization; operation failures with retained modal drafts; read-only disabled states; and both pages at desktop and 390px widths. Milestones and Milestone detail therefore remain `gap` until this evidence is recorded.
+
 ## Legacy API Reference Audit
 
 ```bash
