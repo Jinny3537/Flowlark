@@ -15,6 +15,7 @@ import {
   type WorkspaceValues,
 } from './settings/SettingsSections';
 import { OperationLog } from './settings/OperationLog';
+import { McpSection } from './settings/McpSection';
 import { SoftwareUpdateSection } from './settings/SoftwareUpdateSection';
 import {
   GROUP_LABELS,
@@ -314,6 +315,8 @@ export default function Settings() {
 
             {activeMeta?.key === 'oplog' ? <OperationLog embedded /> : null}
 
+            {activeMeta?.key === 'mcp' ? <McpSection canWrite={canWrite} /> : null}
+
             {activeGroup ? (
               <ConfigGroupSection
                 group={activeGroup}
@@ -325,9 +328,11 @@ export default function Settings() {
               />
             ) : null}
 
-            <p className="fl-settings-help">
-              仓库配置会写入根目录的 <code>flowlark.json</code>；工作区注册表只保存在本机。
-            </p>
+            {activeMeta?.key !== 'mcp' ? (
+              <p className="fl-settings-help">
+                仓库配置会写入根目录的 <code>flowlark.json</code>；工作区注册表只保存在本机。
+              </p>
+            ) : null}
           </div>
         </div>
       </State>

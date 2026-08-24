@@ -89,6 +89,17 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 - Backend contract note: workspace registration consumes `mode: "mirror" | "normal"` rather than a lone `mirror` boolean, while workspace-index rebuild returns `{ builtAt, records }` and no index-file path. The React implementation follows those actual shapes and reports `records.length`.
 - Remaining browser verification: exercise existing registration, clone, remove, rebuild, API-failure draft retention, and read-only controls against disposable workspaces; exercise update fetch, dirty guard, confirmation, failed pull, and successful fast-forward pull against a disposable software clone; inspect operation-log retry, empty data, and more than 20 rows; and check all three sections at desktop and 390px widths. Workspaces, Software update, and Operation log therefore remain `gap` until this evidence is recorded.
 
+## Task 11 Verification Evidence
+
+2026-08-25:
+
+- `node --test web/src/pages/settings/mcpModel.test.js`: 3 tests passed, covering server/header round trips, rejection of non-object request-header JSON, and normalized capability tool mappings.
+- `node --test test/mcp-config.test.js`: 5 focused backend tests passed for requirement and milestone validation/integration plus extension capability save, test, and delete behavior.
+- `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
+- Browser verification against a disposable real Flowlark workspace and local MCP fixture confirmed invalid header JSON is announced inline while service drafts remain intact; service add/edit and ID locking; requirement and milestone save/test with returned identities; missing-server save errors, disabled-server test errors, and extension-save errors with retained drafts; extension add/test with stable action names; empty password-style secret fields that never echo configuration data; visible service/extension deletion confirmation text; mirror-mode read-only disabling for service, capability, test, and delete actions; no console warnings/errors; and no page-level horizontal overflow at 390px.
+- React code-path review confirms service and extension removal require confirmation; secret save/delete never render an API return value and clear the input only after success; all API/JSON failures retain their form values; and server options include disabled-state text rather than relying on color alone.
+- Remaining browser verification: execute service and extension deletion through their confirmation dialogs; set and delete a disposable macOS Keychain secret, including failure retention; force service-save, capability-save, extension-save, removal, and initial-load API failures; and confirm the resulting retry states. MCP therefore remains `gap` until this evidence is recorded.
+
 ## Legacy API Reference Audit
 
 ```bash
