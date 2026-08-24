@@ -124,3 +124,12 @@ rg -o "api\.[A-Za-z0-9_]+" web/src/main.tsx web/src/pages web/src/components web
 ## Task 12 Legacy Framework Removal Evidence
 
 2026-08-25: 291 tests passed, 0 failed; production build passed; zero active Vue/Pinia/Arco/Umi references.
+
+## Task 13 Post-deletion Final Acceptance Evidence
+
+2026-08-25:
+
+- Playwright completed with 76 tests passed and 0 failed against an isolated disposable Flowlark fixture. Coverage comprised 42 route/layout checks across 14 routes and desktop 1280×900, wide 1920×1080, and mobile 390×844 viewports; 3 timeline-browsing checks; 30 restored-workflow checks across the same three viewports; and 1 large-history check at 1440×900. The generated route report contains 42 successful responses, zero page-level horizontal overflows, zero page errors, and zero empty visible alerts. Every test-triggered write was intercepted; declared mutations used in-memory mocks and any unmatched write failed the test instead of reaching the fixture.
+- `node --test web/src/**/*.test.js` passed 41 tests with 0 failures, including the permanent React-only framework guard. `npm test` passed 291 tests across 66 suites with 0 failures.
+- `cd web && npm run build` completed successfully after transforming 4038 modules. The only remaining build warning is the known 1,694.98 kB main chunk exceeding the 1,600 kB warning threshold.
+- Static audits found zero `.vue` files; zero active Vue, Vue Router, Pinia, Arco Design Vue, or Umi references in `web/src`, `web/vite.config.js`, `web/package.json`, and `web/package-lock.json`; and zero legacy-stack claims in the current README, `DESIGN.md`, design-system master, and brand README. `git diff --check` passed.
