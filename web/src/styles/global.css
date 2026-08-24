@@ -1180,6 +1180,19 @@ button:active,
   white-space: nowrap;
 }
 
+.fl-workspace-editor {
+  margin-top: var(--pw-space-16);
+  padding: var(--pw-space-16);
+  border: 1px solid var(--pw-color-border);
+  border-radius: var(--pw-radius-md);
+  background: var(--pw-color-surface-muted);
+}
+
+.fl-workspace-form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .fl-settings-two-col {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1205,6 +1218,21 @@ button:active,
   font-family: var(--pw-font-family-mono);
   font-size: var(--pw-font-size-12);
   line-height: 20px;
+}
+
+.fl-update-info code {
+  overflow-wrap: anywhere;
+}
+
+.fl-operation-log-copy {
+  margin: 0 0 var(--pw-space-16);
+  color: var(--pw-color-text-secondary);
+  font-size: var(--pw-font-size-12);
+  line-height: 20px;
+}
+
+.fl-operation-log-copy code {
+  font-family: var(--pw-font-family-mono);
 }
 
 .fl-lan-list,

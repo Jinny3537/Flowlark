@@ -76,6 +76,19 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 - `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
 - Remaining browser verification: exercise snapshot success/failure draft retention; notification test/save success and failure, saved-value clearing, partial retry failures, and read-only states; archived watch navigation plus retry success/failure/read-only states; trash confirmation plus restore success/failure item retention/read-only states; and all three pages at desktop and 390px widths. Deliveries, Watch inbox, and Trash therefore remain `gap` until this evidence is recorded.
 
+## Task 10 Verification Evidence
+
+2026-08-25:
+
+- React code-path review confirms workspace registration and cloning share one validated, draft-preserving form; the mirror choice sends the backend's canonical `mode` value; remove requires confirmation; rebuild reports the returned record count; and all workspace writes are disabled in read-only mode.
+- React code-path review confirms software status loads on mount, remote refresh uses the same loader, availability and dirty state are both shown in text, pull is disabled when unavailable, dirty, read-only, or applying, and the pull request runs only after confirmation. Operation failures use the Ant Design `App` message context.
+- React code-path review confirms `/settings/oplog` renders the semantic action mapping, absolute time, actor, project, detail, retryable load error, 20-row pagination, and 760px horizontal table scroll. The existing `/oplog` compatibility redirect targets this section.
+- `node --test test/workspaces.test.js test/setup.test.js test/workspace-index.test.js test/updater.test.js test/admin.test.js test/rules.test.js`: 79 focused backend tests passed, covering registration/removal, setup registration, cross-workspace indexing without repository writes, update status and fast-forward pull, and operation-log persistence/semantics.
+- `node --test web/src/domain/status.test.js`: 3 tests passed, including semantic operation-label/color mapping and unknown-action fallback.
+- `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
+- Backend contract note: workspace registration consumes `mode: "mirror" | "normal"` rather than a lone `mirror` boolean, while workspace-index rebuild returns `{ builtAt, records }` and no index-file path. The React implementation follows those actual shapes and reports `records.length`.
+- Remaining browser verification: exercise existing registration, clone, remove, rebuild, API-failure draft retention, and read-only controls against disposable workspaces; exercise update fetch, dirty guard, confirmation, failed pull, and successful fast-forward pull against a disposable software clone; inspect operation-log retry, empty data, and more than 20 rows; and check all three sections at desktop and 390px widths. Workspaces, Software update, and Operation log therefore remain `gap` until this evidence is recorded.
+
 ## Legacy API Reference Audit
 
 ```bash

@@ -5,13 +5,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { api, type ConfigItem, type HealthInfo } from '@/services/api';
+import { errorText } from '@/services/requestModel.js';
 import {
   ConfigGroupSection,
   GitRemoteSection,
   LanSection,
   WorkspaceSection,
   type SettingsGroup,
+  type WorkspaceValues,
 } from './settings/SettingsSections';
+import { OperationLog } from './settings/OperationLog';
+import { SoftwareUpdateSection } from './settings/SoftwareUpdateSection';
 import {
   GROUP_LABELS,
   HOISTED_CONFIG_KEYS,
@@ -56,6 +60,9 @@ export default function Settings() {
     { key: 'workspace', label: '工作区', description: SECTION_DESCRIPTIONS.workspace, modified: 0 },
     { key: 'lan', label: '局域网分享', description: SECTION_DESCRIPTIONS.lan, modified: modifiedCount(['server.lan', 'server.readonlyFromLan']) },
     { key: 'gitRemote', label: 'Git 远端', description: SECTION_DESCRIPTIONS.gitRemote, modified: modifiedCount(['git.remote']) },
+    { key: 'softwareUpdate', label: '软件更新', description: SECTION_DESCRIPTIONS.softwareUpdate, modified: 0 },
+    { key: 'oplog', label: '操作日志', description: SECTION_DESCRIPTIONS.oplog, modified: 0 },
+    { key: 'mcp', label: 'MCP 中心', description: SECTION_DESCRIPTIONS.mcp, modified: 0 },
     ...groups.map((group) => ({
       key: group.key,
       label: group.label,
@@ -180,11 +187,55 @@ export default function Settings() {
       okText: '移除',
       okButtonProps: { danger: true },
       onOk: async () => {
-        await api.removeWorkspace(path);
-        message.success('工作区已移除');
-        await load();
+        setBusy(`workspaceRemove:${path}`);
+        try {
+          await api.removeWorkspace(path);
+          message.success('工作区已移除');
+          await load();
+        } catch (nextError) {
+          message.error(errorText(nextError, '无法移除工作区'));
+          throw nextError;
+        } finally {
+          setBusy('');
+        }
       },
     });
+  };
+
+  const saveWorkspace = async (mode: 'existing' | 'clone', values: WorkspaceValues) => {
+    setBusy('workspaceSave');
+    try {
+      const mirror = Boolean(values.mirror);
+      const body = {
+        path: values.path.trim(),
+        name: values.name?.trim() || undefined,
+        mirror,
+        mode: mirror ? 'mirror' : 'normal',
+      };
+      if (mode === 'clone') await api.cloneWorkspace({ ...body, url: values.url?.trim() || '' });
+      else await api.registerWorkspace(body);
+      message.success(mode === 'clone' ? '仓库已克隆并注册' : '工作区已注册');
+      await load();
+    } catch (nextError) {
+      message.error(errorText(nextError, mode === 'clone' ? '无法克隆工作区' : '无法注册工作区'));
+      throw nextError;
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const rebuildWorkspaceIndex = async () => {
+    setBusy('workspaceIndex');
+    try {
+      const result: any = await api.buildWorkspaceIndex();
+      const count = Number.isFinite(result?.count) ? result.count : Array.isArray(result?.records) ? result.records.length : 0;
+      const location = result?.path ? `，文件：${result.path}` : '';
+      message.success(`索引已重建，共 ${count} 条记录${location}`);
+    } catch (nextError) {
+      message.error(errorText(nextError, '无法重建工作区索引'));
+    } finally {
+      setBusy('');
+    }
   };
 
   const menuItems = sections.map((section) => ({
@@ -221,9 +272,14 @@ export default function Settings() {
               <WorkspaceSection
                 health={health}
                 workspaces={workspaces}
+                canWrite={canWrite}
+                busy={busy}
                 onCopy={(text) => void copy(text)}
                 onReload={() => void load()}
                 onRemove={removeWorkspace}
+                onRegister={(values) => saveWorkspace('existing', values)}
+                onClone={(values) => saveWorkspace('clone', values)}
+                onRebuildIndex={() => void rebuildWorkspaceIndex()}
               />
             ) : null}
 
@@ -251,6 +307,12 @@ export default function Settings() {
                 onRemove={() => void removeRemote()}
               />
             ) : null}
+
+            {activeMeta?.key === 'softwareUpdate' ? (
+              <SoftwareUpdateSection canWrite={canWrite} version={health?.version} />
+            ) : null}
+
+            {activeMeta?.key === 'oplog' ? <OperationLog embedded /> : null}
 
             {activeGroup ? (
               <ConfigGroupSection

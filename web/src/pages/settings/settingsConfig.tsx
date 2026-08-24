@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 import {
+  ApiOutlined,
   AppstoreOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
+  CloudDownloadOutlined,
   DesktopOutlined,
+  HistoryOutlined,
   SettingOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
@@ -20,6 +23,9 @@ export const SECTION_DESCRIPTIONS: Record<string, string> = {
   workspace: '查看当前 Flowlark 工作区，并管理本机已注册工作区。',
   lan: '给同网段成员开放查看入口，并控制局域网写入权限。',
   gitRemote: '设置团队同步用的 Git origin 地址。',
+  softwareUpdate: '检测并安全拉取 Flowlark 软件仓库更新。',
+  oplog: '查看随 Git 保存的语义操作记录。',
+  mcp: '连接外部需求、迭代和扩展能力。',
   server: '管理原型 HTML 与附件的上传体积限制。',
   git: '配置默认分支、提交身份和自动提交策略。',
   rules: '控制基线和变更日志相关的业务约束。',
@@ -56,6 +62,9 @@ export const SETTING_ICONS: Record<string, ReactNode> = {
   workspace: <AppstoreOutlined />,
   lan: <ShareAltOutlined />,
   gitRemote: <BranchesOutlined />,
+  softwareUpdate: <CloudDownloadOutlined />,
+  oplog: <HistoryOutlined />,
+  mcp: <ApiOutlined />,
   server: <SettingOutlined />,
   git: <BranchesOutlined />,
   rules: <CheckCircleOutlined />,

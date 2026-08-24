@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   CopyOutlined,
   ReloadOutlined,
@@ -6,14 +7,17 @@ import {
 import {
   Alert,
   Button,
+  Checkbox,
   Divider,
   Empty,
+  Form,
   Input,
   InputNumber,
   List,
   Select,
   Space,
   Switch,
+  Tabs,
   Tag,
   Tooltip,
 } from 'antd';
@@ -29,9 +33,21 @@ export type SettingsGroup = {
 type WorkspaceSectionProps = {
   health: HealthInfo | null;
   workspaces: any;
+  canWrite: boolean;
+  busy: string;
   onCopy: (text: string) => void;
   onReload: () => void;
   onRemove: (path: string) => void;
+  onRegister: (values: WorkspaceValues) => Promise<void>;
+  onClone: (values: WorkspaceValues) => Promise<void>;
+  onRebuildIndex: () => void;
+};
+
+export type WorkspaceValues = {
+  url?: string;
+  path: string;
+  name?: string;
+  mirror?: boolean;
 };
 
 type LanSectionProps = {
@@ -67,15 +83,36 @@ type ConfigGroupSectionProps = {
 export function WorkspaceSection({
   health,
   workspaces,
+  canWrite,
+  busy,
   onCopy,
   onReload,
   onRemove,
+  onRegister,
+  onClone,
+  onRebuildIndex,
 }: WorkspaceSectionProps) {
+  const [form] = Form.useForm<WorkspaceValues>();
+  const [mode, setMode] = useState<'existing' | 'clone'>('existing');
+
+  const submit = async (values: WorkspaceValues) => {
+    try {
+      if (mode === 'clone') await onClone(values);
+      else await onRegister(values);
+      form.resetFields();
+    } catch {
+      // Settings reports the API error. Keeping the form intact makes retrying safe.
+    }
+  };
+
   return (
     <section className="fl-settings-section">
       <div className="fl-section-head">
         <div><h2>工作区</h2><p>{SECTION_DESCRIPTIONS.workspace}</p></div>
         <Space wrap>
+          <Tooltip title="重建本机跨工作区搜索索引">
+            <Button icon={<ReloadOutlined />} disabled={!canWrite || Boolean(busy)} loading={busy === 'workspaceIndex'} onClick={onRebuildIndex}>重建索引</Button>
+          </Tooltip>
           <Button icon={<ReloadOutlined />} onClick={onReload}>刷新</Button>
         </Space>
       </div>
@@ -86,12 +123,47 @@ export function WorkspaceSection({
         </div>
         <Button icon={<CopyOutlined />} disabled={!health?.repo} onClick={() => onCopy(health?.repo || '')}>复制路径</Button>
       </div>
+      <div className="fl-workspace-editor">
+        <Tabs
+          activeKey={mode}
+          onChange={(key) => setMode(key as 'existing' | 'clone')}
+          items={[
+            { key: 'existing', label: '已有仓库' },
+            { key: 'clone', label: '从 Git clone' },
+          ]}
+        />
+        <Form<WorkspaceValues>
+          form={form}
+          layout="vertical"
+          initialValues={{ mirror: false }}
+          disabled={!canWrite || Boolean(busy)}
+          onFinish={(values) => void submit(values)}
+        >
+          {mode === 'clone' ? (
+            <Form.Item name="url" label="Git 地址" rules={[{ required: true, whitespace: true, message: '请填写 Git 地址' }]}>
+              <Input placeholder="git@host:team/prototypes.git" />
+            </Form.Item>
+          ) : null}
+          <Form.Item name="path" label="本机目录" rules={[{ required: true, whitespace: true, message: '请填写本机目录' }]}>
+            <Input placeholder="/Users/name/Prototypes" />
+          </Form.Item>
+          <div className="fl-settings-two-col fl-settings-two-col-top">
+            <Form.Item name="name" label="显示名称"><Input /></Form.Item>
+            <Form.Item name="mirror" label="模式" valuePropName="checked"><Checkbox>只读镜像</Checkbox></Form.Item>
+          </div>
+          <div className="fl-workspace-form-actions">
+            <Button type="primary" htmlType="submit" loading={busy === 'workspaceSave'}>
+              {mode === 'clone' ? 'Clone 并注册' : '注册工作区'}
+            </Button>
+          </div>
+        </Form>
+      </div>
       <Divider />
       <List
         dataSource={workspaces.items || []}
         locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无工作区" /> }}
         renderItem={(item: any) => (
-          <List.Item actions={[<Button key="remove" type="text" danger onClick={() => onRemove(item.path)}>移除</Button>]}>
+          <List.Item actions={[<Button key="remove" type="text" danger disabled={!canWrite || Boolean(busy)} loading={busy === `workspaceRemove:${item.path}`} onClick={() => onRemove(item.path)}>移除</Button>]}>
             <List.Item.Meta title={item.name} description={<code>{item.path}</code>} />
             <Tag color={item.missing ? 'red' : item.mode === 'mirror' ? 'gold' : 'green'}>
               {item.missing ? '路径缺失' : item.mode === 'mirror' ? '只读镜像' : '可用'}
