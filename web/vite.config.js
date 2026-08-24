@@ -1,8 +1,15 @@
 import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import react from '@vitejs/plugin-react'
+import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@umijs/max': fileURLToPath(new URL('./src/umi-shim.ts', import.meta.url))
+    }
+  },
   server: {
     port: 5173,
     proxy: {
