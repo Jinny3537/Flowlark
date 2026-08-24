@@ -1,8 +1,7 @@
 import { err } from '../../errors.js'
-import * as hubpool from './hubpool.js'
-import * as custom from './custom.js'
+import * as mcp from './mcp.js'
 
-const PROVIDERS = { hubpool, custom }
+const PROVIDERS = { mcp }
 
 function adapter(name) {
   const value = String(name || '').toLowerCase()

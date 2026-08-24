@@ -15,23 +15,20 @@ before(async () => {
     requests.push({ method: req.method, url: req.url, body: raw ? JSON.parse(raw) : null })
     res.setHeader('Content-Type', 'application/json')
 
-    if (req.url === '/hubpool/v1/me') return res.end(JSON.stringify({ name: 'Hubpool User' }))
-    if (req.url.startsWith('/hubpool/v1/requirements/search')) {
-      return res.end(JSON.stringify({ items: [{ code: 'REQ-7', title: 'Hubpool 需求', status: 'open', owner: 'PM' }] }))
-    }
-    if (req.url === '/hubpool/v1/requirements/REQ-7') {
-      return res.end(JSON.stringify({ code: 'REQ-7', title: 'Hubpool 需求', url: 'https://hubpool.test/REQ-7' }))
-    }
-    if (req.url === '/hubpool/v1/requirements/REQ-7/comments' && req.method === 'POST') {
-      return res.end(JSON.stringify({ url: 'https://hubpool.test/REQ-7#comment' }))
-    }
-
-    if (req.url === '/custom/me') return res.end(JSON.stringify({ login: 'task-user' }))
-    if (req.url.startsWith('/custom/tasks/search')) {
-      return res.end(JSON.stringify({ data: [{ key: 'TASK-9', name: '自建任务', state: 'doing' }] }))
-    }
-    if (req.url === '/custom/tasks/TASK-9') {
-      return res.end(JSON.stringify({ key: 'TASK-9', name: '自建任务' }))
+    if (req.url === '/mcp' && req.method === 'POST') {
+      const params = JSON.parse(raw).params || {}
+      if (params.name === 'requirements.test') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { name: 'MCP User' } } }))
+      }
+      if (params.name === 'requirements.search') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { items: [{ code: 'REQ-7', title: '外部需求', status: 'open', owner: 'PM' }] } } }))
+      }
+      if (params.name === 'requirements.get') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { content: [{ type: 'text', text: JSON.stringify({ code: 'REQ-7', title: '外部需求', url: 'https://mcp.example/REQ-7' }) }] } }))
+      }
+      if (params.name === 'requirements.comment') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { url: 'https://mcp.example/REQ-7#comment' } } }))
+      }
     }
 
     res.statusCode = 404
@@ -68,31 +65,16 @@ describe('v0.7 升级能力', () => {
     t.assert.match(draft.spec, /REQ-7/)
   })
 
-  test('Hubpool Provider 支持连接、搜索、详情和评论', async (t) => {
-    const config = { baseUrl: `${baseUrl}/hubpool`, token: 'x' }
-    const probe = await testRequirementConnection('hubpool', config)
+  test('MCP Provider 支持连接、搜索、详情和评论', async (t) => {
+    const config = { baseUrl: `${baseUrl}/mcp`, token: 'x' }
+    const probe = await testRequirementConnection('mcp', config)
     t.assert.strictEqual(probe.ok, true)
-    const found = await searchRequirements('hubpool', config, 'REQ')
+    const found = await searchRequirements('mcp', config, 'REQ')
     t.assert.strictEqual(found[0].code, 'REQ-7')
-    const detail = await fetchRequirement('hubpool', config, 'REQ-7')
-    t.assert.strictEqual(detail.title, 'Hubpool 需求')
-    const comment = await postRequirementComment('hubpool', config, 'REQ-7', '新基线已确认')
+    const detail = await fetchRequirement('mcp', config, 'REQ-7')
+    t.assert.strictEqual(detail.title, '外部需求')
+    const comment = await postRequirementComment('mcp', config, 'REQ-7', '新基线已确认')
     t.assert.strictEqual(comment.ok, true)
-    t.assert.ok(requests.some((item) => item.url === '/hubpool/v1/requirements/REQ-7/comments' && item.body.body === '新基线已确认'))
-  })
-
-  test('自建任务平台 Provider 支持可配置路径', async (t) => {
-    const config = {
-      baseUrl: `${baseUrl}/custom`,
-      token: 'x',
-      searchPath: '/tasks/search?q={q}',
-      detailPath: '/tasks/{key}'
-    }
-    const probe = await testRequirementConnection('custom', config)
-    t.assert.strictEqual(probe.identity, 'task-user')
-    const found = await searchRequirements('custom', config, 'TASK')
-    t.assert.strictEqual(found[0].code, 'TASK-9')
-    const detail = await fetchRequirement('custom', config, 'TASK-9')
-    t.assert.strictEqual(detail.title, '自建任务')
+    t.assert.ok(requests.some((item) => item.url === '/mcp' && item.body.params.name === 'requirements.comment' && item.body.params.arguments.body === '新基线已确认'))
   })
 })

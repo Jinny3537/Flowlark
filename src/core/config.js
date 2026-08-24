@@ -121,32 +121,45 @@ export const SCHEMA = [
     note: '支持 event/project/version/requirement/milestone/snapshot/reviewStatus/url/changeCount'
   },
   {
+    key: 'integrations.wecomCliCommand', type: 'string', default: 'wecom-cli', label: '企业微信 CLI 命令',
+    note: '安装 @wecom/cli 后保持默认即可；自定义安装路径时填写可执行文件路径'
+  },
+  {
+    key: 'integrations.wecomTransport', type: 'string', default: 'webhook',
+    enum: ['webhook', 'cli'], label: '企业微信发送方式',
+    note: 'webhook 使用群机器人；cli 使用 @wecom/cli 主动发送 Markdown'
+  },
+  {
+    key: 'integrations.wecomChatId', type: 'string', default: '', label: '企业微信会话 ID',
+    note: '配置后企业微信通知会通过 wecom-cli 发送 Markdown；留空时继续使用 Webhook'
+  },
+  {
     key: 'integrations.updateManifestUrl', type: 'string', default: '', label: '更新清单地址',
     note: '后台检查 JSON 发布清单；下载后必须通过 SHA-256 校验'
   },
   {
     key: 'integrations.requirementProvider', type: 'string', default: 'none',
-    enum: ['none', 'hubpool', 'custom'], label: '需求平台',
-    note: 'Hubpool 可直接接入；custom 预留给自建任务平台'
+    enum: ['none', 'mcp'], label: '外部需求集成',
+    note: '需求池、任务管理平台等外部系统统一通过 MCP 接入；none 表示只使用本地需求'
   },
   {
-    key: 'integrations.requirementBaseUrl', type: 'string', default: '', label: '需求平台 API 地址',
-    note: 'Hubpool 留空使用默认地址；自建任务平台必须填写'
+    key: 'integrations.requirementBaseUrl', type: 'string', default: '', label: '需求 MCP 地址',
+    note: 'MCP HTTP JSON-RPC endpoint，例如 http://127.0.0.1:9000/mcp'
   },
   {
-    key: 'integrations.requirementProject', type: 'string', default: '', label: '需求平台项目'
+    key: 'integrations.requirementProject', type: 'string', default: '', label: '外部项目标识'
   },
   {
-    key: 'integrations.requirementSearchPath', type: 'string', default: '', label: '需求搜索路径',
-    note: '自建平台可填 /requirements/search?q={q}；留空使用默认约定'
+    key: 'integrations.requirementSearchPath', type: 'string', default: '', label: '需求搜索 MCP 工具',
+    note: '留空使用 requirements.search；工具参数会收到 query/q/text/project/limit'
   },
   {
-    key: 'integrations.requirementDetailPath', type: 'string', default: '', label: '需求详情路径',
-    note: '自建平台可填 /requirements/{key}'
+    key: 'integrations.requirementDetailPath', type: 'string', default: '', label: '需求详情 MCP 工具',
+    note: '留空使用 requirements.get；工具参数会收到 key/code/project'
   },
   {
-    key: 'integrations.requirementCommentPath', type: 'string', default: '', label: '需求评论路径',
-    note: '自建平台可填 /requirements/{key}/comments'
+    key: 'integrations.requirementCommentPath', type: 'string', default: '', label: '需求评论 MCP 工具',
+    note: '留空使用 requirements.comment；工具参数会收到 key/code/body/content/project'
   },
   {
     key: 'integrations.mirrorIntervalSeconds', type: 'int', default: 60, min: 5, max: 86400,
@@ -270,6 +283,10 @@ export function validateAll(settings) {
   }
   if (getPath(settings, 'server.lan') && !getPath(settings, 'server.readonlyFromLan')) {
     problems.push('已开放局域网且关闭了只读保护：同网段任何人都能删版本、改基线')
+  }
+  const requirementProvider = getPath(settings, 'integrations.requirementProvider')
+  if (['hubpool', 'custom'].includes(requirementProvider)) {
+    problems.push('需求平台旧直连配置已废弃：请到“MCP 集成”里配置 mcp.json')
   }
   const tpl = getPath(settings, 'ui.requirementUrlTemplate')
   if (tpl && !tpl.includes('{code}')) {

@@ -16,10 +16,11 @@ const KEY_ORDER = {
     'createdAt', 'createdBy', 'updatedAt', 'baselineAt', 'specUpdatedAt'
   ],
   change: ['type', 'location', 'content', 'requirement'],
-  requirement: ['code', 'title', 'description', 'owner', 'statusOverride', 'external', 'url', 'createdAt', 'updatedAt'],
-  milestone: ['name', 'title', 'startAt', 'endAt', 'items', 'createdAt', 'updatedAt'],
+  requirement: ['code', 'title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'statusOverride', 'external', 'url', 'createdAt', 'updatedAt'],
+  milestone: ['name', 'title', 'startAt', 'endAt', 'items', 'external', 'createdAt', 'updatedAt'],
   snapshot: ['name', 'title', 'milestone', 'items', 'changesDigest', 'createdAt', 'createdBy'],
-  attachment: ['name', 'size', 'contentType', 'addedAt', 'addedBy']
+  attachment: ['name', 'size', 'contentType', 'addedAt', 'addedBy'],
+  mcp: ['schemaVersion', 'servers', 'capabilities']
 }
 
 function orderKeys(obj, schema) {

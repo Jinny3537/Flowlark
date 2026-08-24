@@ -44,6 +44,10 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
     code,
     title,
     description: String(input.description || ''),
+    project: String(input.project || ''),
+    module: String(input.module || ''),
+    type: String(input.type || ''),
+    priority: String(input.priority || ''),
     owner: String(input.owner || ''),
     statusOverride: input.statusOverride || null,
     external: input.external || null,
@@ -59,7 +63,7 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
 
 export function updateRequirement(root, code, patch) {
   const item = readRequirement(root, code)
-  for (const key of ['title', 'description', 'owner', 'statusOverride', 'external', 'url']) {
+  for (const key of ['title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'statusOverride', 'external', 'url']) {
     if (patch[key] !== undefined) item[key] = patch[key]
   }
   if (!String(item.title || '').trim()) throw err.bad('REQUIREMENT_TITLE_REQUIRED', '请填写需求标题')

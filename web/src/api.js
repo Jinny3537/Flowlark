@@ -126,6 +126,7 @@ export const api = {
   getRequirement: (code) => get(`/api/requirements/${enc(code)}`),
   createRequirement: (body) => post('/api/requirements', body),
   updateRequirement: (code, body) => put(`/api/requirements/${enc(code)}`, body),
+  syncRequirements: (provider = 'mcp', config = {}) => post('/api/requirements/sync', { provider, config }),
   linkRequirement: (code, body) => post(`/api/requirements/${enc(code)}/links`, body),
   unlinkRequirement: (code, slug, no) => del(`/api/requirements/${enc(code)}/links/${enc(slug)}/${enc(no)}`),
   listMilestones: () => get('/api/milestones'),
@@ -133,6 +134,8 @@ export const api = {
   createMilestone: (body) => post('/api/milestones', body),
   updateMilestone: (name, body) => put(`/api/milestones/${enc(name)}`, body),
   removeMilestone: (name) => del(`/api/milestones/${enc(name)}`),
+  syncMilestones: (provider = 'mcp', config = {}) => post('/api/milestones/sync', { provider, config }),
+  syncMilestone: (name, provider = 'mcp', config = {}) => post(`/api/milestones/${enc(name)}/sync`, { provider, config }),
   listViews: () => get('/api/views'),
   saveView: (id, body) => put(`/api/views/${enc(id)}`, body),
   removeView: (id) => del(`/api/views/${enc(id)}`),
@@ -156,6 +159,8 @@ export const api = {
   searchWorkspaces: (q, limit = 50) => get(`/api/workspace-search?q=${enc(q)}&limit=${limit}`),
   checkUpdate: (currentVersion, manifestUrl) => post('/api/update/check', { currentVersion, manifestUrl }),
   downloadUpdate: (manifest, targetDir) => post('/api/update/download', { manifest, targetDir }),
+  softwareUpdateStatus: ({ fetchRemote = false } = {}) => get(`/api/update/software${fetchRemote ? '?fetch=1' : ''}`),
+  pullSoftwareUpdate: () => post('/api/update/software/pull', {}),
   mirrorStatus: () => get('/api/mirror'),
   refreshMirror: () => post('/api/mirror/refresh', {}),
 
@@ -246,6 +251,14 @@ export const api = {
   getConfig: () => get('/api/config'),
   setConfig: (key, value) => put(`/api/config/${enc(key)}`, { value }),
   resetConfig: (key) => del(`/api/config/${enc(key)}`),
+  getMcpConfig: () => get('/api/mcp'),
+  saveMcpServer: (id, body) => put(`/api/mcp/servers/${enc(id)}`, body),
+  removeMcpServer: (id) => del(`/api/mcp/servers/${enc(id)}`),
+  setMcpServerSecret: (id, value) => put(`/api/mcp/servers/${enc(id)}/secret`, { value }),
+  deleteMcpServerSecret: (id) => del(`/api/mcp/servers/${enc(id)}/secret`),
+  saveMcpCapability: (name, body) => put(`/api/mcp/capabilities/${enc(name)}`, body),
+  removeMcpCapability: (name) => del(`/api/mcp/capabilities/${enc(name)}`),
+  testMcpCapability: (name) => post(`/api/mcp/capabilities/${enc(name)}/test`, {}),
 
   // ---- 局域网 ----
   lan: () => get('/api/lan')

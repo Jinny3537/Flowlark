@@ -18,6 +18,10 @@ export function normalizeRequirement(provider, item) {
     code,
     title: String(item.title || item.name || item.summary || code),
     description: String(item.description || item.body || ''),
+    project: String(item.project || item.projectKey || item.projectName || item.space || ''),
+    module: String(item.module || item.component || item.componentName || item.category || ''),
+    type: String(item.type || item.issueType || item.requirementType || ''),
+    priority: String(item.priority || item.severity || item.level || ''),
     owner: String(item.owner || item.assignee || item.assigneeName || ''),
     status: String(item.status || item.state || ''),
     url: String(item.url || item.web_url || item.html_url || ''),
@@ -32,4 +36,3 @@ export function endpoint(base, template, params = {}) {
   }
   return `${base}${path.startsWith('/') ? path : '/' + path}`
 }
-

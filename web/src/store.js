@@ -5,6 +5,7 @@ export const useAppStore = defineStore('app', {
   state: () => ({
     repo: '',
     repoName: '',
+    version: '',
     previewPort: 7789,
     maxFileBytes: 10 * 1024 * 1024,
     connected: false,
@@ -38,6 +39,7 @@ export const useAppStore = defineStore('app', {
         const h = await api.health()
         this.repo = h.repo
         this.repoName = h.repoName
+        this.version = h.version || ''
         this.previewPort = h.previewPort
         this.maxFileBytes = h.maxFileBytes
         this.canWrite = h.canWrite !== false

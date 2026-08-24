@@ -220,21 +220,21 @@ flowlark export req REQ-0275 -o ./需求包
 
 ### M6. 外部需求系统集成
 
-抽象成 provider 接口，首批实现 Jira / 禅道 / GitHub Issues：
+抽象成仓库级 `mcp.json` + MCP 工具接口，Jira、禅道、GitHub Issues、GitLab Issues 或团队任务管理平台都由外部 MCP 服务负责适配：
 
 ```js
-// src/core/integrations/provider.js
+// MCP tools
 {
-  fetchRequirement(key),      // 拉标题、状态、负责人
-  searchRequirements(query),  // 创建关联时的补全
-  postComment(key, body),     // 把原型链接写回需求单
-  buildUrl(key)
+  "requirements.search": { query, project, limit }, // 创建关联时的补全
+  "requirements.get": { key, project },             // 拉标题、状态、负责人
+  "requirements.comment": { key, body, project },   // 把原型链接写回需求单
+  "requirements.test": { project }                  // 连接测试
 }
 ```
 
 **双向但不对称**：拉取是只读缓存（外部系统是权威）；写回只做一件事——**新基线定稿时在需求单里留一条评论，附原型直链**。不试图同步状态机，那是需求系统自己的事，两套状态机对齐是无底洞。
 
-token 存本地缓存不进 Git。无 token 时全部降级为纯本地需求，功能不残缺，只是少了自动补全和写回。
+`mcp.json` 进 Git，记录服务 URL、Header 模板和能力映射；token 存本机钥匙串或环境变量不进 Git。无 token 时全部降级为纯本地需求，功能不残缺，只是少了自动补全和写回。
 
 ### M7. 上传路径与编辑
 
