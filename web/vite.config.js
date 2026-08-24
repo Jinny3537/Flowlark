@@ -6,8 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@umijs/max': fileURLToPath(new URL('./src/umi-shim.ts', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
   server: {

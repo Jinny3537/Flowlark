@@ -18,7 +18,8 @@ import {
 import { App, Badge, Button, Drawer, Dropdown, Form, Grid, Input, Layout, Menu, Modal, Select, Space, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { api, type HealthInfo } from '@/services/api';
+import { api } from '@/services/api';
+import { useAppRuntime } from '@/runtime/AppRuntime';
 import { GitDrawer } from './GitDrawer';
 
 const { Header, Sider, Content } = Layout;
@@ -54,12 +55,10 @@ export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { message } = App.useApp();
+  const { health, git, notifications, reload } = useAppRuntime();
   const screens = Grid.useBreakpoint();
   const mobile = !screens.md;
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [health, setHealth] = useState<HealthInfo | null>(null);
-  const [git, setGit] = useState<any>(null);
-  const [notifications, setNotifications] = useState<any[]>([]);
   const [gitOpen, setGitOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
@@ -70,21 +69,6 @@ export function AppShell({ children }: AppShellProps) {
   const canWrite = health?.canWrite !== false;
   const pendingNotifications = notifications.filter((item) => item.status === 'pending');
   const gitBadge = git?.conflicts?.length || git?.files?.length || 0;
-
-  const loadShell = useMemo(() => async () => {
-    const [nextHealth, nextGit, nextNotifications] = await Promise.all([
-      api.health().catch(() => null),
-      api.gitStatus({ fast: true, cache: true }).catch(() => null),
-      api.listNotifications().catch(() => []),
-    ]);
-    setHealth(nextHealth);
-    setGit(nextGit);
-    setNotifications(nextNotifications);
-  }, []);
-
-  useEffect(() => {
-    void loadShell();
-  }, [loadShell]);
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -152,7 +136,7 @@ export function AppShell({ children }: AppShellProps) {
   const flushNotifications = async () => {
     await api.flushNotifications();
     message.success('通知队列已处理');
-    await loadShell();
+    await reload();
   };
 
   const brand = (
@@ -283,7 +267,7 @@ export function AppShell({ children }: AppShellProps) {
           <span>{health ? '本地服务运行中' : '本地服务未连接'}</span>
         </div>
       </Drawer>
-      <GitDrawer open={gitOpen} onClose={() => setGitOpen(false)} onChanged={loadShell} />
+      <GitDrawer open={gitOpen} onClose={() => setGitOpen(false)} onChanged={reload} />
       <Modal
         title="导入原型版本"
         open={versionOpen}

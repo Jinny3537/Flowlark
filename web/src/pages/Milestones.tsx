@@ -1,4 +1,4 @@
-import { history } from '@umijs/max';
+import { useNavigate } from 'react-router-dom';
 import { App, Button, DatePicker, Form, Input, Modal, Table, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
@@ -8,6 +8,7 @@ import { api } from '@/services/api';
 import { textOf } from '@/utils/format';
 
 export default function Milestones() {
+  const navigate = useNavigate();
   const { message } = App.useApp();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,7 +41,7 @@ export default function Milestones() {
       });
       message.success(`已创建 ${item.name}`);
       setOpen(false);
-      history.push(`/milestones/${encodeURIComponent(item.name)}`);
+      navigate(`/milestones/${encodeURIComponent(item.name)}`);
     } finally {
       setSaving(false);
     }
@@ -64,7 +65,7 @@ export default function Milestones() {
           loading={loading}
           locale={{ emptyText: '还没有迭代' }}
           dataSource={items}
-          onRow={(record) => ({ className: 'fl-clickable-row', onClick: () => history.push(`/milestones/${encodeURIComponent(record.name)}`) })}
+          onRow={(record) => ({ className: 'fl-clickable-row', onClick: () => navigate(`/milestones/${encodeURIComponent(record.name)}`) })}
           columns={[
             { title: '迭代', render: (_, record: any) => <><span className="fl-table-title">{record.title || record.name}</span><div className="fl-muted fl-mono">{record.name}</div></> },
             { title: '周期', render: (_, record: any) => `${textOf(record.startAt)} 至 ${textOf(record.endAt)}` },

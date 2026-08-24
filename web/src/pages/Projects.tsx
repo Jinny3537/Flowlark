@@ -1,4 +1,4 @@
-import { history } from '@umijs/max';
+import { useNavigate } from 'react-router-dom';
 import { App, Button, Form, Input, Modal, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
@@ -8,6 +8,7 @@ import { api } from '@/services/api';
 import { fmtTime, textOf } from '@/utils/format';
 
 export default function Projects() {
+  const navigate = useNavigate();
   const { message } = App.useApp();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,7 +62,7 @@ export default function Projects() {
               className="fl-project-card"
               type="button"
               key={item.slug}
-              onClick={() => history.push(`/projects/${encodeURIComponent(item.slug)}`)}
+              onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}
             >
               <span className="fl-project-card-head">
                 <span>

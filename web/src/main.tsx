@@ -6,6 +6,7 @@ import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import './styles/global.css';
 
 import { AppShell } from './components/AppShell';
+import { AppRuntimeProvider } from './runtime/AppRuntime';
 import ActionCenter from './pages/ActionCenter';
 import Compare from './pages/Compare';
 import Deliveries from './pages/Deliveries';
@@ -44,6 +45,7 @@ function AppRoutes() {
         <Route path="/trash" element={<Trash />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/:section" element={<Settings />} />
+        <Route path="/oplog" element={<Navigate to="/settings/oplog" replace />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppShell>
@@ -88,7 +90,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     >
       <AntApp>
         <HashRouter>
-          <AppRoutes />
+          <AppRuntimeProvider>
+            <AppRoutes />
+          </AppRuntimeProvider>
         </HashRouter>
       </AntApp>
     </ConfigProvider>

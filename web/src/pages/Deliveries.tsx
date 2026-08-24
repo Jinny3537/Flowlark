@@ -1,4 +1,4 @@
-import { history } from '@umijs/max';
+import { useNavigate } from 'react-router-dom';
 import { App, Button, Form, Input, List, Modal, Select, Space, Tag } from 'antd';
 import { BellOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -8,6 +8,7 @@ import { api } from '@/services/api';
 import { fmtTime } from '@/utils/format';
 
 export default function Deliveries() {
+  const navigate = useNavigate();
   const { message } = App.useApp();
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [milestones, setMilestones] = useState<any[]>([]);
@@ -45,7 +46,7 @@ export default function Deliveries() {
       const item = await api.createSnapshot(values);
       message.success('交付快照已冻结');
       setOpen(false);
-      history.push(`/deliveries/${encodeURIComponent(item.name)}`);
+      navigate(`/deliveries/${encodeURIComponent(item.name)}`);
     } finally {
       setSaving(false);
     }
@@ -79,7 +80,7 @@ export default function Deliveries() {
           <List
             dataSource={snapshots}
             renderItem={(item) => (
-              <List.Item className="fl-clickable-row" onClick={() => history.push(`/deliveries/${encodeURIComponent(item.name)}`)}>
+              <List.Item className="fl-clickable-row" onClick={() => navigate(`/deliveries/${encodeURIComponent(item.name)}`)}>
                 <List.Item.Meta
                   title={<span className="fl-table-title">{item.title || item.name}</span>}
                   description={<><span className="fl-mono">{item.name}</span> · {item.items?.length || 0} 个版本 · {fmtTime(item.createdAt)}</>}

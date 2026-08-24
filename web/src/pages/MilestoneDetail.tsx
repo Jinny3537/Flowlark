@@ -1,4 +1,4 @@
-import { useParams } from '@umijs/max';
+import { useParams } from 'react-router-dom';
 import { Descriptions, List, Tag } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';

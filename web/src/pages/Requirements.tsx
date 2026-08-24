@@ -1,4 +1,4 @@
-import { history } from '@umijs/max';
+import { useNavigate } from 'react-router-dom';
 import { App, Button, Form, Input, Modal, Statistic, Table, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -8,6 +8,7 @@ import { api } from '@/services/api';
 import { textOf } from '@/utils/format';
 
 export default function Requirements() {
+  const navigate = useNavigate();
   const { message } = App.useApp();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,7 +41,7 @@ export default function Requirements() {
       const item = await api.createRequirement(values);
       message.success(`已创建 ${item.code}`);
       setOpen(false);
-      history.push(`/requirements/${encodeURIComponent(item.code)}`);
+      navigate(`/requirements/${encodeURIComponent(item.code)}`);
     } finally {
       setSaving(false);
     }
@@ -73,7 +74,7 @@ export default function Requirements() {
             loading={loading}
             locale={{ emptyText: query ? '没有匹配的需求' : '还没有需求' }}
             dataSource={filtered}
-            onRow={(record) => ({ className: 'fl-clickable-row', onClick: () => history.push(`/requirements/${encodeURIComponent(record.code)}`) })}
+            onRow={(record) => ({ className: 'fl-clickable-row', onClick: () => navigate(`/requirements/${encodeURIComponent(record.code)}`) })}
             columns={[
               { title: '需求编号', dataIndex: 'code', width: 140, render: (value) => <span className="fl-mono">{value}</span> },
               { title: '标题', dataIndex: 'title', render: (value) => <span className="fl-table-title">{value}</span> },
