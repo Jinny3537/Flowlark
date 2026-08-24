@@ -132,15 +132,21 @@ export function GitDrawer({ open, onClose, onChanged }: GitDrawerProps) {
     () => api.gitMarkResolved([path]),
     '已标记为解决',
   );
-  const continueSync = () => guard(() => api.gitContinue());
+  const continueSync = () => guard(async () => {
+    const result: any = await api.gitContinue();
+    if (result.conflicts?.length) message.warning(result.message || '仍有冲突需要处理');
+    else message.success(result.message || '同步已继续完成');
+    return result;
+  });
   const abortSync = () => guard(() => api.gitAbort(), '已回到同步之前的状态');
   const sync = () => guard(async () => {
     const result: any = await api.gitSync(commitMessage);
     setSteps(result.steps || []);
-    if (result.conflicted) message.warning('产生了冲突，下面可以逐个处理');
+    if (result.conflicted) message.warning(result.message || '产生了冲突，下面可以逐个处理');
+    else message.success(result.message || '已同步');
     setCommitMessage('');
     return result;
-  }, '已同步');
+  });
 
   const fillSuggestion = async () => {
     setBusy(true);
