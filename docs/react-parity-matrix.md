@@ -2,28 +2,28 @@
 
 Status values: `verified`, `gap`, `delete-unreachable`.
 
-| Area | Reachable Vue behavior | API / boundary | React target | Initial status |
+| Area | Reachable Vue behavior | API / boundary | React target | Status |
 |---|---|---|---|---|
-| Shell | navigation, quick create, Ctrl/Cmd+K, notification detail/retry, runtime/read-only/LAN/update status | health, notifications, update check | AppShell | gap |
-| Git | doctor, initialize, identity, permission refresh, sync, conflict choose/mark/continue/abort, brief | git/* | GitDrawer | gap |
+| Shell | navigation, quick create, Ctrl/Cmd+K, notification detail/retry, runtime/read-only/LAN/update status | health, notifications, update check | AppShell | verified |
+| Git | doctor, initialize, identity, permission refresh, sync, conflict choose/mark/continue/abort, brief | git/* | GitDrawer | verified |
 | Projects | list and create projects | projects | Projects | verified |
-| Versions | list/filter/detail, create from file/paste/URL, inspect dependencies, impact suggestion | versions, import, impact | ProjectVersions + NewVersionDialog | gap |
+| Versions | list/filter/detail, create from file/paste/URL, inspect dependencies, impact suggestion | versions, import, impact | ProjectVersions + NewVersionDialog | verified |
 | Workbench | preview/edit/spec/change/requirement/tag/attachment/feedback/history/offline/review/baseline | versions/* | VersionWorkbench | verified |
 | Compare | version/version and prototype/system comparison with URL restoration | preview + cumulative | Compare | verified |
-| Search | current/all workspaces, saved views, structured filters, object routing | search, workspace-search, views | Search | gap |
-| Requirements | create/filter, external search/import/sync/token | requirements + integrations/requirements | Requirements | gap |
-| Requirement detail | edit, export, linked-version navigation | requirement + export | RequirementDetail | gap |
-| Milestones | create, optional sync, bulk sync | milestones + sync | Milestones | gap |
-| Milestone detail | add/remove scope item, export, external sync | milestone + export | MilestoneDetail | gap |
-| Deliveries | create snapshot, notification retry, webhook test/save | snapshots + notifications | Deliveries | gap |
+| Search | current/all workspaces, saved views, structured filters, object routing | search, workspace-search, views | Search | verified |
+| Requirements | create/filter, external search/import/sync/token | requirements + integrations/requirements | Requirements | verified |
+| Requirement detail | edit, export, linked-version navigation | requirement + export | RequirementDetail | verified |
+| Milestones | create, optional sync, bulk sync | milestones + sync | Milestones | verified |
+| Milestone detail | add/remove scope item, export, external sync | milestone + export | MilestoneDetail | verified |
+| Deliveries | create snapshot, notification retry, webhook test/save | snapshots + notifications | Deliveries | verified |
 | Delivery detail | frozen snapshot detail | snapshots | DeliveryDetail | verified |
-| Watch inbox | show errors, open archived version, retry failed item | watch/inbox | WatchInbox | gap |
-| Trash | restore deleted version | trash + restore | Trash | gap |
+| Watch inbox | show errors, open archived version, retry failed item | watch/inbox | WatchInbox | verified |
+| Trash | restore deleted version | trash + restore | Trash | verified |
 | Settings | schema config, LAN, Git remote | config + lan + git/remote | Settings | verified |
-| Workspaces | register, clone, remove, rebuild index | workspaces + workspace-index | Settings/WorkspaceSection | gap |
-| Software update | status, fetch, dirty guard, pull, restart notice | update/software | Settings/SoftwareUpdateSection | gap |
-| Operation log | paginated semantic actions | oplog | Settings/OperationLog | gap |
-| MCP | service CRUD, secret set/delete, capability CRUD/test | mcp/* | Settings/McpSection | gap |
+| Workspaces | register, clone, remove, rebuild index | workspaces + workspace-index | Settings/WorkspaceSection | verified |
+| Software update | status, fetch, dirty guard, pull, restart notice | update/software | Settings/SoftwareUpdateSection | verified |
+| Operation log | paginated semantic actions | oplog | Settings/OperationLog | verified |
+| MCP | service CRUD, secret set/delete, capability CRUD/test | mcp/* | Settings/McpSection | verified |
 | Setup wizard | no route or production entry | drafts/version | none | delete-unreachable |
 
 ## Task 5 Verification Evidence
@@ -99,6 +99,18 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 - Browser verification against a disposable real Flowlark workspace and local MCP fixture confirmed invalid header JSON is announced inline while service drafts remain intact; service add/edit and ID locking; requirement and milestone save/test with returned identities; missing-server save errors, disabled-server test errors, and extension-save errors with retained drafts; extension add/test with stable action names; empty password-style secret fields that never echo configuration data; visible service/extension deletion confirmation text; mirror-mode read-only disabling for service, capability, test, and delete actions; no console warnings/errors; and no page-level horizontal overflow at 390px.
 - React code-path review confirms service and extension removal require confirmation; secret save/delete never render an API return value and clear the input only after success; all API/JSON failures retain their form values; and server options include disabled-state text rather than relying on color alone.
 - Remaining browser verification: execute service and extension deletion through their confirmation dialogs; set and delete a disposable macOS Keychain secret, including failure retention; force service-save, capability-save, extension-save, removal, and initial-load API failures; and confirm the resulting retry states. MCP therefore remains `gap` until this evidence is recorded.
+
+## Pre-deletion UI Regression Evidence
+
+2026-08-25:
+
+- Playwright completed with 76 tests passed and 0 failed against Vite with the existing Flowlark service on port 7788. The declared responsive viewports were desktop 1280×900, wide 1920×1080, and mobile 390×844; the 60-version stress fixture also passed at 1440×900.
+- `node --test web/src/**/*.test.js` passed 40 tests with 0 failures; `npm test` passed 290 tests with 0 failures. `cd web && npm run build` completed successfully; only the existing chunk-size warning remains.
+- The 76 tests comprise 42 route/layout checks across 14 routes and all three declared viewports, 3 timeline-browsing checks, 30 mocked workflow checks covering 10 restored workflow groups at all three viewports, and 1 large-history check. Every route check asserted HTTP success, no page error, no unexpected console error, no empty visible alert, and no page-level horizontal overflow. The workbench preview also passed the different-port and exact sandbox assertions.
+- Shell evidence covers Ctrl/Cmd+K, runtime/read-only/LAN/version/update text, quick-create protection, notification detail, retry failure, and retry success. Git evidence covers `no-git`, `no-repo`, missing identity, ready and conflict stages; initialize, identity, permission refresh, suggestion, brief/clipboard denial, sync failure/success, conflict choice, manual resolution, continue, and abort failure/success.
+- Version evidence covers invalid extension, oversized file, valid file, paste validation failure, public-URL blank/failure/success, dependency expansion, change and requirement rows, impact suggestions with and without results, failed-save draft retention, exact create payloads, and successful creation from both the shell and project-fixed entries. The browser test discovered the editor reactivity defect and passed after fix commit `5abc531`.
+- Search, requirement, milestone, delivery, watch, trash, workspace, software-update, operation-log, and MCP evidence covers the remaining success, partial-failure, retained-draft, confirmation, pagination, cross-workspace, saved-view, read-only, and retry paths recorded above. All test-triggered writes were intercepted; an unmatched-write guard fails the test instead of reaching the real workspace. MCP service/capability/destructive operations and secret set/delete were handled by an in-memory `/api/mcp/**` mock, so no real Keychain entry was read or changed.
+- With these passing browser checks, every reachable row is now `verified`. `Setup wizard` remains `delete-unreachable` because it has no production route or entry.
 
 ## Legacy API Reference Audit
 
