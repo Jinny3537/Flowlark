@@ -120,3 +120,7 @@ rg -o "api\.[A-Za-z0-9_]+" web/src/main.tsx web/src/pages web/src/components web
 ```
 
 2026-08-25: legacy source 106 unique API names; active React 65 unique API names; raw counts include unreachable legacy code.
+
+## Task 12 Legacy Framework Removal Evidence
+
+2026-08-25: 291 tests passed, 0 failed; production build passed; zero active Vue/Pinia/Arco/Umi references.
