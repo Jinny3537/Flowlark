@@ -44,6 +44,16 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 - Code-path review confirms one React `NewVersionDialog` now serves both the shell and the project-fixed version entry. It covers file reads plus `inspectHtml`, paste inspection on blur and submit, server-side URL import, dependency disclosure, change and requirement editors, impact suggestions, filtered create payloads, created-version routing/selection, and API-error handling that leaves the dialog and draft open.
 - Remaining UI verification: exercise file, paste, and public-URL imports in a browser; invalid extension, oversized file, invalid HTML, and import failure; dependency-list expansion; impact results and the no-result state; successful creation from both entries; and save-failure draft retention at desktop and 390px widths. Versions therefore remains `gap` until this evidence is recorded.
 
+## Task 7 Verification Evidence
+
+2026-08-25:
+
+- `node --test web/src/pages/searchModel.test.js`: 3 tests passed, covering cross-workspace normalization, requirement/milestone/version/project routing, URL encoding, and safe fallback when result identifiers are missing.
+- `node --test test/search.test.js test/requirements.test.js test/views.test.js test/mcp-config.test.js test/workspace-index.test.js`: 33 focused contract tests passed for search, requirement data, saved views, MCP requirement operations, and cross-workspace indexing.
+- `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
+- Code-path review confirms current and cross-workspace search, project/requirement/milestone/field filters, saved-view create/apply behavior, cross-workspace source disclosure and navigation guard, full local requirement creation fields, MCP token/search/import/sync actions, requirement editing/export, read-only guards, linked-version navigation, and operation errors that preserve open forms and drafts.
+- Remaining UI verification: exercise current and cross-workspace result sets against a built workspace index; create and reapply both current and cross-workspace saved views; confirm the foreign-workspace source notice; exercise every structured filter; create a requirement and force a save failure to confirm draft retention; use a configured MCP provider to save a token, search, import, and sync including partial failure counts; edit and export a requirement; open each linked version; and check the three pages at desktop and 390px widths. Search, Requirements, and Requirement detail therefore remain `gap` until this evidence is recorded.
+
 ## Legacy API Reference Audit
 
 ```bash
