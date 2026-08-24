@@ -1,6 +1,6 @@
 <template>
-  <a-modal :open="open" title="新建版本" width="760px" :confirm-loading="saving"
-           @update:open="(value) => emit('update:open', value)" @ok="submit" ok-text="创建版本">
+  <a-modal :visible="open" title="新建版本" :width="760" :confirm-loading="saving"
+           @update:visible="(value) => emit('update:open', value)" @ok="submit" ok-text="创建版本">
     <a-alert type="info" show-icon class="new-version-alert">
       <template #message>
         新版本创建后处于编辑中；可以从文件、HTML 源码或公开 URL 导入。
@@ -9,34 +9,34 @@
 
     <a-form layout="vertical">
       <a-form-item label="原型来源" required>
-        <a-segmented v-model:value="mode" :options="sourceOptions" block @change="resetSource" />
+        <a-segmented v-model="mode" :options="sourceOptions" block @change="resetSource" />
       </a-form-item>
 
       <a-form-item v-if="mode === 'file'" label="HTML 文件" required>
         <a-upload-dragger v-if="!file" :before-upload="onPick" :show-upload-list="false" accept=".html,.htm">
-          <p class="upload-icon"><InboxOutlined /></p>
+          <p class="upload-icon"><IconArchive /></p>
           <p>点击或拖拽 HTML 文件到此处</p>
           <p class="text-secondary code-sm">仅支持 .html / .htm，上限 {{ fmtSize(app.maxFileBytes) }}</p>
         </a-upload-dragger>
         <div v-else class="source-ready">
-          <CheckCircleFilled />
+          <IconCheckCircleFill />
           <div class="source-ready-copy"><strong>{{ file.name }}</strong><span>{{ sourceSummary }}</span></div>
           <a-button size="small" @click="resetSource">重选</a-button>
         </div>
       </a-form-item>
 
       <a-form-item v-else-if="mode === 'paste'" label="HTML 源码" required>
-        <a-textarea v-model:value="pastedHtml" :rows="7" class="mono" placeholder="粘贴完整 HTML 源码" @blur="inspectPasted" />
+        <a-textarea v-model="pastedHtml" :rows="7" class="mono" placeholder="粘贴完整 HTML 源码" @blur="inspectPasted" />
         <div class="source-meta text-secondary">{{ sourceSummary }}</div>
       </a-form-item>
 
       <a-form-item v-else label="公开 URL" required>
         <a-input-group compact class="url-row">
-          <a-input v-model:value="sourceUrl" placeholder="https://example.com/prototype" @press-enter="loadUrl" />
-          <a-button :loading="importing" @click="loadUrl"><template #icon><CloudDownloadOutlined /></template>读取</a-button>
+          <a-input v-model="sourceUrl" placeholder="https://example.com/prototype" @press-enter="loadUrl" />
+          <a-button :loading="importing" @click="loadUrl"><template #icon><IconCloudDownload /></template>读取</a-button>
         </a-input-group>
         <div class="source-meta text-secondary">服务器会校验 DNS、重定向、响应类型和大小，私网地址会被拒绝。</div>
-        <div v-if="html" class="source-ready compact"><CheckCircleFilled /><div class="source-ready-copy"><strong>原型已读取</strong><span>{{ sourceSummary }}</span></div></div>
+        <div v-if="html" class="source-ready compact"><IconCheckCircleFill /><div class="source-ready-copy"><strong>原型已读取</strong><span>{{ sourceSummary }}</span></div></div>
       </a-form-item>
 
       <a-alert v-if="externalRefs.length" type="warning" show-icon class="source-warning">
@@ -48,8 +48,8 @@
       </a-alert>
 
       <a-row :gutter="16">
-        <a-col :span="8"><a-form-item label="版本号" required help="字母数字与 . _ + -，同项目内唯一"><a-input v-model:value="form.versionNo" class="mono" placeholder="v1.0" :maxlength="32" /></a-form-item></a-col>
-        <a-col :span="16"><a-form-item label="版本标题" required><a-input v-model:value="form.title" placeholder="一句话说明本版主题" :maxlength="100" /></a-form-item></a-col>
+        <a-col :span="8"><a-form-item label="版本号" required help="字母数字与 . _ + -，同项目内唯一"><a-input v-model="form.versionNo" class="mono" placeholder="v1.0" :maxlength="32" /></a-form-item></a-col>
+        <a-col :span="16"><a-form-item label="版本标题" required><a-input v-model="form.title" placeholder="一句话说明本版主题" :maxlength="100" /></a-form-item></a-col>
       </a-row>
       <a-form-item label="变更日志" help="建版时可不填；设为基线时至少需要 1 条"><ChangeEditor v-model="form.changes" /><a-button v-if="form.changes.some(item=>item.location)" size="small" class="impact-button" :loading="impactLoading" @click="checkImpact">检查影响面</a-button></a-form-item>
       <a-alert v-if="impacts.length" type="warning" show-icon class="source-warning"><template #message><strong>发现 {{ impacts.length }} 条历史关联</strong><div v-for="(item,index) in impacts" :key="index" class="impact-row"><span>{{ item.location }}</span><span class="mono">{{ item.source.project }}/{{ item.source.versionNo }}</span><span>{{ item.requirements.join(', ')||'无需求号' }}</span></div></template></a-alert>
@@ -60,8 +60,8 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { message } from 'ant-design-vue'
-import { CloudDownloadOutlined, InboxOutlined, CheckCircleFilled } from '@ant-design/icons-vue'
+import { notify } from '../ui/feedback'
+import { IconCloudDownload, IconArchive, IconCheckCircleFill } from '@arco-design/web-vue/es/icon/index.js'
 import ChangeEditor from './ChangeEditor.vue'
 import RequirementEditor from './RequirementEditor.vue'
 import { api } from '../api'
@@ -121,7 +121,7 @@ async function acceptHtml(value, name = '') {
 
 function onPick(picked) {
   if (picked.size > app.maxFileBytes) {
-    message.error(`文件 ${fmtSize(picked.size)} 超过上限 ${fmtSize(app.maxFileBytes)}`)
+    notify.error(`文件 ${fmtSize(picked.size)} 超过上限 ${fmtSize(app.maxFileBytes)}`)
     return false
   }
   const reader = new FileReader()
@@ -139,7 +139,7 @@ async function inspectPasted() {
 }
 
 async function loadUrl() {
-  if (!sourceUrl.value.trim()) return message.warning('请输入公开 URL')
+  if (!sourceUrl.value.trim()) return notify.warning('请输入公开 URL')
   importing.value = true
   try {
     const result = await api.importUrl(sourceUrl.value.trim())
@@ -153,9 +153,9 @@ async function loadUrl() {
 
 async function submit() {
   if (mode.value === 'paste' && !html.value) await inspectPasted()
-  if (!html.value) return message.warning('请先提供有效的原型 HTML')
-  if (!form.versionNo.trim()) return message.warning('请填写版本号')
-  if (!form.title.trim()) return message.warning('请填写版本标题')
+  if (!html.value) return notify.warning('请先提供有效的原型 HTML')
+  if (!form.versionNo.trim()) return notify.warning('请填写版本号')
+  if (!form.title.trim()) return notify.warning('请填写版本标题')
   saving.value = true
   try {
     const version = await api.addVersion(props.slug, {
@@ -163,7 +163,7 @@ async function submit() {
       changes: form.changes.filter((item) => item.content && item.content.trim()),
       requirements: form.requirements.filter((item) => item.code && item.code.trim())
     })
-    message.success(`版本 ${version.versionNo} 已创建`)
+    notify.success(`版本 ${version.versionNo} 已创建`)
     emit('update:open', false)
     emit('created', version)
   } catch { /* api 已提示 */ }
@@ -185,7 +185,7 @@ async function checkImpact() {
 .source-ready-copy { display:flex; flex:1; min-width:0; flex-direction:column; }
 .source-ready-copy span { color:var(--fl-text-2); font-size:var(--fl-fs-2); }
 .url-row { display:flex; }
-.url-row .ant-input { flex:1; }
+.url-row .arco-input { flex:1; }
 .source-meta { margin-top:var(--fl-s-2); font-size:var(--fl-fs-2); }
 .source-warning { margin-bottom:var(--fl-s-4); }
 .impact-button { margin-top:var(--fl-s-2); }

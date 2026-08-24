@@ -1,21 +1,21 @@
 <template>
-  <a-modal :open="open" title="跨版本累计变更" width="740px" :footer="null"
-           @update:open="(v) => $emit('update:open', v)">
+  <a-modal :visible="open" title="跨版本累计变更" :width="740" :footer="false"
+           @update:visible="(v) => $emit('update:open', v)">
     <a-alert type="info" show-icon style="margin:16px 0"
              message="研发上次看的可能是好几版之前。这里把区间内所有变更聚合，并标出被反复修改的区域。" />
 
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
       <span class="text-secondary" style="font-size:13px">从</span>
-      <a-select v-model:value="from" style="width:200px" @change="load">
-        <a-select-option v-for="v in candidates" :key="v.versionNo" :value="v.versionNo">
+      <a-select v-model="from" style="width:200px" @change="load">
+        <a-option v-for="v in candidates" :key="v.versionNo" :value="v.versionNo">
           {{ v.versionNo }} — {{ v.title }}
-        </a-select-option>
+        </a-option>
       </a-select>
       <span class="text-secondary" style="font-size:13px">到</span>
-      <a-select v-model:value="to" style="width:200px" @change="load">
-        <a-select-option v-for="v in versions" :key="v.versionNo" :value="v.versionNo">
+      <a-select v-model="to" style="width:200px" @change="load">
+        <a-option v-for="v in versions" :key="v.versionNo" :value="v.versionNo">
           {{ v.versionNo }}{{ v.isBaseline ? '（当前基线）' : '' }}
-        </a-select-option>
+        </a-option>
       </a-select>
     </div>
 

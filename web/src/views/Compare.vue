@@ -2,7 +2,7 @@
   <div class="compare-page">
     <div class="compare-toolbar">
       <a-button type="text" @click="$router.push(`/projects/${slug}`)">
-        <template #icon><LeftOutlined /></template>返回
+        <template #icon><IconLeft /></template>返回
       </a-button>
       <a-divider type="vertical" />
       <div class="compare-title">
@@ -12,15 +12,15 @@
 
       <div class="spacer"></div>
 
-      <a-segmented v-model:value="mode" size="small" :options="modeOptions" @change="onModeChange" />
+      <a-segmented v-model="mode" size="small" :options="modeOptions" @change="onModeChange" />
       <a-tooltip title="同步两侧外层视图的横向位置；网页内部滚动由真实页面自己控制">
-        <a-checkbox v-model:checked="syncScroll">同步视口</a-checkbox>
+        <a-checkbox v-model="syncScroll">同步视口</a-checkbox>
       </a-tooltip>
       <a-button v-if="mode === 'versions'" size="small" @click="swap">
-        <template #icon><SwapOutlined /></template>交换
+        <template #icon><IconSwap /></template>交换
       </a-button>
       <a-button size="small" @click="showChanges = !showChanges">
-        <template #icon><UnorderedListOutlined /></template>{{ showChanges ? '隐藏说明' : '显示说明' }}
+        <template #icon><IconList /></template>{{ showChanges ? '隐藏说明' : '显示说明' }}
       </a-button>
     </div>
 
@@ -57,20 +57,20 @@
               <span>左侧版本</span>
               <a-tag v-if="verA" :color="verA.display.color">{{ verA.display.label }}</a-tag>
             </div>
-            <a-select v-model:value="a" size="small" class="version-picker" @change="load">
-              <a-select-option v-for="v in versions" :key="v.versionNo" :value="v.versionNo">
+            <a-select v-model="a" size="small" class="version-picker" @change="load">
+              <a-option v-for="v in versions" :key="v.versionNo" :value="v.versionNo">
                 {{ v.versionNo }} - {{ v.title }}
-              </a-select-option>
+              </a-option>
             </a-select>
             <div class="spacer"></div>
             <a-tooltip title="新窗口打开">
               <a-button type="text" size="small" :disabled="!srcA" @click="openPreview(srcA)">
-                <template #icon><ExportOutlined /></template>
+                <template #icon><IconExport /></template>
               </a-button>
             </a-tooltip>
             <a-tooltip title="下载 HTML">
               <a-button type="text" size="small" :disabled="!a" @click="download(a)">
-                <template #icon><DownloadOutlined /></template>
+                <template #icon><IconDownload /></template>
               </a-button>
             </a-tooltip>
           </div>
@@ -96,27 +96,27 @@
               <a-tag v-if="mode === 'system' && systemUrl" color="cyan">真实页面</a-tag>
               <a-tag v-if="mode === 'versions' && verB" :color="verB.display.color">{{ verB.display.label }}</a-tag>
             </div>
-            <a-input-search v-model:value="systemUrlInput"
+            <a-input-search v-model="systemUrlInput"
                             v-if="mode === 'system'"
                             size="small"
                             class="system-url-input"
                             placeholder="https://example.com/app/page"
                             enter-button="加载"
                             @search="loadSystemUrl" />
-            <a-select v-else v-model:value="b" size="small" class="version-picker" @change="load">
-              <a-select-option v-for="v in versions" :key="v.versionNo" :value="v.versionNo">
+            <a-select v-else v-model="b" size="small" class="version-picker" @change="load">
+              <a-option v-for="v in versions" :key="v.versionNo" :value="v.versionNo">
                 {{ v.versionNo }} - {{ v.title }}
-              </a-select-option>
+              </a-option>
             </a-select>
             <div class="spacer"></div>
             <a-tooltip title="新窗口打开">
               <a-button type="text" size="small" :disabled="!rightSrc" @click="openPreview(rightSrc)">
-                <template #icon><ExportOutlined /></template>
+                <template #icon><IconExport /></template>
               </a-button>
             </a-tooltip>
             <a-tooltip v-if="mode === 'versions'" title="下载 HTML">
               <a-button type="text" size="small" :disabled="!b" @click="download(b)">
-                <template #icon><DownloadOutlined /></template>
+                <template #icon><IconDownload /></template>
               </a-button>
             </a-tooltip>
           </div>
@@ -149,7 +149,7 @@
             <div class="text-secondary code-sm">{{ sideNoteTitle }}</div>
           </div>
           <a-button size="small" :disabled="!a" @click="copyCompareLink">
-            <template #icon><LinkOutlined /></template>复制链接
+            <template #icon><IconLink /></template>复制链接
           </a-button>
         </div>
         <template v-if="mode === 'system'">
@@ -173,10 +173,10 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { notify } from '../ui/feedback'
 import {
-  LeftOutlined, SwapOutlined, UnorderedListOutlined, ExportOutlined, DownloadOutlined, LinkOutlined
-} from '@ant-design/icons-vue'
+  IconLeft, IconSwap, IconList, IconExport, IconDownload, IconLink
+} from '@arco-design/web-vue/es/icon/index.js'
 import ChangeList from '../components/ChangeList.vue'
 import { api } from '../api'
 import { useAppStore } from '../store'
@@ -310,8 +310,8 @@ function copyCompareLink() {
   syncQuery()
   const href = `${window.location.origin}${window.location.pathname}${router.currentRoute.value.href}`
   navigator.clipboard.writeText(href)
-    .then(() => message.success('对比链接已复制'))
-    .catch(() => message.error('复制失败，可直接复制浏览器地址栏'))
+    .then(() => notify.success('对比链接已复制'))
+    .catch(() => notify.error('复制失败，可直接复制浏览器地址栏'))
 }
 
 function normalizeSystemUrl(value, { silent = false } = {}) {
@@ -321,12 +321,12 @@ function normalizeSystemUrl(value, { silent = false } = {}) {
   try {
     const url = new URL(withProtocol)
     if (!['http:', 'https:'].includes(url.protocol)) {
-      if (!silent) message.error('业务系统地址只支持 http 或 https')
+      if (!silent) notify.error('业务系统地址只支持 http 或 https')
       return ''
     }
     return url.href
   } catch {
-    if (!silent) message.error('请输入合法的业务系统 URL')
+    if (!silent) notify.error('请输入合法的业务系统 URL')
     return ''
   }
 }

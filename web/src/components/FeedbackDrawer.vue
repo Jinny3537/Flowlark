@@ -1,21 +1,21 @@
 <template>
-  <a-drawer :open="open" title="记录原型反馈" placement="right" :width="460"
-            @update:open="(value) => emit('update:open', value)">
+  <a-drawer :visible="open" title="记录原型反馈" placement="right" :width="460"
+            @update:visible="(value) => emit('update:open', value)">
     <a-alert type="info" show-icon class="feedback-alert">
       <template #message>反馈会保存到当前版本上下文，提交后可在右侧标注反馈列查看。</template>
     </a-alert>
 
     <a-form layout="vertical">
       <a-form-item label="反馈标题" required>
-        <a-input v-model:value="form.title" :maxlength="200" placeholder="一句话说明问题" />
+        <a-input v-model="form.title" :maxlength="200" placeholder="一句话说明问题" />
       </a-form-item>
       <a-form-item label="问题描述" required>
-        <a-textarea v-model:value="form.description" :rows="6" :maxlength="5000" placeholder="说明预期、现象和复现方式" />
+        <a-textarea v-model="form.description" :rows="6" :maxlength="5000" placeholder="说明预期、现象和复现方式" />
       </a-form-item>
       <a-form-item label="区域截图">
         <div class="capture-row">
-          <a-button :loading="capturing" @click="capture"><template #icon><CameraOutlined /></template>授权截取当前标签页</a-button>
-          <a-tag v-if="screenshotBase64" color="green"><CheckOutlined /> 已截取</a-tag>
+          <a-button :loading="capturing" @click="capture"><template #icon><IconCamera /></template>授权截取当前标签页</a-button>
+          <a-tag v-if="screenshotBase64" color="green"><IconCheck /> 已截取</a-tag>
           <span v-else class="text-secondary code-sm">可选；拒绝授权不影响提交</span>
         </div>
       </a-form-item>
@@ -38,8 +38,8 @@
 
 <script setup>
 import { reactive, ref, watch } from 'vue'
-import { message } from 'ant-design-vue'
-import { CameraOutlined, CheckOutlined } from '@ant-design/icons-vue'
+import { notify } from '../ui/feedback'
+import { IconCamera, IconCheck } from '@arco-design/web-vue/es/icon/index.js'
 import { api } from '../api'
 
 const props = defineProps({ open: Boolean, context: { type: Object, required: true }, captureRect: { type: Object, default: null } })
@@ -57,7 +57,7 @@ watch(() => props.open, (value) => {
 })
 
 async function capture() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return message.warning('当前浏览器不支持标签页截图')
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return notify.warning('当前浏览器不支持标签页截图')
   capturing.value = true
   let stream
   try {
@@ -74,7 +74,7 @@ async function capture() {
     canvas.height = Math.max(1, Math.round(rect.height * scaleY))
     canvas.getContext('2d').drawImage(video, rect.left * scaleX, rect.top * scaleY, rect.width * scaleX, rect.height * scaleY, 0, 0, canvas.width, canvas.height)
     screenshotBase64.value = canvas.toDataURL('image/png').split(',')[1]
-  } catch { message.info('未截取截图，仍可继续提交反馈') }
+  } catch { notify.info('未截取截图，仍可继续提交反馈') }
   finally {
     if (stream) stream.getTracks().forEach((track) => track.stop())
     capturing.value = false
@@ -82,11 +82,11 @@ async function capture() {
 }
 
 async function submit() {
-  if (!form.title.trim() || !form.description.trim()) return message.warning('请填写反馈标题和问题描述')
+  if (!form.title.trim() || !form.description.trim()) return notify.warning('请填写反馈标题和问题描述')
   saving.value = true
   try {
     const draft = await api.createFeedbackDraft({ ...props.context, title: form.title.trim(), description: form.description.trim(), screenshotBase64: screenshotBase64.value || undefined })
-    message.success('反馈已保存')
+    notify.success('反馈已保存')
     emit('submitted', draft)
     emit('update:open', false)
   } finally { saving.value = false }

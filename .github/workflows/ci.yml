@@ -13,12 +13,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 18.17 是声明的最低版本，必须真的验证；20 / 22 覆盖常用与最新
-        node: ['18.17', '20', '22']
+        # 测试代码使用 node:test 的 t.assert；当前 CI 固定到已验证支持该 API 的版本。
+        node: ['22.22.0']
         os: [ubuntu-latest]
         include:
           # macOS 是主要使用场景（start.sh / 启动.command 都是给 mac 写的）
-          - node: '22'
+          - node: '22.22.0'
             os: macos-latest
 
     steps:

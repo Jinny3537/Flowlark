@@ -1,4 +1,4 @@
-import { message } from 'ant-design-vue'
+import { notify } from './ui/feedback'
 
 /**
  * 工作台与 API 同源（都由 flowlark serve 提供），所以走相对路径，
@@ -15,7 +15,7 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body)
     })
   } catch {
-    message.error('无法连接本地服务，flowlark serve 可能已经停止')
+    notify.error('无法连接本地服务，flowlark serve 可能已经停止')
     throw new Error('NETWORK')
   }
 
@@ -25,7 +25,7 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
   if (!res.ok) {
     // 只读被拦时给一句更直白的话，用户多半是在别人的机器上操作或远端没有写权限
     if (data && (data.code === 'READONLY_FROM_LAN' || data.code === 'GIT_READONLY')) {
-      message.warning(data.code === 'READONLY_FROM_LAN'
+      notify.warning(data.code === 'READONLY_FROM_LAN'
         ? '这是别人共享出来的只读视图，只能查看不能修改'
         : '当前 Git 身份没有远端写权限，Flowlark 已进入只读模式')
       const e = new Error(data.message)
@@ -34,7 +34,7 @@ async function request(method, path, body, { raw = false, contentType } = {}) {
     }
     // 服务端错误自带 hint（下一步该干什么），比单纯报错有用得多
     const detail = data && data.hint ? `${data.message}（${data.hint}）` : (data && data.message) || '请求失败'
-    message.error(detail)
+    notify.error(detail)
     const e = new Error(detail)
     e.code = data && data.code
     throw e
@@ -47,7 +47,7 @@ async function requestText(path) {
   try {
     res = await fetch(path)
   } catch {
-    message.error('无法连接本地服务，flowlark serve 可能已经停止')
+    notify.error('无法连接本地服务，flowlark serve 可能已经停止')
     throw new Error('NETWORK')
   }
 
@@ -56,7 +56,7 @@ async function requestText(path) {
     let data = null
     try { data = text ? JSON.parse(text) : null } catch { /* 非 JSON 错误直接走默认文案 */ }
     const detail = data && data.hint ? `${data.message}（${data.hint}）` : (data && data.message) || '请求失败'
-    message.error(detail)
+    notify.error(detail)
     const e = new Error(detail)
     e.code = data && data.code
     throw e
@@ -126,6 +126,7 @@ export const api = {
   getRequirement: (code) => get(`/api/requirements/${enc(code)}`),
   createRequirement: (body) => post('/api/requirements', body),
   updateRequirement: (code, body) => put(`/api/requirements/${enc(code)}`, body),
+  syncRequirements: (provider = 'mcp', config = {}) => post('/api/requirements/sync', { provider, config }),
   linkRequirement: (code, body) => post(`/api/requirements/${enc(code)}/links`, body),
   unlinkRequirement: (code, slug, no) => del(`/api/requirements/${enc(code)}/links/${enc(slug)}/${enc(no)}`),
   listMilestones: () => get('/api/milestones'),
@@ -133,6 +134,8 @@ export const api = {
   createMilestone: (body) => post('/api/milestones', body),
   updateMilestone: (name, body) => put(`/api/milestones/${enc(name)}`, body),
   removeMilestone: (name) => del(`/api/milestones/${enc(name)}`),
+  syncMilestones: (provider = 'mcp', config = {}) => post('/api/milestones/sync', { provider, config }),
+  syncMilestone: (name, provider = 'mcp', config = {}) => post(`/api/milestones/${enc(name)}/sync`, { provider, config }),
   listViews: () => get('/api/views'),
   saveView: (id, body) => put(`/api/views/${enc(id)}`, body),
   removeView: (id) => del(`/api/views/${enc(id)}`),
@@ -156,6 +159,8 @@ export const api = {
   searchWorkspaces: (q, limit = 50) => get(`/api/workspace-search?q=${enc(q)}&limit=${limit}`),
   checkUpdate: (currentVersion, manifestUrl) => post('/api/update/check', { currentVersion, manifestUrl }),
   downloadUpdate: (manifest, targetDir) => post('/api/update/download', { manifest, targetDir }),
+  softwareUpdateStatus: ({ fetchRemote = false } = {}) => get(`/api/update/software${fetchRemote ? '?fetch=1' : ''}`),
+  pullSoftwareUpdate: () => post('/api/update/software/pull', {}),
   mirrorStatus: () => get('/api/mirror'),
   refreshMirror: () => post('/api/mirror/refresh', {}),
 
@@ -246,6 +251,14 @@ export const api = {
   getConfig: () => get('/api/config'),
   setConfig: (key, value) => put(`/api/config/${enc(key)}`, { value }),
   resetConfig: (key) => del(`/api/config/${enc(key)}`),
+  getMcpConfig: () => get('/api/mcp'),
+  saveMcpServer: (id, body) => put(`/api/mcp/servers/${enc(id)}`, body),
+  removeMcpServer: (id) => del(`/api/mcp/servers/${enc(id)}`),
+  setMcpServerSecret: (id, value) => put(`/api/mcp/servers/${enc(id)}/secret`, { value }),
+  deleteMcpServerSecret: (id) => del(`/api/mcp/servers/${enc(id)}/secret`),
+  saveMcpCapability: (name, body) => put(`/api/mcp/capabilities/${enc(name)}`, body),
+  removeMcpCapability: (name) => del(`/api/mcp/capabilities/${enc(name)}`),
+  testMcpCapability: (name) => post(`/api/mcp/capabilities/${enc(name)}/test`, {}),
 
   // ---- 局域网 ----
   lan: () => get('/api/lan')

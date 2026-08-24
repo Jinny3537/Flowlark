@@ -40,7 +40,7 @@ export function renderMarkdown(md) {
 
 export const CHANGE_META = {
   ADD: { label: '新增', color: 'green' },
-  MODIFY: { label: '修改', color: 'blue' },
+  MODIFY: { label: '修改', color: 'gold' },
   REMOVE: { label: '删除', color: 'red' }
 }
 

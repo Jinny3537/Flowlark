@@ -45,6 +45,7 @@ export function createMilestone(root, input) {
     startAt: input.startAt || null,
     endAt: input.endAt || null,
     items: normalizeItems(root, input.items),
+    external: input.external || null,
     createdAt: now,
     updatedAt: now
   }
@@ -74,6 +75,7 @@ export function updateMilestone(root, name, patch) {
   if (patch.startAt !== undefined) item.startAt = patch.startAt || null
   if (patch.endAt !== undefined) item.endAt = patch.endAt || null
   if (patch.items !== undefined) item.items = normalizeItems(root, patch.items)
+  if (patch.external !== undefined) item.external = patch.external || null
   item.updatedAt = new Date().toISOString()
   fs.writeFileSync(store.paths.milestoneFile(root, item.name), stringify(item, 'milestone'))
   return inspectMilestone(root, item)

@@ -52,4 +52,20 @@ describe('需求实体与反向索引', () => {
     hub.updateRequirement('REQ-1', { title: '新标题' })
     t.assert.strictEqual(hub.getVersion('orders', 'v1').requirements[0].title, '新标题')
   })
+
+  test('需求保存项目、模块、类型和优先级', (t) => {
+    const { hub } = fixture()
+    const item = hub.createRequirement({
+      code: 'REQ-BIZ',
+      title: '危险作业审批',
+      project: '安全生产',
+      module: '作业票',
+      type: '功能',
+      priority: 'P1'
+    })
+    t.assert.strictEqual(item.project, '安全生产')
+    t.assert.strictEqual(item.module, '作业票')
+    t.assert.strictEqual(item.type, '功能')
+    t.assert.strictEqual(item.priority, 'P1')
+  })
 })

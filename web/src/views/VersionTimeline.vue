@@ -11,16 +11,16 @@
         <div class="mono text-secondary">{{ slug }}</div>
       </div>
       <div class="page-actions">
-        <a-checkbox v-model:checked="includeVoid" @change="load">显示已废弃</a-checkbox>
+        <a-checkbox v-model="includeVoid" @change="load">显示已废弃</a-checkbox>
         <a-divider type="vertical" />
         <a-button :disabled="versions.length < 2" @click="goCompare()">
-          <template #icon><ColumnWidthOutlined /></template>并排对比
+          <template #icon><IconFullscreen /></template>并排对比
         </a-button>
         <a-button :disabled="versions.length < 2" @click="cumOpen = true">
-          <template #icon><BarChartOutlined /></template>累计变更
+          <template #icon><IconBarChart /></template>累计变更
         </a-button>
         <a-button type="primary" :disabled="!app.canWrite" @click="newOpen = true">
-          <template #icon><PlusOutlined /></template>新建版本
+          <template #icon><IconPlus /></template>新建版本
         </a-button>
       </div>
     </div>
@@ -89,9 +89,9 @@
             <div class="inline-meta">
               <span>{{ v.createdBy }}</span>
               <span>{{ fmtTime(v.createdAt) }}</span>
-              <span><FileTextOutlined /> {{ v.changeCount }} 条变更</span>
-              <span><LinkOutlined /> {{ v.requirementCount }} 条需求</span>
-              <span v-if="v.externalRefs.length" class="warning-text"><ThunderboltOutlined /> {{ v.externalRefs.length }} 个外部依赖</span>
+              <span><IconFile /> {{ v.changeCount }} 条变更</span>
+              <span><IconLink /> {{ v.requirementCount }} 条需求</span>
+              <span v-if="v.externalRefs.length" class="warning-text"><IconThunderbolt /> {{ v.externalRefs.length }} 个外部依赖</span>
             </div>
           </div>
 
@@ -103,7 +103,7 @@
               {{ v.display.key === 'HISTORY' ? '回滚为基线' : '设为基线' }}
             </a-button>
             <a-dropdown :trigger="['click']">
-              <a-button type="text" size="small" aria-label="更多操作"><MoreOutlined /></a-button>
+              <a-button type="text" size="small" aria-label="更多操作"><IconMore /></a-button>
               <template #overlay>
                 <a-menu @click="({ key }) => onAction(key, v)">
                   <a-menu-item key="open">打开工作台</a-menu-item>
@@ -113,7 +113,7 @@
                   <a-menu-divider />
                   <a-menu-item v-if="v.display.key === 'VOID'" key="reopen" :disabled="!app.canWrite">恢复为编辑中</a-menu-item>
                   <a-menu-item v-else key="void" :disabled="!app.canWrite || v.isBaseline">废弃</a-menu-item>
-                  <a-menu-item key="remove" danger :disabled="!app.canWrite || v.isBaseline">删除</a-menu-item>
+                  <a-menu-item key="remove" class="danger-menu-item" :disabled="!app.canWrite || v.isBaseline">删除</a-menu-item>
                 </a-menu>
               </template>
             </a-dropdown>
@@ -134,11 +134,11 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Modal, message } from 'ant-design-vue'
+import { confirmAction, confirmDanger, notify } from '../ui/feedback'
 import {
-  PlusOutlined, MoreOutlined, BarChartOutlined, ColumnWidthOutlined,
-  FileTextOutlined, LinkOutlined, ThunderboltOutlined
-} from '@ant-design/icons-vue'
+  IconPlus, IconMore, IconBarChart, IconFullscreen,
+  IconFile, IconLink, IconThunderbolt
+} from '@arco-design/web-vue/es/icon/index.js'
 import NewVersionModal from '../components/NewVersionModal.vue'
 import BaselineModal from '../components/BaselineModal.vue'
 import CumulativeModal from '../components/CumulativeModal.vue'
@@ -192,22 +192,22 @@ async function markReadLatest() {
   const latest = versions.value[0]
   if (!latest) return
   await api.markRead(props.slug, latest.versionNo)
-  message.success(`已标记看到 ${latest.versionNo}`)
+  notify.success(`已标记看到 ${latest.versionNo}`)
   load()
 }
 
 const openWb = (no) => router.push(`/projects/${props.slug}/versions/${no}`)
 
 function askBaseline(v) {
-  if (!app.canWrite) return message.info('当前是只读模式，不能设置基线')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能设置基线')
   blTarget.value = v
   blOpen.value = true
 }
 
 async function doRollback() {
-  if (!app.canWrite) return message.info('当前是只读模式，不能回滚基线')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能回滚基线')
   const v = await api.rollback(props.slug)
-  message.success(`已回滚到 ${v.versionNo}`)
+  notify.success(`已回滚到 ${v.versionNo}`)
   load()
 }
 
@@ -222,31 +222,31 @@ function onAction(key, v) {
   }
   if (key === 'read') {
     return api.markRead(props.slug, v.versionNo).then(() => {
-      message.success(`已标记看到 ${v.versionNo}`)
+      notify.success(`已标记看到 ${v.versionNo}`)
       load()
     })
   }
 
   if (key === 'reopen') {
-    if (!app.canWrite) return message.info('当前是只读模式，不能恢复版本')
-    return api.reopenVersion(props.slug, v.versionNo).then(() => { message.success('已恢复为编辑中'); load() })
+    if (!app.canWrite) return notify.info('当前是只读模式，不能恢复版本')
+    return api.reopenVersion(props.slug, v.versionNo).then(() => { notify.success('已恢复为编辑中'); load() })
   }
   if (key === 'void') {
-    if (!app.canWrite) return message.info('当前是只读模式，不能废弃版本')
-    return Modal.confirm({
+    if (!app.canWrite) return notify.info('当前是只读模式，不能废弃版本')
+    return confirmDanger({
       title: `废弃版本 ${v.versionNo}？`,
       content: '废弃后默认不在时间线显示，记录保留，可随时恢复。',
       okText: '废弃', okType: 'danger',
-      onOk: async () => { await api.voidVersion(props.slug, v.versionNo); message.success('已废弃'); load() }
+      onOk: async () => { await api.voidVersion(props.slug, v.versionNo); notify.success('已废弃'); load() }
     })
   }
   if (key === 'remove') {
-    if (!app.canWrite) return message.info('当前是只读模式，不能删除版本')
-    return Modal.confirm({
+    if (!app.canWrite) return notify.info('当前是只读模式，不能删除版本')
+    return confirmDanger({
       title: `删除版本 ${v.versionNo}？`,
       content: '文件会移入 .flowlark/trash，可在回收站恢复。',
       okText: '删除', okType: 'danger',
-      onOk: async () => { await api.removeVersion(props.slug, v.versionNo); message.success('已移入回收站'); load() }
+      onOk: async () => { await api.removeVersion(props.slug, v.versionNo); notify.success('已移入回收站'); load() }
     })
   }
 }
@@ -260,6 +260,7 @@ onMounted(load)
 .timeline-alert { margin-bottom: var(--fl-s-4); }
 .baseline-side { text-align: right; }
 .row-actions { display: flex; gap: var(--fl-s-1); }
+:deep(.danger-menu-item:not(.arco-menu-disabled)) { color: var(--fl-danger); }
 .timeline-list {
   position: relative;
   margin-left: 18px;

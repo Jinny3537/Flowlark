@@ -31,6 +31,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
       app: 'flowlark',
       repo: hub.root,
       repoName: hub.config.name,
+      version: hub.softwareUpdateStatus().currentVersion,
       // 前端要用它拼预览地址。硬编码会在改端口时静默失效，所以由服务端下发。
       previewPort: resolvePreviewPort(),
       maxFileBytes: s.server.maxFileBytes,
@@ -59,6 +60,10 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   // ---- 需求 ----
   r.get('/api/requirements', async (req, res) => sendJson(res, 200, hub.listRequirements()))
+  r.post('/api/requirements/sync', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.syncExternalRequirements(body.provider || null, body.config || body))
+  })
   r.post('/api/requirements', async (req, res) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 201, hub.createRequirement(body))
@@ -108,11 +113,19 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   // ---- 迭代 ----
   r.get('/api/milestones', async (req, res) => sendJson(res, 200, hub.listMilestones()))
+  r.post('/api/milestones/sync', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.syncExternalMilestones(body.provider || null, body.config || body))
+  })
   r.post('/api/milestones', async (req, res) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 201, hub.createMilestone(body))
   })
   r.get('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.getMilestone(p.name)))
+  r.post('/api/milestones/:name/sync', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.syncMilestoneToExternal(p.name, body.provider || null, body.config || body))
+  })
   r.put('/api/milestones/:name', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.updateMilestone(p.name, body))
@@ -185,6 +198,8 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.get('/api/workspace-search', async (req,res,p,url) => sendJson(res,200,hub.searchWorkspaces(url.searchParams.get('q')||'',{limit:Number(url.searchParams.get('limit'))||50})))
   r.post('/api/update/check', async (req,res) => {const body=await readJson(req,maxBody);sendJson(res,200,await hub.checkUpdate(body.currentVersion,body.manifestUrl))})
   r.post('/api/update/download', async (req,res) => {const body=await readJson(req,maxBody);sendJson(res,200,await hub.downloadUpdate(body.manifest,body.targetDir))})
+  r.get('/api/update/software', async (req,res,p,url) => sendJson(res,200,hub.softwareUpdateStatus({ fetchRemote: url.searchParams.get('fetch') === '1' })))
+  r.post('/api/update/software/pull', async (req,res) => sendJson(res,200,hub.pullSoftwareUpdate()))
   r.get('/api/mirror', async (req,res) => sendJson(res,200,hub.mirrorStatus()))
   r.post('/api/mirror/refresh', async (req,res) => sendJson(res,200,hub.refreshMirror()))
 
@@ -550,6 +565,36 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   r.delete('/api/config/:key', async (req, res, p) =>
     sendJson(res, 200, hub.resetConfig(p.key)))
+
+  r.get('/api/mcp', async (req, res) =>
+    sendJson(res, 200, hub.mcpConfig()))
+
+  r.put('/api/mcp/servers/:id', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.saveMcpServer({ ...body, id: p.id }))
+  })
+
+  r.delete('/api/mcp/servers/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.removeMcpServer(p.id)))
+
+  r.put('/api/mcp/servers/:id/secret', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.setMcpServerSecret(p.id, body.value || body.token))
+  })
+
+  r.delete('/api/mcp/servers/:id/secret', async (req, res, p) =>
+    sendJson(res, 200, hub.deleteMcpServerSecret(p.id)))
+
+  r.put('/api/mcp/capabilities/:name', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.saveMcpCapability(p.name, body))
+  })
+
+  r.delete('/api/mcp/capabilities/:name', async (req, res, p) =>
+    sendJson(res, 200, hub.removeMcpCapability(p.name)))
+
+  r.post('/api/mcp/capabilities/:name/test', async (req, res, p) =>
+    sendJson(res, 200, await hub.testMcpCapability(p.name)))
 
   // ---- 局域网 ----
   r.get('/api/lan', async (req, res) => {

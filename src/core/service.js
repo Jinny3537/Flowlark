@@ -11,6 +11,8 @@ import * as permissions from './permissions.js'
 import * as feedback from './feedback.js'
 import * as issuex from './integrations/issues/index.js'
 import * as reqIntegration from './integrations/requirements/index.js'
+import * as milestoneIntegration from './integrations/milestones/index.js'
+import { callTool } from './integrations/mcp-jsonrpc.js'
 import * as secrets from './secrets.js'
 import * as importer from './importer.js'
 import * as drafts from './drafts.js'
@@ -28,6 +30,7 @@ import * as setupx from './setup.js'
 import * as updater from './updater.js'
 import * as mirror from './mirror.js'
 import * as workspaceIndex from './workspace-index.js'
+import * as mcpConfig from './mcp-config.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -384,6 +387,55 @@ export class Hub {
     return item
   }
 
+  milestoneProviders() {
+    return milestoneIntegration.milestoneProviders()
+  }
+
+  milestoneConfig(provider, overrides = {}) {
+    const selected = provider || overrides.provider || 'mcp'
+    if (selected === 'mcp' && !overrides.baseUrl) {
+      return { ...mcpConfig.resolveCapability(this.root, 'milestones'), ...overrides }
+    }
+    return overrides
+  }
+
+  testMilestoneConnection(provider, overrides = {}) {
+    return milestoneIntegration.testMilestoneConnection(provider, this.milestoneConfig(provider, overrides))
+  }
+
+  async syncExternalMilestones(provider = null, overrides = {}) {
+    this.#assertWritable('同步迭代计划')
+    const selected = provider || 'mcp'
+    const remoteItems = await milestoneIntegration.listMilestones(selected, this.milestoneConfig(selected, overrides))
+    const result = { provider: selected, total: remoteItems.length, created: 0, updated: 0, failed: [] }
+    for (const remote of remoteItems) {
+      try {
+        const input = this.#externalMilestoneInput(selected, remote)
+        if (milestones.milestoneExists(this.root, remote.name)) {
+          milestones.updateMilestone(this.root, remote.name, input)
+          result.updated++
+        } else {
+          milestones.createMilestone(this.root, { ...input, name: remote.name, items: [] })
+          result.created++
+        }
+      } catch (e) {
+        result.failed.push({ name: remote.name, message: e.message })
+      }
+    }
+    this.#log(null, null, 'MILESTONE_IMPORT_SYNC', `同步迭代计划 ${result.created} 新建，${result.updated} 更新`)
+    return { ...result, items: milestones.listMilestones(this.root) }
+  }
+
+  async syncMilestoneToExternal(name, provider = null, overrides = {}) {
+    this.#assertWritable('同步迭代到任务平台')
+    const selected = provider || 'mcp'
+    const local = milestones.inspectMilestone(this.root, name)
+    const remote = await milestoneIntegration.upsertMilestone(selected, this.milestoneConfig(selected, overrides), local)
+    const item = milestones.updateMilestone(this.root, local.name, this.#externalMilestoneInput(selected, remote, local.external))
+    this.#log(null, null, 'MILESTONE_PUSH_SYNC', `同步迭代 ${item.name} 到任务平台`)
+    return item
+  }
+
   listSavedViews() {
     return savedViews.listSavedViews(this.root)
   }
@@ -438,7 +490,14 @@ export class Hub {
     const s = this.settings.integrations
     const provider = overrides.provider || s.notificationProvider
     const env = { wecom: 'FLOWLARK_WECOM_WEBHOOK', dingtalk: 'FLOWLARK_DINGTALK_WEBHOOK', slack: 'FLOWLARK_SLACK_WEBHOOK' }[provider]
-    return { provider, template: overrides.template || s.notificationTemplate, webhookUrl: overrides.webhookUrl || secrets.getSecret(`webhook-${provider}`, { envKey: env }) }
+    return {
+      provider,
+      template: overrides.template || s.notificationTemplate,
+      webhookUrl: overrides.webhookUrl || secrets.getSecret(`webhook-${provider}`, { envKey: env }),
+      wecomCliCommand: overrides.wecomCliCommand || s.wecomCliCommand,
+      wecomTransport: overrides.wecomTransport || s.wecomTransport,
+      wecomChatId: overrides.wecomChatId || overrides.chatId || s.wecomChatId
+    }
   }
   listNotifications() { return notifications.listNotifications(this.root) }
   queueNotification(event) {
@@ -461,10 +520,40 @@ export class Hub {
   cloneWorkspace(url, pathname, options) { return setupx.cloneWorkspace(url, pathname, options) }
   checkUpdate(currentVersion, manifestUrl) { return updater.checkForUpdate(manifestUrl || this.settings.integrations.updateManifestUrl, currentVersion) }
   downloadUpdate(manifest, targetDir) { return updater.downloadUpdate(manifest, targetDir) }
+  softwareUpdateStatus(options) { return updater.softwareStatus(options) }
+  pullSoftwareUpdate() { return updater.pullSoftwareUpdate() }
   mirrorStatus() { return mirror.inspectMirror(this.root) }
   refreshMirror() { return mirror.refreshMirror(this.root) }
   buildWorkspaceIndex() { return workspaceIndex.buildWorkspaceIndex() }
   searchWorkspaces(query, options) { return workspaceIndex.searchWorkspaces(query, options) }
+  mcpConfig() { return mcpConfig.inspect(this.root) }
+  saveMcpServer(input) {
+    this.#assertWritable('保存 MCP 服务')
+    return mcpConfig.saveServer(this.root, input)
+  }
+  removeMcpServer(id) {
+    this.#assertWritable('删除 MCP 服务')
+    return mcpConfig.removeServer(this.root, id)
+  }
+  saveMcpCapability(name, input) {
+    this.#assertWritable('保存 MCP 能力')
+    return mcpConfig.saveCapability(this.root, name, input)
+  }
+  removeMcpCapability(name) {
+    this.#assertWritable('删除 MCP 能力')
+    return mcpConfig.removeCapability(this.root, name)
+  }
+  async testMcpCapability(name) {
+    if (name === 'requirements') return this.testRequirementConnection('mcp')
+    if (name === 'milestones') return this.testMilestoneConnection('mcp')
+    const config = mcpConfig.resolveCapability(this.root, name)
+    const testTool = config.tools.test || config.mePath
+    if (!testTool) throw err.bad('MCP_CAPABILITY_TEST_MISSING', `${config.capability.label || name} MCP 能力没有配置连接测试工具`)
+    const body = await callTool(config, testTool, { project: config.project || '', capability: name })
+    return { provider: 'mcp', ok: true, capability: name, identity: identityFromMcpTest(body), result: body }
+  }
+  setMcpServerSecret(id, value) { return mcpConfig.setServerSecret(id, value) }
+  deleteMcpServerSecret(id) { return mcpConfig.deleteServerSecret(id) }
 
   // ==================== 基线 ====================
 
@@ -1130,7 +1219,13 @@ export class Hub {
   requirementConfig(provider, overrides = {}) {
     const s = this.settings.integrations
     const selected = provider || overrides.provider || s.requirementProvider
-    const env = { hubpool: 'FLOWLARK_HUBPOOL_TOKEN', custom: 'FLOWLARK_CUSTOM_TASK_TOKEN' }[selected]
+    if (selected === 'mcp' && !overrides.baseUrl) {
+      try {
+        return { ...mcpConfig.resolveCapability(this.root, 'requirements'), ...overrides }
+      } catch (e) {
+        if (e.code !== 'MCP_CAPABILITY_DISABLED' || !s.requirementBaseUrl) throw e
+      }
+    }
     return {
       provider: selected,
       baseUrl: overrides.baseUrl || s.requirementBaseUrl,
@@ -1139,7 +1234,7 @@ export class Hub {
       detailPath: overrides.detailPath || s.requirementDetailPath,
       commentPath: overrides.commentPath || s.requirementCommentPath,
       tokenHeader: overrides.tokenHeader,
-      token: overrides.token || secrets.getSecret(`requirement-${selected}`, { envKey: env })
+      token: overrides.token || secrets.getSecret(`requirement-${selected}`, { envKey: 'FLOWLARK_REQUIREMENT_MCP_TOKEN' })
     }
   }
 
@@ -1154,19 +1249,35 @@ export class Hub {
   async importExternalRequirement(provider, key, overrides = {}) {
     this.#assertWritable('导入外部需求')
     const remote = await reqIntegration.fetchRequirement(provider, this.requirementConfig(provider, overrides), key)
-    const input = {
-      code: remote.code,
-      title: remote.title,
-      description: remote.description,
-      owner: remote.owner,
-      url: remote.url,
-      external: { provider, key: remote.code, url: remote.url, status: remote.status }
-    }
+    const input = this.#externalRequirementInput(provider, remote)
     const item = reqx.requirementExists(this.root, remote.code)
       ? reqx.updateRequirement(this.root, remote.code, input)
       : reqx.createRequirement(this.root, input)
     this.#log(null, null, 'REQUIREMENT_IMPORT', `导入外部需求 ${item.code}`)
     return reqx.requirementDetail(this.root, item.code)
+  }
+
+  async syncExternalRequirements(provider = null, overrides = {}) {
+    this.#assertWritable('同步需求池')
+    const selected = provider || this.settings.integrations.requirementProvider || 'mcp'
+    if (!selected || selected === 'none') {
+      throw err.bad('REQUIREMENT_PROVIDER_MISSING', '请先配置需求池接入方式')
+    }
+    const items = reqx.listRequirements(this.root)
+      .filter((item) => item.external && item.external.provider === selected)
+    const result = { provider: selected, total: items.length, updated: 0, failed: [] }
+    for (const item of items) {
+      try {
+        const key = item.external.key || item.code
+        const remote = await reqIntegration.fetchRequirement(selected, this.requirementConfig(selected, overrides), key)
+        reqx.updateRequirement(this.root, item.code, this.#externalRequirementInput(selected, remote, item.external))
+        result.updated++
+      } catch (e) {
+        result.failed.push({ code: item.code, message: e.message })
+      }
+    }
+    this.#log(null, null, 'REQUIREMENT_SYNC', `同步需求池 ${result.updated}/${result.total} 条`)
+    return { ...result, items: reqx.listRequirements(this.root) }
   }
 
   postRequirementComment(provider, key, body, overrides = {}) {
@@ -1282,6 +1393,44 @@ export class Hub {
     return [...new Set(out)]
   }
 
+  #externalRequirementInput(provider, remote, previousExternal = {}) {
+    return {
+      code: remote.code,
+      title: remote.title,
+      description: remote.description,
+      project: remote.project,
+      module: remote.module,
+      type: remote.type,
+      priority: remote.priority,
+      owner: remote.owner,
+      url: remote.url,
+      external: {
+        ...previousExternal,
+        provider,
+        key: previousExternal.key || remote.code,
+        url: remote.url,
+        status: remote.status,
+        syncedAt: new Date().toISOString()
+      }
+    }
+  }
+
+  #externalMilestoneInput(provider, remote, previousExternal = {}) {
+    return {
+      title: remote.title,
+      startAt: remote.startAt || null,
+      endAt: remote.endAt || null,
+      external: {
+        ...previousExternal,
+        provider,
+        key: previousExternal.key || remote.name,
+        url: remote.url,
+        status: remote.status,
+        syncedAt: new Date().toISOString()
+      }
+    }
+  }
+
   #log(project, versionNo, action, detail, extra = {}) {
     store.appendOplog(this.root, {
       at: new Date().toISOString(),
@@ -1317,4 +1466,9 @@ const CONTENT_TYPES = {
 function guessContentType(name) {
   const ext = path.extname(String(name)).toLowerCase()
   return CONTENT_TYPES[ext] || 'application/octet-stream'
+}
+
+function identityFromMcpTest(body) {
+  if (!body || typeof body !== 'object') return null
+  return body.identity || body.name || body.login || body.email || body.text || null
 }

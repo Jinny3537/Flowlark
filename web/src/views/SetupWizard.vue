@@ -7,10 +7,10 @@
       </div>
       <a-space>
         <a-button @click="$router.push('/settings')">
-          <template #icon><SettingOutlined /></template>工作区设置
+          <template #icon><IconSettings /></template>工作区设置
         </a-button>
         <a-button type="primary" :disabled="!app.canWrite" :loading="creating" @click="createVersion">
-          <template #icon><SaveOutlined /></template>创建新版
+          <template #icon><IconSave /></template>创建新版
         </a-button>
       </a-space>
     </div>
@@ -20,69 +20,69 @@
 
     <div class="workbench-grid">
       <section class="workbench-panel">
-        <div class="panel-title"><BranchesOutlined /> 来源版本</div>
+        <div class="panel-title"><IconBranch /> 来源版本</div>
         <a-form layout="vertical">
           <a-form-item label="项目" required>
-            <a-select v-model:value="selectedProject" show-search placeholder="选择项目" @change="loadVersions">
-              <a-select-option v-for="project in projects" :key="project.slug" :value="project.slug">
+            <a-select v-model="selectedProject" show-search placeholder="选择项目" @change="loadVersions">
+              <a-option v-for="project in projects" :key="project.slug" :value="project.slug">
                 {{ project.name }} · {{ project.baselineVersionNo || '无基线' }}
-              </a-select-option>
+              </a-option>
             </a-select>
           </a-form-item>
           <a-form-item label="基于版本" required>
-            <a-select v-model:value="baseVersionNo" placeholder="默认选择当前基线" @change="loadBase">
-              <a-select-option v-for="version in versions" :key="version.versionNo" :value="version.versionNo">
+            <a-select v-model="baseVersionNo" placeholder="默认选择当前基线" @change="loadBase">
+              <a-option v-for="version in versions" :key="version.versionNo" :value="version.versionNo">
                 {{ version.versionNo }} · {{ version.title }}
-              </a-select-option>
+              </a-option>
             </a-select>
           </a-form-item>
           <a-row :gutter="12">
             <a-col :span="9">
               <a-form-item label="新版号" required>
-                <a-input v-model:value="form.versionNo" class="mono" />
+                <a-input v-model="form.versionNo" class="mono" />
               </a-form-item>
             </a-col>
             <a-col :span="15">
               <a-form-item label="新版标题" required>
-                <a-input v-model:value="form.title" :maxlength="100" />
+                <a-input v-model="form.title" :maxlength="100" />
               </a-form-item>
             </a-col>
           </a-row>
-          <a-checkbox v-model:checked="inheritRequirements">沿用来源版本关联需求</a-checkbox>
-          <a-checkbox v-model:checked="writeSpec" class="check-row">创建后写入规格草稿</a-checkbox>
-          <a-checkbox v-model:checked="setAsBaseline" class="check-row">创建后直接设为基线</a-checkbox>
+          <a-checkbox v-model="inheritRequirements">沿用来源版本关联需求</a-checkbox>
+          <a-checkbox v-model="writeSpec" class="check-row">创建后写入规格草稿</a-checkbox>
+          <a-checkbox v-model="setAsBaseline" class="check-row">创建后直接设为基线</a-checkbox>
         </a-form>
       </section>
 
       <section class="workbench-panel">
-        <div class="panel-title"><CloudUploadOutlined /> 新版原型</div>
-        <a-segmented v-model:value="mode" :options="sourceOptions" block @change="resetSource" />
+        <div class="panel-title"><CloudIconUpload /> 新版原型</div>
+        <a-segmented v-model="mode" :options="sourceOptions" block @change="resetSource" />
         <div class="source-box">
           <a-upload-dragger v-if="mode === 'file' && !file" :before-upload="onPick" :show-upload-list="false" accept=".html,.htm">
-            <p class="upload-icon"><InboxOutlined /></p>
+            <p class="upload-icon"><IconArchive /></p>
             <p>点击或拖拽 HTML 文件到此处</p>
             <p class="text-secondary code-sm">上限 {{ fmtSize(app.maxFileBytes) }}</p>
           </a-upload-dragger>
           <div v-else-if="mode === 'file'" class="source-ready">
-            <CheckCircleFilled />
+            <IconCheckCircleFill />
             <div><strong>{{ file.name }}</strong><span>{{ sourceSummary }}</span></div>
             <a-button size="small" @click="resetSource">重选</a-button>
           </div>
 
           <template v-else-if="mode === 'paste'">
-            <a-textarea v-model:value="pastedHtml" :rows="8" class="mono" placeholder="粘贴完整 HTML 源码" @blur="inspectPasted" />
+            <a-textarea v-model="pastedHtml" :rows="8" class="mono" placeholder="粘贴完整 HTML 源码" @blur="inspectPasted" />
             <div class="source-meta text-secondary">{{ sourceSummary }}</div>
           </template>
 
           <template v-else>
             <a-input-group compact class="url-row">
-              <a-input v-model:value="sourceUrl" placeholder="https://example.com/prototype" @press-enter="loadUrl" />
+              <a-input v-model="sourceUrl" placeholder="https://example.com/prototype" @press-enter="loadUrl" />
               <a-button :loading="importing" @click="loadUrl">
-                <template #icon><CloudDownloadOutlined /></template>读取
+                <template #icon><IconCloudDownload /></template>读取
               </a-button>
             </a-input-group>
             <div v-if="html" class="source-ready compact">
-              <CheckCircleFilled />
+              <IconCheckCircleFill />
               <div><strong>原型已读取</strong><span>{{ sourceSummary }}</span></div>
             </div>
           </template>
@@ -96,7 +96,7 @@
     </div>
 
     <section class="workbench-panel full">
-      <div class="panel-title"><EditOutlined /> 生成结果</div>
+      <div class="panel-title"><IconEdit /> 生成结果</div>
       <a-alert v-if="draft" class="stack-md" show-icon type="success"
                :message="`已生成 ${draft.changes.length} 条变更草稿，可信度：${draft.confidence}`" />
       <a-tabs>
@@ -119,7 +119,7 @@
           <RequirementEditor v-model="form.requirements" />
         </a-tab-pane>
         <a-tab-pane key="spec" tab="规格草稿">
-          <a-textarea v-model:value="specDraft" :rows="12" class="mono" placeholder="生成草稿后可在这里编辑" />
+          <a-textarea v-model="specDraft" :rows="12" class="mono" placeholder="生成草稿后可在这里编辑" />
         </a-tab-pane>
       </a-tabs>
     </section>
@@ -128,11 +128,11 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { message } from 'ant-design-vue'
+import { notify } from '../ui/feedback'
 import {
-  BranchesOutlined, CheckCircleFilled, CloudDownloadOutlined, CloudUploadOutlined,
-  EditOutlined, InboxOutlined, RobotOutlined, SaveOutlined, SettingOutlined
-} from '@ant-design/icons-vue'
+  IconBranch, IconCheckCircleFill, IconCloudDownload, CloudIconUpload,
+  IconEdit, IconArchive, RobotOutlined, IconSave, IconSettings
+} from '@arco-design/web-vue/es/icon/index.js'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { useAppStore } from '../store'
@@ -194,7 +194,7 @@ async function acceptHtml(value, name = '') {
 
 function onPick(picked) {
   if (picked.size > app.maxFileBytes) {
-    message.error(`文件 ${fmtSize(picked.size)} 超过上限 ${fmtSize(app.maxFileBytes)}`)
+    notify.error(`文件 ${fmtSize(picked.size)} 超过上限 ${fmtSize(app.maxFileBytes)}`)
     return false
   }
   const reader = new FileReader()
@@ -211,7 +211,7 @@ async function inspectPasted() {
 }
 
 async function loadUrl() {
-  if (!sourceUrl.value.trim()) return message.warning('请输入公开 URL')
+  if (!sourceUrl.value.trim()) return notify.warning('请输入公开 URL')
   importing.value = true
   try {
     const result = await api.importUrl(sourceUrl.value.trim())
@@ -246,7 +246,7 @@ async function loadBase() {
 
 async function generateDraft() {
   if (mode.value === 'paste' && !html.value) await inspectPasted()
-  if (!canDraft.value) return message.warning('请先选择来源版本并提供新版 HTML')
+  if (!canDraft.value) return notify.warning('请先选择来源版本并提供新版 HTML')
   drafting.value = true
   try {
     draft.value = await api.draftVersion({ project: selectedProject.value, baseVersionNo: baseVersionNo.value, html: html.value, title: form.title })
@@ -263,10 +263,10 @@ async function checkImpact() {
 
 async function createVersion() {
   if (mode.value === 'paste' && !html.value) await inspectPasted()
-  if (!app.canWrite) return message.info('当前是只读模式，不能创建版本')
-  if (!selectedProject.value || !baseVersionNo.value) return message.warning('请选择项目和来源版本')
-  if (!html.value) return message.warning('请提供新版 HTML')
-  if (!form.versionNo.trim() || !form.title.trim()) return message.warning('请填写新版号和标题')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能创建版本')
+  if (!selectedProject.value || !baseVersionNo.value) return notify.warning('请选择项目和来源版本')
+  if (!html.value) return notify.warning('请提供新版 HTML')
+  if (!form.versionNo.trim() || !form.title.trim()) return notify.warning('请填写新版号和标题')
   creating.value = true
   try {
     const version = await api.addVersion(selectedProject.value, {
@@ -278,7 +278,7 @@ async function createVersion() {
     })
     if (writeSpec.value && specDraft.value.trim()) await api.setSpec(selectedProject.value, version.versionNo, specDraft.value)
     if (setAsBaseline.value) await api.setBaseline(selectedProject.value, version.versionNo)
-    message.success(`版本 ${version.versionNo} 已创建`)
+    notify.success(`版本 ${version.versionNo} 已创建`)
     router.push(`/projects/${selectedProject.value}/versions/${version.versionNo}`)
   } finally { creating.value = false }
 }
@@ -311,13 +311,13 @@ onMounted(load)
 .source-ready span { color:var(--fl-text-2); font-size:var(--fl-fs-2); }
 .source-meta { margin-top:var(--fl-s-2); font-size:var(--fl-fs-2); }
 .url-row { display:flex; }
-.url-row .ant-input { flex:1; }
+.url-row .arco-input { flex:1; }
 .stack-md { margin-bottom:var(--fl-s-4); }
 .stack-sm { margin-top:var(--fl-s-3); }
 .impact-row { display:grid; grid-template-columns:minmax(120px,1fr) auto auto; gap:var(--fl-s-3); margin-top:4px; font-size:var(--fl-fs-2); }
 @media (max-width: 860px) {
   .prototype-workbench-head { display:block; }
-  .prototype-workbench-head .ant-space { margin-top:var(--fl-s-3); }
+  .prototype-workbench-head .arco-space { margin-top:var(--fl-s-3); }
   .workbench-grid { grid-template-columns:1fr; }
   .impact-row { grid-template-columns:1fr; }
 }

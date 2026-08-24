@@ -2,15 +2,15 @@
   <div class="wb-page">
     <div class="wb-toolbar">
       <a-button type="text" @click="$router.push(`/projects/${slug}`)">
-        <template #icon><LeftOutlined /></template>返回
+        <template #icon><IconLeft /></template>返回
       </a-button>
       <a-divider type="vertical" />
       <strong v-if="project">{{ project.name }}</strong>
 
       <a-select :value="versionNo" class="version-select" @change="(no) => $router.push(`/projects/${slug}/versions/${no}`)">
-        <a-select-option v-for="v in siblings" :key="v.versionNo" :value="v.versionNo">
+        <a-option v-for="v in siblings" :key="v.versionNo" :value="v.versionNo">
           {{ v.versionNo }} — {{ v.title }}
-        </a-select-option>
+        </a-option>
       </a-select>
 
       <a-tag v-if="version" :color="version.display.color">{{ version.display.label }}</a-tag>
@@ -20,10 +20,10 @@
       <div class="spacer"></div>
 
       <a-button size="small" @click="historyOpen = true">
-        <template #icon><HistoryOutlined /></template>历史
+        <template #icon><IconHistory /></template>历史
       </a-button>
       <a-button size="small" @click="goCompare">并排对比</a-button>
-      <a-button size="small" @click="copyLink"><template #icon><LinkOutlined /></template>直链</a-button>
+      <a-button size="small" @click="copyLink"><template #icon><IconLink /></template>直链</a-button>
       <a-button size="small" @click="openExternal">新窗口</a-button>
       <a-button size="small" @click="download">下载</a-button>
       <a-divider type="vertical" />
@@ -41,32 +41,32 @@
         <div class="wb-left" :class="{ 'is-full': docsCollapsed }"
              :style="docsCollapsed ? null : { width: leftPct + '%' }">
           <div class="wb-subbar">
-            <span class="text-secondary"><DesktopOutlined /> 原型预览</span>
+            <span class="text-secondary"><IconDesktop /> 原型预览</span>
             <span class="mono text-secondary" v-if="version">{{ version.file }} · {{ fmtSize(version.fileSize) }}</span>
             <div class="spacer"></div>
             <a-tooltip v-if="version && version.externalRefs.length"
                        title="用已内联 CDN 资源的离线版渲染，断网也不掉样式">
-              <a-checkbox v-model:checked="useOffline" :disabled="!version.hasOffline" @change="onOfflineToggle">
+              <a-checkbox v-model="useOffline" :disabled="!version.hasOffline" @change="onOfflineToggle">
                 离线预览
               </a-checkbox>
             </a-tooltip>
             <a-tooltip title="原型由独立端口提供，与工作台不同源；里面的脚本读不到工作台的任何数据">
-              <a-tag><LockOutlined /> 沙箱隔离</a-tag>
+              <a-tag><IconLock /> 沙箱隔离</a-tag>
             </a-tooltip>
             <a-button size="small" :type="annotationMode ? 'primary' : 'default'" @click="toggleAnnotation">
-              <template #icon><HighlightOutlined /></template>{{ annotationMode ? '退出标注' : '标注反馈' }}
+              <template #icon><IconHighlight /></template>{{ annotationMode ? '退出标注' : '标注反馈' }}
             </a-button>
             <a-button size="small" :type="prototypeEditMode ? 'primary' : 'default'" :disabled="!editable"
                       @click="togglePrototypeEdit">
-              <template #icon><CodeOutlined /></template>{{ prototypeEditMode ? '退出编辑' : '在线编辑' }}
+              <template #icon><IconCode /></template>{{ prototypeEditMode ? '退出编辑' : '在线编辑' }}
             </a-button>
             <a-button v-if="prototypeEditMode" size="small" type="primary" :loading="htmlSaving"
                       @click="savePrototypeHtml">
-              <template #icon><SaveOutlined /></template>保存
+              <template #icon><IconSave /></template>保存
             </a-button>
             <a-tooltip :title="editable ? '替换当前编辑中版本的原型 HTML' : '只有编辑中版本可以修改原型文件'">
               <a-button size="small" :disabled="!editable" @click="openHtmlEditor">
-                <template #icon><CodeOutlined /></template>修改原型
+                <template #icon><IconCode /></template>修改原型
               </a-button>
             </a-tooltip>
             <a-divider type="vertical" class="compact-divider" />
@@ -74,8 +74,8 @@
               <a-button type="text" size="small" :aria-label="docsCollapsed ? '恢复分屏' : '全宽预览'"
                         @click="docsCollapsed = !docsCollapsed">
                 <template #icon>
-                  <ColumnWidthOutlined v-if="docsCollapsed" />
-                  <FullscreenOutlined v-else />
+                  <IconFullscreen v-if="docsCollapsed" />
+                  <IconFullscreen v-else />
                 </template>
                 {{ docsCollapsed ? '分屏' : '全宽' }}
               </a-button>
@@ -91,7 +91,7 @@
                 </template>
                 <template v-else>
                   断网或代理拦截时样式异常属正常现象。
-                  <a-button size="small" type="link" :loading="buildingOffline"
+                  <a-button size="small" type="text" :loading="buildingOffline"
                             :disabled="!app.canWrite" @click="buildOffline">
                     生成离线版
                   </a-button>
@@ -136,26 +136,26 @@
                   最后编辑 {{ fmtTime(version.specUpdatedAt) }}
                 </div>
                 <div class="spacer"></div>
-                <a-select v-if="specCommits.length" v-model:value="specRef" size="small"
+                <a-select v-if="specCommits.length" v-model="specRef" size="small"
                           class="history-select" placeholder="回看历史版本" allow-clear
                           @change="loadSpecAt">
-                  <a-select-option v-for="cm in specCommits" :key="cm.hash" :value="cm.hash">
+                  <a-option v-for="cm in specCommits" :key="cm.hash" :value="cm.hash">
                     {{ cm.short }} · {{ fmtTime(cm.date) }}
-                  </a-select-option>
+                  </a-option>
                 </a-select>
                 <a-button v-if="!specEditing" size="small" :disabled="!app.canWrite" @click="startEditSpec">
-                  <template #icon><EditOutlined /></template>编辑
+                  <template #icon><IconEdit /></template>编辑
                 </a-button>
                 <template v-else>
                   <a-button size="small" @click="applySpecTemplate">
-                    <template #icon><FileTextOutlined /></template>编写模板
+                    <template #icon><IconFile /></template>编写模板
                   </a-button>
                   <a-button size="small" @click="specEditing = false">取消</a-button>
                   <a-button size="small" type="primary" :loading="saving" :disabled="!app.canWrite" @click="saveSpec">保存</a-button>
                 </template>
                 <a-upload v-if="app.canWrite" :before-upload="importSpecFile" :show-upload-list="false" accept=".md,.markdown,.txt,text/markdown,text/plain">
                   <a-button size="small" :loading="importingSpec">
-                    <template #icon><UploadOutlined /></template>上传导入
+                    <template #icon><IconUpload /></template>上传导入
                   </a-button>
                 </a-upload>
               </div>
@@ -175,7 +175,7 @@
                 </template>
               </a-alert>
 
-              <a-textarea v-if="specEditing" v-model:value="specDraft" :rows="24" class="mono"
+              <a-textarea v-if="specEditing" v-model="specDraft" :rows="24" class="mono"
                           placeholder="用 Markdown 写清楚这一版的产品规则、接口约束、验收口径和风险说明…" />
               <div v-else-if="specAtContent !== null" class="md" v-html="renderMarkdown(specAtContent)"></div>
               <div v-else-if="version && version.spec" class="md" v-html="specHtml"></div>
@@ -184,7 +184,7 @@
                   <a-button type="primary" :disabled="!app.canWrite" @click="startEditSpec">开始编写</a-button>
                   <a-upload v-if="app.canWrite" :before-upload="importSpecFile" :show-upload-list="false" accept=".md,.markdown,.txt,text/markdown,text/plain">
                     <a-button :loading="importingSpec">
-                      <template #icon><UploadOutlined /></template>上传规格书
+                      <template #icon><IconUpload /></template>上传规格书
                     </a-button>
                   </a-upload>
                 </a-space>
@@ -194,10 +194,10 @@
             <template v-else-if="tab === 'changes'">
               <div class="panel-tools">
                 <span class="text-secondary no-wrap">对比起点</span>
-                <a-select v-model:value="cumFrom" class="flex-select" allow-clear placeholder="仅看本版" @change="loadChanges">
-                  <a-select-option v-for="v in olderSiblings" :key="v.versionNo" :value="v.versionNo">
+                <a-select v-model="cumFrom" class="flex-select" allow-clear placeholder="仅看本版" @change="loadChanges">
+                  <a-option v-for="v in olderSiblings" :key="v.versionNo" :value="v.versionNo">
                     {{ v.versionNo }} — {{ v.title }}
-                  </a-select-option>
+                  </a-option>
                 </a-select>
                 <a-button v-if="editable" size="small" @click="toggleChangeEdit">
                   {{ changesEditing ? '取消' : '编辑' }}
@@ -238,11 +238,11 @@
                 <a-empty v-if="!version || version.requirements.length === 0" description="未关联需求" />
                 <div v-for="(r, i) in (version ? version.requirements : [])" :key="i"
                      class="req-row">
-                  <a-tag color="blue" class="mono">{{ r.code }}</a-tag>
+                  <a-tag color="green" class="mono">{{ r.code }}</a-tag>
                   <span class="req-title">{{ r.title || '—' }}</span>
                   <a-button size="small" :disabled="!app.requirementUrl(r.code, r.url)"
                             @click="openUrl(app.requirementUrl(r.code, r.url))">
-                    <template #icon><ExportOutlined /></template>打开
+                    <template #icon><IconExport /></template>打开
                   </a-button>
                 </div>
               </template>
@@ -262,7 +262,7 @@
                 </a-descriptions-item>
                 <a-descriptions-item label="标签">
                   <!-- 标签不受基线锁定：它是事后追加的组织信息，和「这一版长什么样」无关 -->
-                  <a-select v-model:value="tagDraft" mode="tags" size="small" class="full-width"
+                  <a-select v-model="tagDraft" mode="tags" size="small" class="full-width"
                             placeholder="加个标签，比如 已评审 / 已交付"
                             :options="tagOptions" :disabled="!app.canWrite" @change="saveTags" />
                 </a-descriptions-item>
@@ -302,14 +302,14 @@
                   </div>
                   <p>{{ item.description }}</p>
                   <div class="feedback-meta">
-                    <a-tag v-for="req in item.requirements" :key="req" color="blue" class="mono">{{ req }}</a-tag>
+                    <a-tag v-for="req in item.requirements" :key="req" color="green" class="mono">{{ req }}</a-tag>
                     <a-tag v-if="item.hasScreenshot" color="green">含截图</a-tag>
                     <a v-if="item.hasScreenshot" :href="api.feedbackScreenshotUrl(item.id)" target="_blank" rel="noopener">查看截图</a>
                     <a :href="item.url" target="_blank" rel="noopener">定位标注</a>
                     <a-popconfirm title="删除这条标注反馈？" ok-text="删除" cancel-text="取消"
                                   ok-type="danger" @confirm="removeFeedback(item.id)">
-                      <a-button type="link" size="small" danger>
-                        <template #icon><DeleteOutlined /></template>删除
+                      <a-button type="text" size="small" status="danger">
+                        <template #icon><IconDelete /></template>删除
                       </a-button>
                     </a-popconfirm>
                   </div>
@@ -325,15 +325,15 @@
                    :current="currentBaselineNo" :total-versions="siblings.length" @done="reload" />
     <FeedbackDrawer v-model:open="feedbackOpen" :context="feedbackContext" :capture-rect="captureRect"
                     @submitted="afterFeedbackSubmitted" />
-    <a-drawer v-model:open="htmlEditorOpen" title="修改原型文件" placement="right" :width="620"
-              destroy-on-close>
+    <a-drawer v-model:visible="htmlEditorOpen" title="修改原型文件" placement="right" :width="620"
+              unmount-on-close>
       <a-spin :spinning="htmlEditorLoading">
         <a-alert v-if="version && version.hasOffline" type="warning" show-icon class="panel-alert"
                  message="保存后会清理旧离线版，需要时可重新生成。" />
         <a-alert v-if="!editable" type="info" show-icon class="panel-alert"
                  message="当前版本不可修改原型文件；请先恢复为编辑中或新建版本。" />
 
-        <a-segmented v-model:value="htmlSourceMode" :options="htmlSourceOptions" block />
+        <a-segmented v-model="htmlSourceMode" :options="htmlSourceOptions" block />
 
         <div class="html-editor-body">
           <template v-if="htmlSourceMode === 'code'">
@@ -342,31 +342,31 @@
               <div class="spacer"></div>
               <a-button size="small" :loading="htmlInspecting" @click="inspectPrototypeDraft(true)">检查依赖</a-button>
             </div>
-            <a-textarea v-model:value="htmlDraft" :rows="20" class="mono html-source"
+            <a-textarea v-model="htmlDraft" :rows="20" class="mono html-source"
                         placeholder="在这里修改完整 HTML 源码，保存后刷新左侧预览。" />
           </template>
 
           <template v-else-if="htmlSourceMode === 'file'">
             <a-upload-dragger :before-upload="importPrototypeFile" :show-upload-list="false" accept=".html,.htm">
-              <p class="upload-icon"><UploadOutlined /></p>
+              <p class="upload-icon"><IconUpload /></p>
               <p>点击或拖拽 HTML 文件替换当前原型</p>
               <p class="text-secondary code-sm">上限 {{ fmtSize(app.maxFileBytes) }}</p>
             </a-upload-dragger>
             <div v-if="htmlFileName" class="source-ready compact">
-              <CheckCircleFilled />
+              <IconCheckCircleFill />
               <div><strong>{{ htmlFileName }}</strong><span>{{ htmlSummary }}</span></div>
             </div>
           </template>
 
           <template v-else>
             <a-input-group compact class="url-row">
-              <a-input v-model:value="htmlSourceUrl" placeholder="https://example.com/prototype" @press-enter="loadPrototypeUrl" />
+              <a-input v-model="htmlSourceUrl" placeholder="https://example.com/prototype" @press-enter="loadPrototypeUrl" />
               <a-button :loading="htmlImporting" @click="loadPrototypeUrl">
-                <template #icon><CloudDownloadOutlined /></template>读取
+                <template #icon><IconCloudDownload /></template>读取
               </a-button>
             </a-input-group>
             <div v-if="htmlDraft" class="source-ready compact">
-              <CheckCircleFilled />
+              <IconCheckCircleFill />
               <div><strong>原型已读取</strong><span>{{ htmlSummary }}</span></div>
             </div>
           </template>
@@ -378,13 +378,13 @@
         <div class="drawer-actions">
           <a-button @click="htmlEditorOpen = false">取消</a-button>
           <a-button type="primary" :loading="htmlSaving" :disabled="!editable || !htmlDraft.trim()" @click="savePrototypeHtml">
-            <template #icon><SaveOutlined /></template>保存并刷新预览
+            <template #icon><IconSave /></template>保存并刷新预览
           </a-button>
         </div>
       </a-spin>
     </a-drawer>
 
-    <a-drawer v-model:open="historyOpen" title="这一版的演进历史" placement="right" :width="520">
+    <a-drawer v-model:visible="historyOpen" title="这一版的演进历史" placement="right" :width="520">
       <a-empty v-if="commits.length === 0" description="还没有 Git 提交记录">
         <div class="text-secondary code-sm">把仓库纳入 Git 并提交后，这里会显示每次改动</div>
       </a-empty>
@@ -406,13 +406,13 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { notify } from '../ui/feedback'
 import {
-  LeftOutlined, LinkOutlined, HistoryOutlined, DesktopOutlined, LockOutlined,
-  ColumnWidthOutlined, FullscreenOutlined, EditOutlined, ExportOutlined, HighlightOutlined,
-  UploadOutlined, FileTextOutlined, CodeOutlined, CloudDownloadOutlined, SaveOutlined,
-  CheckCircleFilled, DeleteOutlined
-} from '@ant-design/icons-vue'
+  IconLeft, IconLink, IconHistory, IconDesktop, IconLock,
+  IconFullscreen, IconEdit, IconExport, IconHighlight,
+  IconUpload, IconFile, IconCode, IconCloudDownload, IconSave,
+  IconCheckCircleFill, IconDelete
+} from '@arco-design/web-vue/es/icon/index.js'
 import ChangeList from '../components/ChangeList.vue'
 import ChangeEditor from '../components/ChangeEditor.vue'
 import RequirementEditor from '../components/RequirementEditor.vue'
@@ -580,8 +580,8 @@ async function loadChanges() {
 
 function copyLink() {
   navigator.clipboard.writeText(previewSrc.value)
-    .then(() => message.success('预览直链已复制'))
-    .catch(() => message.error('复制失败，可在「版本信息」里手动选中'))
+    .then(() => notify.success('预览直链已复制'))
+    .catch(() => notify.error('复制失败，可在「版本信息」里手动选中'))
 }
 
 function encodeAnchor(anchor) {
@@ -609,7 +609,7 @@ function annotationLink(anchor) {
 }
 
 function toggleAnnotation() {
-  if (prototypeEditMode.value) return message.info('请先退出在线编辑，再进行标注反馈')
+  if (prototypeEditMode.value) return notify.info('请先退出在线编辑，再进行标注反馈')
   annotationMode.value = !annotationMode.value
   if (annotationMode.value) selectedAnchor.value = null
 }
@@ -642,7 +642,7 @@ async function afterFeedbackSubmitted() {
 
 async function removeFeedback(id) {
   await api.removeFeedbackDraft(id)
-  message.success('标注反馈已删除')
+  notify.success('标注反馈已删除')
   await loadFeedbacks()
 }
 
@@ -653,7 +653,7 @@ const download = () => window.open(api.downloadUrl(props.slug, props.versionNo),
 function openReqByCode(code) {
   const r = version.value && version.value.requirements.find((x) => x.code === code)
   if (r && r.url) openUrl(r.url)
-  else message.info(`需求 ${code} 未登记链接`)
+  else notify.info(`需求 ${code} 未登记链接`)
 }
 
 function goCompare() {
@@ -663,14 +663,14 @@ function goCompare() {
 }
 
 async function buildOffline() {
-  if (!app.canWrite) return message.info('当前是只读模式，不能生成离线版本')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能生成离线版本')
   buildingOffline.value = true
   try {
     const r = await api.buildOffline(props.slug, props.versionNo)
     if (r.failed && r.failed.length) {
-      message.warning(`已生成，但 ${r.failed.length} 个资源抓取失败`)
+      notify.warning(`已生成，但 ${r.failed.length} 个资源抓取失败`)
     } else {
-      message.success(`离线版已生成，内联 ${r.inlined}/${r.total} 个资源`)
+      notify.success(`离线版已生成，内联 ${r.inlined}/${r.total} 个资源`)
     }
     version.value = await api.getVersion(props.slug, props.versionNo)
     useOffline.value = true
@@ -684,7 +684,7 @@ function onOfflineToggle() {
 }
 
 async function togglePrototypeEdit() {
-  if (!editable.value) return message.info('只有编辑中版本可以在线编辑')
+  if (!editable.value) return notify.info('只有编辑中版本可以在线编辑')
   if (prototypeEditMode.value) {
     prototypeEditMode.value = false
     return
@@ -724,7 +724,7 @@ function requestEditedPrototypeHtml() {
 }
 
 async function openHtmlEditor() {
-  if (!editable.value) return message.info('只有编辑中版本可以修改原型文件')
+  if (!editable.value) return notify.info('只有编辑中版本可以修改原型文件')
   htmlEditorOpen.value = true
   htmlEditorLoading.value = true
   htmlSourceMode.value = 'code'
@@ -747,7 +747,7 @@ async function inspectPrototypeDraft(noisy = false) {
   try {
     const result = await api.inspectHtml(htmlDraft.value)
     htmlExternalRefs.value = result.externalRefs || []
-    if (noisy) message.success('原型依赖已检查')
+    if (noisy) notify.success('原型依赖已检查')
   } finally {
     htmlInspecting.value = false
   }
@@ -755,15 +755,15 @@ async function inspectPrototypeDraft(noisy = false) {
 
 async function importPrototypeFile(file) {
   if (!editable.value) {
-    message.info('当前版本不可修改原型文件')
+    notify.info('当前版本不可修改原型文件')
     return false
   }
   if (file.size > app.maxFileBytes) {
-    message.error(`${file.name} 超过上限 ${fmtSize(app.maxFileBytes)}`)
+    notify.error(`${file.name} 超过上限 ${fmtSize(app.maxFileBytes)}`)
     return false
   }
   if (!/\.html?$/i.test(file.name)) {
-    message.error('请上传 .html 或 .htm 文件')
+    notify.error('请上传 .html 或 .htm 文件')
     return false
   }
   try {
@@ -771,13 +771,13 @@ async function importPrototypeFile(file) {
     htmlFileName.value = file.name
     await inspectPrototypeDraft(false)
   } catch {
-    message.error(`读取 ${file.name} 失败`)
+    notify.error(`读取 ${file.name} 失败`)
   }
   return false
 }
 
 async function loadPrototypeUrl() {
-  if (!htmlSourceUrl.value.trim()) return message.warning('请输入公开 URL')
+  if (!htmlSourceUrl.value.trim()) return notify.warning('请输入公开 URL')
   htmlImporting.value = true
   try {
     const result = await api.importUrl(htmlSourceUrl.value.trim())
@@ -790,22 +790,22 @@ async function loadPrototypeUrl() {
 }
 
 async function savePrototypeHtml() {
-  if (!editable.value) return message.info('当前版本不可修改原型文件')
+  if (!editable.value) return notify.info('当前版本不可修改原型文件')
   if (prototypeEditMode.value) {
     try {
       htmlDraft.value = await requestEditedPrototypeHtml()
     } catch {
-      return message.error('读取在线编辑内容失败，请重试')
+      return notify.error('读取在线编辑内容失败，请重试')
     }
   }
-  if (!htmlDraft.value.trim()) return message.warning('请先提供原型 HTML')
+  if (!htmlDraft.value.trim()) return notify.warning('请先提供原型 HTML')
   htmlSaving.value = true
   try {
     version.value = await api.replaceHtml(props.slug, props.versionNo, htmlDraft.value)
     useOffline.value = false
     prototypeEditMode.value = false
     htmlEditorOpen.value = false
-    message.success('原型文件已保存，预览已刷新')
+    notify.success('原型文件已保存，预览已刷新')
   } finally {
     htmlSaving.value = false
   }
@@ -821,13 +821,13 @@ async function loadSpecAt(ref) {
 }
 
 async function saveTags(tags) {
-  if (!app.canWrite) return message.info('当前是只读模式，不能编辑标签')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能编辑标签')
   version.value = await api.setTags(props.slug, props.versionNo, tags)
   allTags.value = await api.allTags()
 }
 
 function startEditSpec() {
-  if (!app.canWrite) return message.info('当前是只读模式，不能编辑规格书')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能编辑规格书')
   specDraft.value = (version.value && version.value.spec) || ''
   specEditing.value = true
   specRef.value = null
@@ -894,16 +894,16 @@ function readFileText(file) {
 
 async function importSpecFile(file) {
   if (!app.canWrite) {
-    message.info('当前是只读模式，不能上传规格书')
+    notify.info('当前是只读模式，不能上传规格书')
     return false
   }
   if (file.size > app.maxFileBytes) {
-    message.error(`${file.name} 超过上限 ${fmtSize(app.maxFileBytes)}`)
+    notify.error(`${file.name} 超过上限 ${fmtSize(app.maxFileBytes)}`)
     return false
   }
   const name = file.name.toLowerCase()
   if (!/\.(md|markdown|txt)$/.test(name)) {
-    message.error('请上传 Markdown 或文本格式的规格书')
+    notify.error('请上传 Markdown 或文本格式的规格书')
     return false
   }
   importingSpec.value = true
@@ -911,14 +911,14 @@ async function importSpecFile(file) {
     const markdown = await readFileText(file)
     if (specEditing.value) {
       specDraft.value = markdown
-      message.success(`已导入 ${file.name}，保存后生效`)
+      notify.success(`已导入 ${file.name}，保存后生效`)
     } else {
       version.value = await api.setSpec(props.slug, props.versionNo, markdown)
       specDraft.value = markdown
-      message.success(`已上传并保存 ${file.name}`)
+      notify.success(`已上传并保存 ${file.name}`)
     }
   } catch {
-    message.error(`读取 ${file.name} 失败`)
+    notify.error(`读取 ${file.name} 失败`)
   } finally {
     importingSpec.value = false
   }
@@ -926,31 +926,31 @@ async function importSpecFile(file) {
 }
 
 async function saveSpec() {
-  if (!app.canWrite) return message.info('当前是只读模式，不能保存规格书')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能保存规格书')
   saving.value = true
   try {
     version.value = await api.setSpec(props.slug, props.versionNo, specDraft.value)
     specEditing.value = false
-    message.success('规格书已保存')
+    notify.success('规格书已保存')
   } finally {
     saving.value = false
   }
 }
 
 function toggleChangeEdit() {
-  if (!app.canWrite) return message.info('当前是只读模式，不能编辑变更日志')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能编辑变更日志')
   changesEditing.value = !changesEditing.value
   if (changesEditing.value) changeDraft.value = version.value.changes.map((c) => ({ ...c }))
 }
 
 async function saveChanges() {
-  if (!app.canWrite) return message.info('当前是只读模式，不能保存变更日志')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能保存变更日志')
   saving.value = true
   try {
     version.value = await api.setChanges(props.slug, props.versionNo,
       changeDraft.value.filter((c) => c.content && c.content.trim()))
     changesEditing.value = false
-    message.success('变更日志已保存')
+    notify.success('变更日志已保存')
     await loadChanges()
   } finally {
     saving.value = false
@@ -958,19 +958,19 @@ async function saveChanges() {
 }
 
 function toggleReqEdit() {
-  if (!app.canWrite) return message.info('当前是只读模式，不能编辑关联需求')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能编辑关联需求')
   reqsEditing.value = !reqsEditing.value
   if (reqsEditing.value) reqDraft.value = version.value.requirements.map((r) => ({ ...r }))
 }
 
 async function saveReqs() {
-  if (!app.canWrite) return message.info('当前是只读模式，不能保存关联需求')
+  if (!app.canWrite) return notify.info('当前是只读模式，不能保存关联需求')
   saving.value = true
   try {
     version.value = await api.setRequirements(props.slug, props.versionNo,
       reqDraft.value.filter((r) => r.code && r.code.trim()))
     reqsEditing.value = false
-    message.success('关联需求已保存')
+    notify.success('关联需求已保存')
   } finally {
     saving.value = false
   }
@@ -1062,7 +1062,7 @@ onMounted(() => {
 .source-ready div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .source-ready span { color: var(--fl-text-2); font-size: var(--fl-fs-2); }
 .url-row { display: flex; }
-.url-row .ant-input { flex: 1; }
+.url-row .arco-input { flex: 1; }
 .history-select { width: 190px; }
 .flex-select { flex: 1; }
 .full-width { width: 100%; }
@@ -1071,7 +1071,7 @@ onMounted(() => {
 .history-subject { font-size: var(--fl-fs-3); color: var(--fl-text); }
 @media (max-width: 900px) {
   .wb-toolbar { overflow-x:auto; padding-inline:var(--fl-s-2); gap:var(--fl-s-2); }
-  .wb-toolbar > strong, .wb-toolbar > .ant-divider { display:none; }
+  .wb-toolbar > strong, .wb-toolbar > .arco-divider { display:none; }
   .version-select { width:180px; min-width:180px; }
   .wb-subbar { overflow-x:auto; scrollbar-width:none; }
   .wb-subbar::-webkit-scrollbar { display:none; }
