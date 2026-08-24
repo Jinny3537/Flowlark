@@ -1,4 +1,4 @@
-import { App } from 'antd';
+import { ApiError, errorFromResponse, parsePayload } from './requestModel.js';
 
 type RequestOptions = {
   raw?: boolean;
@@ -45,15 +45,10 @@ export type ConfigResponse = {
 
 const enc = encodeURIComponent;
 
-function reportError(message: string) {
-  // antd static message is not used here because requests can run before App context mounts.
-  console.error(message);
-}
-
 async function request<T>(method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
-  let res: Response;
+  let response: Response;
   try {
-    res = await fetch(path, {
+    response = await fetch(path, {
       method,
       headers: body === undefined
         ? {}
@@ -62,29 +57,30 @@ async function request<T>(method: string, path: string, body?: unknown, options:
           : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : options.raw ? (body as BodyInit) : JSON.stringify(body),
     });
-  } catch {
-    reportError('无法连接本地服务，flowlark serve 可能已经停止');
-    throw new Error('NETWORK');
+  } catch (cause) {
+    throw new ApiError('无法连接本地服务，flowlark serve 可能已经停止', {
+      code: 'NETWORK',
+      cause: cause instanceof Error ? cause : undefined,
+    });
   }
 
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-
-  if (!res.ok) {
-    const detail = data?.hint ? `${data.message}（${data.hint}）` : data?.message || '请求失败';
-    reportError(detail);
-    const e = new Error(detail);
-    (e as Error & { code?: string }).code = data?.code;
-    throw e;
-  }
-
-  return data as T;
+  const payload = parsePayload(await response.text());
+  if (!response.ok) throw errorFromResponse(response.status, payload);
+  return payload as T;
 }
 
 async function requestText(path: string): Promise<string> {
-  const res = await fetch(path);
-  const text = await res.text();
-  if (!res.ok) throw new Error(text || '请求失败');
+  let response: Response;
+  try {
+    response = await fetch(path);
+  } catch (cause) {
+    throw new ApiError('无法连接本地服务，flowlark serve 可能已经停止', {
+      code: 'NETWORK',
+      cause: cause instanceof Error ? cause : undefined,
+    });
+  }
+  const text = await response.text();
+  if (!response.ok) throw errorFromResponse(response.status, parsePayload(text));
   return text;
 }
 
@@ -216,7 +212,6 @@ export const api = {
   deleteRequirementToken: (provider: string) => del(`/api/integrations/requirements/${enc(provider)}/token`),
   inspectHtml: (html: string) => post('/api/import/html', { html }),
   importUrl: (url: string) => post('/api/import/url', { url }),
-  draftVersion: (body: unknown) => post('/api/drafts/version', body),
   watchInbox: () => get<any[]>('/api/watch/inbox'),
   retryWatchItem: (id: string) => post(`/api/watch/inbox/${enc(id)}/retry`, {}),
   trash: (project?: string) => get<any[]>(`/api/trash${project ? `?project=${enc(project)}` : ''}`),
