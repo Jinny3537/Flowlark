@@ -56,17 +56,25 @@ export class Hub {
   // ==================== 项目 ====================
 
   listProjects() {
-    return store.listProjectSlugs(this.root).map((slug) => this.getProject(slug))
+    const requirements = reqx.listRequirements(this.root)
+    return store.listProjectSlugs(this.root).map((slug) => this.#projectDetail(slug, requirements))
   }
 
   getProject(slug) {
-    const p = store.readProject(this.root, slug)
+    return this.#projectDetail(slug, reqx.listRequirements(this.root))
+  }
+
+  #projectDetail(slug, requirements) {
+    const project = store.readProject(this.root, slug)
     const baselineNo = store.readBaseline(this.root, slug)
     const nos = store.listVersionNos(this.root, slug)
     return {
-      ...p,
+      ...project,
+      priority: project.priority || '',
+      archived: project.archived === true,
       baselineVersionNo: baselineNo,
-      versionCount: nos.length
+      versionCount: nos.length,
+      ...projectx.projectMetrics(project, requirements)
     }
   }
 

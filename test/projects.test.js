@@ -1,6 +1,6 @@
 import { after, describe, test } from 'node:test'
 import fs from 'node:fs'
-import { cleanup, newHub, throwsCode } from './helpers.js'
+import { cleanup, html, newHub, throwsCode } from './helpers.js'
 import * as store from '../src/core/store.js'
 
 const dirs = []
@@ -67,5 +67,33 @@ describe('项目可编辑字段', () => {
     t.assert.strictEqual(updated.description, '保留旧代码')
     t.assert.strictEqual(updated.priority, 'P2')
     t.assert.strictEqual(updated.archived, false)
+  })
+})
+
+describe('项目概览派生统计', () => {
+  test('按字段或版本关联归属并按需求编号去重', (t) => {
+    const { hub, project } = fixture()
+    hub.createRequirement({ code: 'REQ-1', title: '代码匹配且关联版本', project: 'HYZL', dueDate: '2000-01-01' })
+    hub.createRequirement({ code: 'REQ-2', title: '名称匹配', project: '华油中蓝', dueDate: '2999-01-01' })
+    hub.createRequirement({ code: 'REQ-3', title: '其他项目', project: 'OTHER', dueDate: '2000-01-01' })
+    hub.addVersion(project.slug, {
+      versionNo: 'v1', title: '首版', html: html(), requirements: ['REQ-1']
+    })
+    const summary = hub.getProject(project.slug)
+    t.assert.strictEqual(summary.requirementCount, 2)
+    t.assert.strictEqual(summary.overdueCount, 1)
+    t.assert.strictEqual(summary.versionCount, 1)
+  })
+
+  test('已交付需求即使过期也不计入逾期数', (t) => {
+    const { hub, project } = fixture()
+    hub.createRequirement({ code: 'REQ-DONE', title: '已交付', project: project.slug, dueDate: '2000-01-01' })
+    hub.addVersion(project.slug, {
+      versionNo: 'v1', title: '已交付版', html: html(), requirements: ['REQ-DONE']
+    })
+    hub.setBaseline(project.slug, 'v1')
+    const summary = hub.getProject(project.slug)
+    t.assert.strictEqual(summary.requirementCount, 1)
+    t.assert.strictEqual(summary.overdueCount, 0)
   })
 })
