@@ -1,6 +1,6 @@
 import { after, describe, test } from 'node:test'
 import fs from 'node:fs'
-import { cleanup, html, newHub } from './helpers.js'
+import { cleanup, html, newHub, throwsCode } from './helpers.js'
 import * as reqx from '../src/core/requirements.js'
 import * as store from '../src/core/store.js'
 
@@ -67,5 +67,50 @@ describe('需求实体与反向索引', () => {
     t.assert.strictEqual(item.module, '作业票')
     t.assert.strictEqual(item.type, '功能')
     t.assert.strictEqual(item.priority, 'P1')
+  })
+})
+
+describe('需求截止日期', () => {
+  test('创建、更新和清空合法截止日期', (t) => {
+    const { hub } = fixture()
+    let item = hub.createRequirement({ code: 'REQ-DATE', title: '日期需求', dueDate: '2026-08-31' })
+    t.assert.strictEqual(item.dueDate, '2026-08-31')
+    item = hub.updateRequirement('REQ-DATE', { dueDate: '2026-09-01' })
+    t.assert.strictEqual(item.dueDate, '2026-09-01')
+    item = hub.updateRequirement('REQ-DATE', { dueDate: '' })
+    t.assert.strictEqual(item.dueDate, '')
+  })
+
+  test('拒绝格式错误和不存在的日期', (t) => {
+    const { hub } = fixture()
+    throwsCode(t, 'REQUIREMENT_DUE_DATE_INVALID', () => {
+      hub.createRequirement({ code: 'REQ-BAD-1', title: '错误格式', dueDate: '2026/08/31' })
+    })
+    throwsCode(t, 'REQUIREMENT_DUE_DATE_INVALID', () => {
+      hub.createRequirement({ code: 'REQ-BAD-2', title: '不存在日期', dueDate: '2026-02-30' })
+    })
+  })
+
+  test('逾期边界排除今天、未来和已交付需求', (t) => {
+    t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-24', derivedStatus: 'designing' }, '2026-08-25'), true)
+    t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-25', derivedStatus: 'designing' }, '2026-08-25'), false)
+    t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-26', derivedStatus: 'designing' }, '2026-08-25'), false)
+    t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-24', derivedStatus: 'delivered' }, '2026-08-25'), false)
+    t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '', derivedStatus: 'designing' }, '2026-08-25'), false)
+  })
+
+  test('未提供截止日期的更新和旧文件保持兼容', (t) => {
+    const { root, hub } = fixture()
+    hub.createRequirement({ code: 'REQ-LEGACY', title: '兼容需求', dueDate: '2026-08-31' })
+    let item = hub.updateRequirement('REQ-LEGACY', { title: '只改标题' })
+    t.assert.strictEqual(item.dueDate, '2026-08-31')
+
+    const file = store.paths.requirementFile(root, 'REQ-LEGACY')
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
+    delete raw.dueDate
+    fs.writeFileSync(file, `${JSON.stringify(raw, null, 2)}\n`)
+    item = hub.getRequirement('REQ-LEGACY')
+    t.assert.strictEqual(item.dueDate, '')
+    t.assert.strictEqual(item.overdue, false)
   })
 })
