@@ -722,83 +722,42 @@ button:active,
   flex-wrap: wrap;
 }
 
-.fl-card-grid {
+.fl-project-filters {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  gap: var(--pw-space-16);
-}
-
-.fl-project-card {
-  display: flex;
-  min-height: 240px;
-  flex-direction: column;
-  padding: var(--pw-space-20);
-  border: 1px solid var(--pw-color-border);
-  border-radius: var(--pw-radius-lg);
-  background: var(--pw-color-surface-solid);
-  box-shadow: var(--pw-shadow-xs);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.fl-project-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(50, 141, 97, .26);
-  box-shadow: var(--pw-shadow-sm);
-}
-
-.fl-project-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  grid-template-columns: minmax(280px, 1fr) 160px 160px;
   gap: var(--pw-space-12);
 }
 
-.fl-project-card h2 {
-  margin: 0;
-  color: var(--pw-color-text-primary);
-  font-size: var(--pw-font-size-16);
-  font-weight: 650;
-  line-height: 24px;
-}
-
-.fl-project-description {
-  min-height: 44px;
-  margin: var(--pw-space-16) 0;
-  color: var(--pw-color-gray-600);
-  line-height: 22px;
-}
-
-.fl-project-metrics {
+.fl-project-name {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--pw-space-12);
-  margin-top: auto;
+  gap: var(--pw-space-4);
 }
 
-.fl-project-metric {
+.fl-project-overview {
+  color: var(--pw-color-text-secondary);
+}
+
+.fl-project-editor-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--pw-space-12);
   padding: var(--pw-space-12);
+  border: 1px solid var(--pw-color-border);
   border-radius: var(--pw-radius-md);
   background: var(--pw-color-surface-muted);
 }
 
-.fl-project-metric span,
-.fl-project-footer {
+.fl-project-editor-overview span {
   color: var(--pw-color-text-secondary);
-  font-size: var(--pw-font-size-12);
 }
 
-.fl-project-metric strong {
-  display: block;
-  margin-top: 2px;
+.fl-project-editor-overview strong {
   color: var(--pw-color-text-primary);
   font-size: var(--pw-font-size-20);
-  line-height: 28px;
 }
 
-.fl-project-footer {
-  margin-top: var(--pw-space-16);
+.fl-project-priority-select {
+  width: 220px;
 }
 
 .fl-metric-grid {
@@ -1969,10 +1928,17 @@ button:active,
     white-space: normal;
   }
 
-  .fl-card-grid,
-  .fl-metric-grid,
-  .fl-project-metrics {
+  .fl-metric-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fl-project-filters,
+  .fl-project-editor-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fl-project-priority-select {
+    width: 100%;
   }
 
   .fl-metric-card {
