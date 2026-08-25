@@ -733,6 +733,12 @@ button:active,
   gap: var(--pw-space-4);
 }
 
+.fl-project-name .fl-result-link {
+  max-width: 100%;
+  justify-self: start;
+  justify-content: flex-start;
+}
+
 .fl-project-overview {
   color: var(--pw-color-text-secondary);
 }
