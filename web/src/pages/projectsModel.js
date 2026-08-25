@@ -4,7 +4,7 @@ export const PROJECT_CODE_RE = /^[A-Z0-9]{1,40}$/
 export function filterProjects(items = [], { query = '', priority = '', archived = 'all' } = {}) {
   const needle = String(query || '').trim().toLowerCase()
   return items.filter((item) => {
-    const haystack = `${item.name || ''} ${item.code || ''} ${item.description || ''}`.toLowerCase()
+    const haystack = `${item.name || ''} ${item.code || ''}`.toLowerCase()
     return (!needle || haystack.includes(needle))
       && (!priority || item.priority === priority)
       && (archived === 'all' || (archived === 'archived' ? item.archived === true : item.archived !== true))

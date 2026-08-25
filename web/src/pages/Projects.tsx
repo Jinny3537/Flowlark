@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { App, Button, Checkbox, Form, Input, Modal, Select, Space, Table, Tag, Tooltip } from 'antd';
+import { App, Badge, Button, Checkbox, Form, Input, Modal, Select, Space, Table, Tag } from 'antd';
 import { EditOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
@@ -103,7 +103,7 @@ export default function Projects() {
             <Input.Search
               allowClear
               aria-label="搜索项目"
-              placeholder="搜索项目名称、代码或描述"
+              placeholder="搜索项目名称或代码"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -131,7 +131,7 @@ export default function Projects() {
             loading={loading}
             dataSource={filtered}
             locale={{ emptyText: query || priority || archiveFilter !== 'all' ? '没有匹配的项目' : '还没有项目' }}
-            scroll={{ x: 1180 }}
+            scroll={{ x: 1030 }}
             columns={[
               {
                 title: '项目', width: 230,
@@ -141,10 +141,6 @@ export default function Projects() {
                     <span className="fl-muted fl-mono">{textOf(record.code, record.slug)}</span>
                   </div>
                 ),
-              },
-              {
-                title: '项目描述', dataIndex: 'description', width: 260, ellipsis: true,
-                render: (value) => <Tooltip title={value || undefined}>{textOf(value, '暂无描述')}</Tooltip>,
               },
               {
                 title: '项目概览', width: 260,
@@ -157,7 +153,12 @@ export default function Projects() {
                 ),
               },
               { title: '优先级', dataIndex: 'priority', width: 100, render: (value) => value ? <Tag color="gold">{value}</Tag> : '未设置' },
-              { title: '状态', dataIndex: 'archived', width: 110, render: (value) => <Tag color={value ? 'default' : 'success'}>{value ? '已归档' : '进行中'}</Tag> },
+              {
+                title: '状态',
+                dataIndex: 'archived',
+                width: 120,
+                render: (value) => <Badge status={value ? 'default' : 'success'} text={value ? '已归档' : '进行中'} />,
+              },
               { title: '更新时间', dataIndex: 'updatedAt', width: 150, render: (value) => fmtTime(value) },
               {
                 title: '操作', fixed: 'right', width: 180,

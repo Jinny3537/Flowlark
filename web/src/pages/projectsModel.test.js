@@ -7,8 +7,10 @@ const items = [
   { slug: 'legacy', name: '旧项目', code: 'legacy-code', description: '历史数据', priority: '', archived: true }
 ]
 
-test('filters project rows by query, priority, and archive state', () => {
-  assert.deepEqual(filterProjects(items, { query: '安全' }).map((item) => item.slug), ['hyzl'])
+test('filters project rows by visible query fields, priority, and archive state', () => {
+  assert.deepEqual(filterProjects(items, { query: '华油' }).map((item) => item.slug), ['hyzl'])
+  assert.deepEqual(filterProjects(items, { query: 'HYZL' }).map((item) => item.slug), ['hyzl'])
+  assert.deepEqual(filterProjects(items, { query: '安全生产' }).map((item) => item.slug), [])
   assert.deepEqual(filterProjects(items, { priority: 'P1' }).map((item) => item.slug), ['hyzl'])
   assert.deepEqual(filterProjects(items, { archived: 'archived' }).map((item) => item.slug), ['legacy'])
   assert.deepEqual(filterProjects(items, { archived: 'active' }).map((item) => item.slug), ['hyzl'])
