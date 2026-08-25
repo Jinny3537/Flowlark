@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { App, Badge, Button, Checkbox, Form, Input, Modal, Select, Space, Table, Tag } from 'antd';
-import { EditOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
+import { App, Badge, Button, Checkbox, Dropdown, Empty, Form, Input, Modal, Select, Space, Tag } from 'antd';
+import { ArrowRightOutlined, EditOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
@@ -23,13 +23,12 @@ export default function Projects() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<any>(null);
   const [query, setQuery] = useState('');
-  const [priority, setPriority] = useState('');
   const [archiveFilter, setArchiveFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const filtered = useMemo(
-    () => filterProjects(items, { query, priority, archived: archiveFilter }),
-    [archiveFilter, items, priority, query],
+    () => filterProjects(items, { query, archived: archiveFilter }),
+    [archiveFilter, items, query],
   );
 
   const load = useCallback(async () => {
@@ -92,9 +91,9 @@ export default function Projects() {
   return (
     <main className="fl-page">
       <PageHeader
-        eyebrow="项目库"
-        title="项目"
-        description={`共 ${items.length} 个项目，集中查看原型版本、基线和最近更新。`}
+        eyebrow="原型项目"
+        title="选择项目，进入原型管理"
+        description="查看最新原型版本，并进入项目版本工作区。"
         actions={<Button type="primary" icon={<PlusOutlined />} disabled={!writable} onClick={startCreate}>新建项目</Button>}
       />
       <State loading={loading} error={error} onRetry={load} empty={!items.length} emptyText="还没有项目">
@@ -108,14 +107,6 @@ export default function Projects() {
               onChange={(event) => setQuery(event.target.value)}
             />
             <Select
-              allowClear
-              aria-label="项目优先级筛选"
-              placeholder="全部优先级"
-              value={priority || undefined}
-              options={PROJECT_PRIORITIES.map((value) => ({ value, label: value }))}
-              onChange={(value) => setPriority(value || '')}
-            />
-            <Select
               aria-label="项目归档状态筛选"
               value={archiveFilter}
               options={[
@@ -126,51 +117,67 @@ export default function Projects() {
               onChange={setArchiveFilter}
             />
           </div>
-          <Table
-            rowKey="slug"
-            loading={loading}
-            dataSource={filtered}
-            locale={{ emptyText: query || priority || archiveFilter !== 'all' ? '没有匹配的项目' : '还没有项目' }}
-            scroll={{ x: 1030 }}
-            columns={[
-              {
-                title: '项目', width: 230,
-                render: (_, record: any) => (
-                  <div className="fl-project-name">
-                    <Button type="link" className="fl-result-link" onClick={() => navigate(`/projects/${encodeURIComponent(record.slug)}`)}>{record.name}</Button>
-                    <span className="fl-muted fl-mono">{textOf(record.code, record.slug)}</span>
-                  </div>
-                ),
-              },
-              {
-                title: '项目概览', width: 260,
-                render: (_, record: any) => (
-                  <Space className="fl-project-overview" size="small" wrap>
-                    <span>{record.requirementCount || 0} 条需求</span>
-                    {record.overdueCount > 0 ? <Tag color="error">{record.overdueCount} 条逾期</Tag> : <span>0 条逾期</span>}
-                    <span>{record.versionCount || 0} 个版本</span>
-                  </Space>
-                ),
-              },
-              { title: '优先级', dataIndex: 'priority', width: 100, render: (value) => value ? <Tag color="gold">{value}</Tag> : '未设置' },
-              {
-                title: '状态',
-                dataIndex: 'archived',
-                width: 120,
-                render: (value) => <Badge status={value ? 'default' : 'success'} text={value ? '已归档' : '进行中'} />,
-              },
-              { title: '更新时间', dataIndex: 'updatedAt', width: 150, render: (value) => fmtTime(value) },
-              {
-                title: '操作', fixed: 'right', width: 180,
-                render: (_, record: any) => (
-                  <Space size="small">
-                    <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${encodeURIComponent(record.slug)}`)}>查看</Button>
-                    <Button type="link" size="small" icon={<EditOutlined />} disabled={!writable} onClick={() => startEdit(record)}>编辑</Button>
-                  </Space>
-                ),
-              },
-            ]}
-          />
+          {filtered.length ? (
+            <section className="fl-project-entry-grid" aria-label="原型项目列表">
+              {filtered.map((item) => {
+                const latest = item.latestVersion;
+                return (
+                  <article className="fl-project-entry-card" key={item.slug}>
+                    <button
+                      className="fl-project-entry-main"
+                      type="button"
+                      aria-label={`进入 ${item.name} 的原型管理`}
+                      onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}
+                    >
+                      <span className="fl-project-entry-head">
+                        <span className="fl-mono">{textOf(item.code, item.slug)}</span>
+                        <Badge status={item.archived ? 'default' : 'success'} text={item.archived ? '已归档' : '进行中'} />
+                      </span>
+                      <strong className="fl-project-entry-title">{item.name}</strong>
+                      {latest ? (
+                        <span className="fl-project-version-panel">
+                          <span className="fl-project-version-head">
+                            <strong className="fl-mono">{latest.versionNo}</strong>
+                            <Tag color={latest.display?.color}>{latest.display?.short || latest.display?.label}</Tag>
+                          </span>
+                          <span className="fl-project-version-title">{textOf(latest.title, '未命名版本')}</span>
+                          <span className="fl-project-version-time">更新于 {fmtTime(latest.updatedAt)}</span>
+                        </span>
+                      ) : (
+                        <span className="fl-project-version-panel is-empty">
+                          <strong>暂无可用原型版本</strong>
+                          <span>进入项目后创建首个版本</span>
+                        </span>
+                      )}
+                      <span className="fl-project-entry-footer">
+                        <span>{item.versionCount || 0} 个版本 · 基线 {textOf(item.baselineVersionNo, '未设置')}</span>
+                        <strong>进入原型管理 <ArrowRightOutlined /></strong>
+                      </span>
+                    </button>
+                    <Dropdown
+                      trigger={['click']}
+                      menu={{
+                        items: [{ key: 'edit', label: '编辑项目', icon: <EditOutlined /> }],
+                        onClick: () => startEdit(item),
+                      }}
+                    >
+                      <Button
+                        className="fl-project-entry-more"
+                        type="text"
+                        icon={<MoreOutlined />}
+                        disabled={!writable}
+                        aria-label={`更多项目操作：${item.name}`}
+                      />
+                    </Dropdown>
+                  </article>
+                );
+              })}
+            </section>
+          ) : (
+            <div className="fl-state fl-state-empty">
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的项目" />
+            </div>
+          )}
         </div>
       </State>
 
