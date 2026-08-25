@@ -485,7 +485,7 @@ export default function ProjectVersions() {
       <section className={styles.projectMeta} aria-label="项目摘要">
         <span><small>项目代码</small><strong className="fl-mono">{textOf(project?.code, slug)}</strong></span>
         <span><small>优先级</small><strong>{textOf(project?.priority, '未设置')}</strong></span>
-        <span><small>版本总数</small><strong>{versions.length}</strong></span>
+        <span><small>版本总数</small><strong>{project?.versionCount ?? versions.length}</strong></span>
         <span><small>当前基线</small><strong className="fl-mono">{baseline ? versionNoOf(baseline) : '未设置'}</strong></span>
         <span><small>最近更新</small><strong>{fmtTime(project?.updatedAt)}</strong></span>
       </section>
