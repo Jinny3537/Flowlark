@@ -160,11 +160,11 @@ export default function Projects() {
               { title: '状态', dataIndex: 'archived', width: 110, render: (value) => <Tag color={value ? 'default' : 'success'}>{value ? '已归档' : '进行中'}</Tag> },
               { title: '更新时间', dataIndex: 'updatedAt', width: 150, render: (value) => fmtTime(value) },
               {
-                title: '操作', fixed: 'right', width: 150,
+                title: '操作', fixed: 'right', width: 180,
                 render: (_, record: any) => (
                   <Space size="small">
-                    <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${encodeURIComponent(record.slug)}`)}>查看</Button>
-                    <Button type="link" icon={<EditOutlined />} disabled={!writable} onClick={() => startEdit(record)}>编辑</Button>
+                    <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${encodeURIComponent(record.slug)}`)}>查看</Button>
+                    <Button type="link" size="small" icon={<EditOutlined />} disabled={!writable} onClick={() => startEdit(record)}>编辑</Button>
                   </Space>
                 ),
               },
