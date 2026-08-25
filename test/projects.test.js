@@ -97,3 +97,37 @@ describe('项目概览派生统计', () => {
     t.assert.strictEqual(summary.overdueCount, 0)
   })
 })
+
+describe('项目最新原型摘要', () => {
+  test('返回最新非废弃版本及统一展示状态', (t) => {
+    const { hub, project } = fixture()
+    hub.addVersion(project.slug, { versionNo: 'v1.0', title: '首版原型', html: html() })
+    hub.setBaseline(project.slug, 'v1.0')
+    hub.addVersion(project.slug, {
+      versionNo: 'v2.0', title: '最新可用原型', html: html(),
+      changes: [{ type: '修改', location: '项目首页', content: '更新入口' }]
+    })
+    hub.addVersion(project.slug, {
+      versionNo: 'v3.0', title: '已废弃原型', html: html(),
+      changes: [{ type: '修改', location: '项目首页', content: '废弃试验' }]
+    })
+    hub.voidVersion(project.slug, 'v3.0')
+
+    const summary = hub.getProject(project.slug)
+    t.assert.strictEqual(summary.versionCount, 3)
+    t.assert.strictEqual(summary.baselineVersionNo, 'v1.0')
+    t.assert.strictEqual(summary.latestVersion.versionNo, 'v2.0')
+    t.assert.strictEqual(summary.latestVersion.title, '最新可用原型')
+    t.assert.strictEqual(summary.latestVersion.display.key, 'DRAFT')
+    t.assert.strictEqual(typeof summary.latestVersion.updatedAt, 'string')
+  })
+
+  test('只有废弃版本时 latestVersion 为 null', (t) => {
+    const { hub, project } = fixture()
+    hub.addVersion(project.slug, { versionNo: 'v1.0', title: '废弃原型', html: html() })
+    hub.voidVersion(project.slug, 'v1.0')
+    const summary = hub.getProject(project.slug)
+    t.assert.strictEqual(summary.versionCount, 1)
+    t.assert.strictEqual(summary.latestVersion, null)
+  })
+})

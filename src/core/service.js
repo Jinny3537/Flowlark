@@ -68,12 +68,22 @@ export class Hub {
     const project = store.readProject(this.root, slug)
     const baselineNo = store.readBaseline(this.root, slug)
     const nos = store.listVersionNos(this.root, slug)
+    const orderedVersions = rules.sortVersions(
+      nos.map((no) => store.readVersion(this.root, slug, no))
+    )
+    const latest = orderedVersions.find((version) => version.status !== 'VOID') || null
     return {
       ...project,
       priority: project.priority || '',
       archived: project.archived === true,
       baselineVersionNo: baselineNo,
       versionCount: nos.length,
+      latestVersion: latest ? {
+        versionNo: latest.versionNo,
+        title: latest.title,
+        display: rules.displayStatus(latest, baselineNo),
+        updatedAt: latest.updatedAt || latest.createdAt
+      } : null,
       ...projectx.projectMetrics(project, requirements)
     }
   }

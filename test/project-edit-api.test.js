@@ -35,6 +35,11 @@ describe('项目编辑与概览 API', () => {
     })
     t.assert.strictEqual(result.status, 201)
 
+    result = await send('POST', '/api/projects/hyzl/versions', {
+      versionNo: 'v1.0', title: 'API 原型版本', html: '<!doctype html><html><body>prototype</body></html>'
+    })
+    t.assert.strictEqual(result.status, 201)
+
     result = await send('PUT', '/api/projects/hyzl', {
       name: '华油中蓝二期', code: 'HYZL2', description: '二期项目', priority: 'P0', archived: true
     })
@@ -50,6 +55,9 @@ describe('项目编辑与概览 API', () => {
     t.assert.strictEqual(result.status, 200)
     t.assert.strictEqual(result.body[0].slug, 'hyzl')
     t.assert.strictEqual(result.body[0].requirementCount, 1)
+    t.assert.strictEqual(result.body[0].latestVersion.versionNo, 'v1.0')
+    t.assert.strictEqual(result.body[0].latestVersion.title, 'API 原型版本')
+    t.assert.strictEqual(result.body[0].latestVersion.display.key, 'DRAFT')
   })
 
   test('非法项目代码和截止日期返回结构化错误', async (t) => {
