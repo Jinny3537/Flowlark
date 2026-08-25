@@ -18,6 +18,7 @@ import * as importer from './importer.js'
 import * as drafts from './drafts.js'
 import * as watchbox from './watch-inbox.js'
 import * as reqx from './requirements.js'
+import * as projectx from './projects.js'
 import * as migrate from './migrate.js'
 import * as milestones from './milestones.js'
 import * as savedViews from './views.js'
@@ -69,7 +70,7 @@ export class Hub {
     }
   }
 
-  createProject({ name, code, description = '' }) {
+  createProject({ name, code, description = '', priority = '', archived = false }) {
     this.#assertWritable('创建项目')
     const trimmedName = String(name || '').trim()
     if (!trimmedName) throw err.bad('NAME_REQUIRED', '请填写项目名称')
@@ -90,6 +91,8 @@ export class Hub {
       name: trimmedName,
       code: code ? String(code).trim() : slug,
       description: String(description || ''),
+      priority: projectx.normalizeProjectPriority(priority),
+      archived: projectx.normalizeArchived(archived),
       createdAt: now,
       createdBy: who,
       updatedAt: now,
@@ -100,15 +103,31 @@ export class Hub {
     return this.getProject(slug)
   }
 
-  updateProject(slug, { name, description }) {
+  updateProject(slug, patch) {
     this.#assertWritable('编辑项目')
-    const p = store.readProject(this.root, slug)
-    if (name !== undefined) p.name = String(name).trim() || p.name
-    if (description !== undefined) p.description = String(description)
-    p.updatedAt = new Date().toISOString()
-    p.updatedBy = currentUser()
-    store.writeProject(this.root, slug, p)
-    this.#log(slug, null, 'PROJECT_UPDATE', `编辑项目 ${p.name}`)
+    const current = store.readProject(this.root, slug)
+    const next = { ...current }
+
+    if (patch.name !== undefined) {
+      const name = String(patch.name || '').trim()
+      if (!name) throw err.bad('NAME_REQUIRED', '请填写项目名称')
+      next.name = name
+    }
+    if (patch.code !== undefined && String(patch.code).trim() !== String(current.code || '').trim()) {
+      const code = projectx.assertEditableProjectCode(patch.code)
+      projectx.assertUniqueProjectCode(this.root, code, slug)
+      next.code = code
+    }
+    if (patch.description !== undefined) next.description = String(patch.description || '')
+    if (patch.priority !== undefined) next.priority = projectx.normalizeProjectPriority(patch.priority)
+    if (patch.archived !== undefined) next.archived = projectx.normalizeArchived(patch.archived)
+    if (next.priority === undefined) next.priority = ''
+    if (next.archived === undefined) next.archived = false
+
+    next.updatedAt = new Date().toISOString()
+    next.updatedBy = currentUser()
+    store.writeProject(this.root, slug, next)
+    this.#log(slug, null, 'PROJECT_UPDATE', `编辑项目 ${next.name}`)
     return this.getProject(slug)
   }
 
