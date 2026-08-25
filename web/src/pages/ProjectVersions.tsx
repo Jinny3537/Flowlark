@@ -17,6 +17,7 @@ import type { MenuProps } from 'antd';
 import {
   ArrowRightOutlined,
   DownloadOutlined,
+  FileAddOutlined,
   FileTextOutlined,
   LinkOutlined,
   MoreOutlined,
@@ -60,7 +61,6 @@ export default function ProjectVersions() {
 
   const [project, setProject] = useState<any>(null);
   const [versions, setVersions] = useState<any[]>([]);
-  const [readState, setReadState] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState('');
   const [includeVoid, setIncludeVoid] = useState(false);
@@ -153,16 +153,14 @@ export default function ProjectVersions() {
     setLoading(true);
     setPageError('');
     try {
-      const [nextProject, list, read, nextHealth] = await Promise.all([
+      const [nextProject, list, nextHealth] = await Promise.all([
         api.getProject(slug),
         api.listVersions(slug, { includeDraft: true, includeVoid }),
-        api.getRead(slug),
         api.health(),
       ]);
       if (requestId !== pageRequestIdRef.current) return;
       setProject(nextProject);
       setVersions(list);
-      setReadState((read as any)?.versionNo ? read : null);
       setHealth(nextHealth);
 
       const preserved = list.some(
@@ -414,9 +412,6 @@ export default function ProjectVersions() {
             </div>
           </div>
           <Space wrap className={styles.summaryActions}>
-            {isBaselineVersion(selectedVersion) && canRollback ? (
-              <Button disabled={!canWrite} onClick={rollbackBaseline}>回滚上一版</Button>
-            ) : null}
             {!isBaselineVersion(selectedVersion) && display.key !== 'VOID' ? (
               <Button disabled={!canWrite} onClick={() => setBaseline(selectedVersion)}>
                 {display.key === 'HISTORY' ? '回滚为基线' : '设为基线'}
@@ -474,24 +469,26 @@ export default function ProjectVersions() {
       <PageHeader
         eyebrow="项目版本"
         title={project?.name || slug}
-        description={[slug, project?.description].filter(Boolean).join(' · ') || '项目版本历史'}
         backTo="/projects"
         actions={(
-          <Space wrap className={styles.headerActions}>
-            <Checkbox checked={includeVoid} onChange={(event) => setIncludeVoid(event.target.checked)}>
-              显示已废弃
-            </Checkbox>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              disabled={!canWrite}
-              onClick={() => setNewVersionOpen(true)}
-            >
-              新建版本
-            </Button>
-          </Space>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!canWrite}
+            onClick={() => setNewVersionOpen(true)}
+          >
+            新建版本
+          </Button>
         )}
       />
+
+      <section className={styles.projectMeta} aria-label="项目摘要">
+        <span><small>项目代码</small><strong className="fl-mono">{textOf(project?.code, slug)}</strong></span>
+        <span><small>优先级</small><strong>{textOf(project?.priority, '未设置')}</strong></span>
+        <span><small>版本总数</small><strong>{versions.length}</strong></span>
+        <span><small>当前基线</small><strong className="fl-mono">{baseline ? versionNoOf(baseline) : '未设置'}</strong></span>
+        <span><small>最近更新</small><strong>{fmtTime(project?.updatedAt)}</strong></span>
+      </section>
 
       {!canWrite ? (
         <Alert
@@ -503,46 +500,34 @@ export default function ProjectVersions() {
         />
       ) : null}
 
-      {newCount > 0 ? (
-        <Alert
-          className={styles.pageAlert}
-          type="success"
-          showIcon
-          message={`有 ${newCount} 个新版本`}
-          description={readState?.versionNo ? `自你上次看到 ${readState.versionNo} 后新增` : '这些版本尚未标记为已读'}
-          action={(
-            <Button size="small" onClick={() => void markRead(versionNoOf(versions[0]))}>
-              标记最新为已读
-            </Button>
-          )}
-        />
-      ) : null}
-
-      {baseline ? (
-        <section className={styles.baselineStrip} aria-label="当前基线">
+      {versions.length ? (
+        <section className={styles.baselineStrip} aria-label="版本状态摘要">
           <div className={styles.baselineMain}>
-            <span className={styles.baselineKicker}>当前基线</span>
-            <strong className="fl-mono">{versionNoOf(baseline)}</strong>
-            <Tooltip title={textOf(baseline.title, '未命名版本')}>
-              <span className={styles.baselineTitle}>{textOf(baseline.title, '未命名版本')}</span>
-            </Tooltip>
+            <span className={styles.baselineKicker}>{baseline ? '当前基线' : '基线状态'}</span>
+            <strong className="fl-mono">{baseline ? versionNoOf(baseline) : '未设置'}</strong>
+            <span className={styles.baselineTitle}>
+              {baseline ? textOf(baseline.title, '未命名版本') : '选择一个有变更日志的版本设为基线'}
+            </span>
+            {newCount > 0 ? <span className={styles.readMarker}>{newCount} 个新版本</span> : null}
           </div>
-          <span className={styles.baselineMeta}>
-            {createdByOf(baseline)} · {fmtTime(baseline.baselineAt || createdAtOf(baseline))}
-          </span>
+          {baseline ? (
+            <span className={styles.baselineMeta}>
+              {createdByOf(baseline)} · {fmtTime(baseline.baselineAt || createdAtOf(baseline))}
+            </span>
+          ) : null}
           <Space wrap>
-            <Button onClick={() => void selectVersion(versionNoOf(baseline), { openMobile: true })}>查看详情</Button>
-            <Button onClick={() => openWorkbench(versionNoOf(baseline))}>打开工作台</Button>
+            {newCount > 0 ? (
+              <Button size="small" onClick={() => void markRead(versionNoOf(versions[0]))}>标记最新为已读</Button>
+            ) : null}
+            {baseline && canRollback ? (
+              <Button disabled={!canWrite} onClick={rollbackBaseline}>回滚上一版</Button>
+            ) : null}
+            {baseline ? (
+              <Button onClick={() => void selectVersion(versionNoOf(baseline), { openMobile: true })}>查看详情</Button>
+            ) : null}
+            {baseline ? <Button onClick={() => openWorkbench(versionNoOf(baseline))}>打开工作台</Button> : null}
           </Space>
         </section>
-      ) : !loading && versions.length ? (
-        <Alert
-          className={styles.pageAlert}
-          type="warning"
-          showIcon
-          message="本项目还没有基线版本"
-          description="选择一个有变更日志的版本后设为基线。"
-        />
       ) : null}
 
       {pageError ? (
@@ -557,7 +542,22 @@ export default function ProjectVersions() {
       ) : null}
 
       {!loading && !pageError && versions.length === 0 ? (
-        <div className={styles.pageEmpty}><Empty description="还没有版本" /></div>
+        <section className={styles.pageEmpty} aria-label="项目版本空状态">
+          <span className={styles.emptyIcon} aria-hidden><FileAddOutlined /></span>
+          <h2>还没有版本</h2>
+          <p>创建首个版本后，可以在这里查看原型、变更和关联需求。</p>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!canWrite}
+            onClick={() => setNewVersionOpen(true)}
+          >
+            创建首个版本
+          </Button>
+          <Checkbox checked={includeVoid} onChange={(event) => setIncludeVoid(event.target.checked)}>
+            显示已废弃版本
+          </Checkbox>
+        </section>
       ) : null}
       {loading && !versions.length ? (
         <div className={styles.pageSkeleton}><Skeleton active paragraph={{ rows: 8 }} /></div>
@@ -586,6 +586,11 @@ export default function ProjectVersions() {
                   value={sortOrder}
                   onChange={setSortOrder}
                 />
+              </div>
+              <div className={styles.indexOptions}>
+                <Checkbox checked={includeVoid} onChange={(event) => setIncludeVoid(event.target.checked)}>
+                  显示已废弃版本
+                </Checkbox>
               </div>
             </div>
 
