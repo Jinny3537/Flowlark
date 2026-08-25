@@ -39,6 +39,12 @@ describe('项目可编辑字段', () => {
     t.assert.strictEqual(fs.existsSync(beforeDir), true)
   })
 
+  test('创建项目不能复用其他项目编辑后的业务代码', (t) => {
+    const { hub, project } = fixture()
+    hub.updateProject(project.slug, { code: 'NEWCODE' })
+    throwsCode(t, 'PROJECT_CODE_EXISTS', () => hub.createProject({ name: '新项目', code: 'NEWCODE' }))
+  })
+
   test('非法字段和重复业务代码不写入项目文件', (t) => {
     const { root, hub, project } = fixture()
     hub.createProject({ name: '其他项目', code: 'OTHER' })

@@ -98,6 +98,7 @@ export class Hub {
       updatedAt: now,
       updatedBy: who
     }
+    projectx.assertUniqueProjectCode(this.root, project.code)
     store.writeProject(this.root, slug, project)
     this.#log(slug, null, 'PROJECT_CREATE', `创建项目 ${trimmedName}`)
     return this.getProject(slug)
