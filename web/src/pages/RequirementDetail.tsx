@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { App, Button, Descriptions, Form, Input, List, Modal, Space, Tag } from 'antd';
+import { App, Button, DatePicker, Descriptions, Form, Input, List, Modal, Space, Tag } from 'antd';
 import { EditOutlined, ExportOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
@@ -8,6 +9,7 @@ import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { fmtTime, textOf } from '@/utils/format';
+import { requirementPayload } from './requirementsModel.js';
 
 const statusLabels: Record<string, string> = {
   not_started: '未开始',
@@ -48,6 +50,7 @@ export default function RequirementDetail() {
       title: item?.title || '',
       description: item?.description || '',
       owner: item?.owner || '',
+      dueDate: item?.dueDate ? dayjs(item.dueDate, 'YYYY-MM-DD') : null,
     });
     setEditOpen(true);
   }, [form, item]);
@@ -61,7 +64,7 @@ export default function RequirementDetail() {
     }
     setSaving(true);
     try {
-      setItem(await api.updateRequirement(code, values));
+      setItem(await api.updateRequirement(code, requirementPayload(values)));
       message.success('需求已更新');
       setEditOpen(false);
     } catch (nextError) {
@@ -113,6 +116,12 @@ export default function RequirementDetail() {
               <Descriptions.Item label="来源">{item?.external ? '需求池' : '本地'}</Descriptions.Item>
               <Descriptions.Item label="类型">{textOf(item?.type)}</Descriptions.Item>
               <Descriptions.Item label="优先级">{textOf(item?.priority)}</Descriptions.Item>
+              <Descriptions.Item label="截止日期">
+                <Space size="small" wrap>
+                  <span>{textOf(item?.dueDate)}</span>
+                  {item?.overdue ? <Tag color="error">已逾期</Tag> : null}
+                </Space>
+              </Descriptions.Item>
               <Descriptions.Item label="关联版本">{item?.versions?.length || 0}</Descriptions.Item>
             </Descriptions>
           </section>
@@ -150,6 +159,9 @@ export default function RequirementDetail() {
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '请填写标题' }]}><Input /></Form.Item>
           <Form.Item name="description" label="描述"><Input.TextArea rows={5} /></Form.Item>
           <Form.Item name="owner" label="负责人"><Input /></Form.Item>
+          <Form.Item name="dueDate" label="截止日期">
+            <DatePicker className="fl-full-width" format="YYYY-MM-DD" placeholder="选择截止日期" />
+          </Form.Item>
         </Form>
       </Modal>
     </main>

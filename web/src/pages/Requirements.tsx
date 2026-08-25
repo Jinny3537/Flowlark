@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { App, Button, Col, Form, Input, List, Modal, Row, Select, Space, Statistic, Table, Tag } from 'antd';
+import { App, Button, Col, DatePicker, Form, Input, List, Modal, Row, Select, Space, Statistic, Table, Tag } from 'antd';
 import { CloudDownloadOutlined, PlusOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
@@ -8,6 +8,7 @@ import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { textOf } from '@/utils/format';
+import { requirementPayload } from './requirementsModel.js';
 
 const statusLabels: Record<string, string> = {
   not_started: '未开始',
@@ -85,7 +86,7 @@ export default function Requirements() {
     }
     setSaving(true);
     try {
-      const item = await api.createRequirement(values);
+      const item = await api.createRequirement(requirementPayload(values));
       message.success(`已创建 ${item.code}`);
       setOpen(false);
       form.resetFields();
@@ -224,6 +225,15 @@ export default function Requirements() {
                 render: (_, record: any) => <Space size="small" wrap>{record.type ? <Tag>{record.type}</Tag> : null}{record.priority ? <Tag color="gold">{record.priority}</Tag> : null}{!record.type && !record.priority ? '—' : null}</Space>,
               },
               { title: '本地状态', width: 140, dataIndex: 'derivedStatus', render: (value) => <Tag color={statusColors[value]}>{statusLabels[value] || textOf(value, '未开始')}</Tag> },
+              {
+                title: '截止日期', dataIndex: 'dueDate', width: 150,
+                render: (value, record: any) => (
+                  <Space size="small" wrap>
+                    <span>{textOf(value)}</span>
+                    {record.overdue ? <Tag color="error">已逾期</Tag> : null}
+                  </Space>
+                ),
+              },
               { title: '来源', width: 130, render: (_, record: any) => <Tag color={record.external ? 'success' : 'default'}>{record.external ? '需求池' : '本地'}</Tag> },
               {
                 title: '关联范围',
@@ -232,7 +242,7 @@ export default function Requirements() {
               },
               { title: '负责人', dataIndex: 'owner', width: 130, render: (value) => textOf(value) },
             ]}
-            scroll={{ x: 1140 }}
+            scroll={{ x: 1280 }}
           />
         </div>
       </State>
@@ -252,6 +262,13 @@ export default function Requirements() {
             <Col xs={24} md={8}><Form.Item name="type" label="需求类型"><Select allowClear placeholder="选择类型" options={['功能', '优化', '缺陷', '合规'].map((value) => ({ value, label: value }))} /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="priority" label="优先级"><Select allowClear placeholder="选择优先级" options={['P0', 'P1', 'P2', 'P3'].map((value) => ({ value, label: value }))} /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="url" label="外部链接" rules={[{ type: 'url', warningOnly: true, message: '请检查链接格式' }]}><Input placeholder="https://..." /></Form.Item></Col>
+          </Row>
+          <Row gutter={12}>
+            <Col xs={24} md={8}>
+              <Form.Item name="dueDate" label="截止日期">
+                <DatePicker className="fl-full-width" format="YYYY-MM-DD" placeholder="选择截止日期" />
+              </Form.Item>
+            </Col>
           </Row>
           <Form.Item name="description" label="描述"><Input.TextArea rows={4} placeholder="补充背景、验收边界或关键约束" /></Form.Item>
         </Form>
