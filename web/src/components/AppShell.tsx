@@ -278,15 +278,6 @@ export function AppShell({ children }: AppShellProps) {
                 />
               </Badge>
             </Tooltip>
-            <Tooltip title="设置">
-              <Button
-                className="fl-header-icon"
-                type="text"
-                icon={<SettingOutlined />}
-                aria-label="设置"
-                onClick={() => navigate('/settings')}
-              />
-            </Tooltip>
           </div>
           <div className="fl-header-status fl-runtime-tags" aria-label="运行状态">
             <span className={`fl-status-dot ${health ? 'is-online' : ''}`} aria-hidden="true" />
