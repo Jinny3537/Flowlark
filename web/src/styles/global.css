@@ -212,6 +212,10 @@ button:active,
   backdrop-filter: var(--pw-blur-shell);
 }
 
+.fl-app-sider .ant-layout-sider-children {
+  overflow: hidden;
+}
+
 .fl-sider-inner {
   display: flex;
   height: 100%;
@@ -237,6 +241,16 @@ button:active,
 
 .fl-brand:hover {
   background: var(--pw-color-surface-muted);
+}
+
+.fl-app-sider.is-collapsed .fl-brand {
+  justify-content: center;
+  margin-inline: var(--pw-space-10);
+  padding-inline: 0;
+}
+
+.fl-app-sider.is-collapsed .fl-brand-copy {
+  display: none;
 }
 
 .fl-brand-mark {
@@ -327,6 +341,10 @@ button:active,
   border-color: var(--pw-color-border);
 }
 
+.fl-app-sider.is-collapsed .fl-app-menu .ant-menu-item-divider {
+  margin-inline: var(--pw-space-16);
+}
+
 .fl-sider-status {
   display: flex;
   align-items: center;
@@ -338,6 +356,12 @@ button:active,
   background: rgba(255, 255, 255, .62);
   color: var(--pw-color-text-secondary);
   font-size: var(--pw-font-size-12);
+}
+
+.fl-app-sider.is-collapsed .fl-sider-status {
+  justify-content: center;
+  margin-inline: var(--pw-space-12);
+  padding-inline: var(--pw-space-8);
 }
 
 .fl-app-header {
@@ -435,6 +459,12 @@ button:active,
 .fl-header-icon {
   display: inline-grid;
   place-items: center;
+}
+
+.fl-sider-toggle {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
 }
 
 .fl-app-content {
