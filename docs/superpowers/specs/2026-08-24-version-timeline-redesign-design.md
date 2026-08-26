@@ -1,5 +1,7 @@
 # Version Timeline Redesign
 
+> Implementation note (2026-08-24): the frontend was concurrently migrated from Vue/Arco to Vite, React, React Router, and Ant Design 6 after this design was approved. The information architecture, responsive behavior, states, and acceptance criteria remain authoritative. References to Vue/Arco map directly to the active React/Ant Design components.
+
 ## Context
 
 The current project version page becomes visually unbalanced on wide screens. The baseline banner stretches across the available width while the actual version history remains a narrow column aligned to the left. This makes the baseline appear more important than the history and wastes most of the viewport.

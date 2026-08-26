@@ -6,9 +6,9 @@
 
 本地原型版本库。**CLI 管数据，浏览器看原型，数据是纯文本文件，直接进 Git。**
 
-当前版本：`v0.7.0`。除项目/版本外，已支持标注反馈、需求与迭代视图、交付快照、团队通知、macOS 应用包、只读镜像、跨仓库搜索、原型修改工作台、AI 草稿和需求平台接入。
+当前版本：`v0.7.0`。除项目/版本外，已支持标注反馈、需求与迭代视图、交付快照、团队通知、只读镜像、跨仓库搜索、原型修改工作台、AI 草稿和需求平台接入。
 
-macOS 安装、更新与恢复见 [安装](docs/INSTALL-MACOS.md)、[更新](docs/UPDATES.md)、[镜像](docs/MIRROR.md) 和 [故障恢复](docs/TROUBLESHOOTING.md)。
+更新、镜像与故障恢复见 [更新](docs/UPDATES.md)、[镜像](docs/MIRROR.md) 和 [故障恢复](docs/TROUBLESHOOTING.md)。
 
 给需要在一堆 HTML 原型迭代里说清楚「现在到底按哪一版开发」的产品经理和研发。
 
@@ -25,9 +25,9 @@ macOS 安装、更新与恢复见 [安装](docs/INSTALL-MACOS.md)、[更新](doc
 
 ```bash
 ./start.sh
+# 或
+npm start
 ```
-
-macOS 上也可以直接**双击 `启动.command`**。
 
 脚本做四件事：检查 Node 环境 → 构建浏览器工作台 → 首次运行时初始化仓库并生成一个可点的示例项目 → 起服务并打开浏览器。
 
@@ -317,7 +317,6 @@ node bin/flowlark.js --help
 
 ```
 start.sh          一键启动（检查环境 / 构建 / 初始化 / 起服务）
-启动.command       macOS 双击入口
 bin/              CLI 入口
 src/core/         ← CLI 与 HTTP 的唯一事实来源
   store.js        文件读写
