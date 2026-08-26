@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
-import { errorText } from '@/services/requestModel.js';
+import { ApiError, errorText } from '@/services/requestModel.js';
 import { fmtTime, textOf } from '@/utils/format';
 import {
   filterProjects, initialProjectValues, isProjectCodeAllowed, projectPayload, PROJECT_PRIORITIES,
@@ -51,6 +51,7 @@ export default function Projects() {
 
   const startEdit = useCallback((project: any) => {
     setEditingProject(project);
+    form.resetFields();
     form.setFieldsValue(initialProjectValues(project));
     setEditorOpen(true);
   }, [form]);
@@ -63,6 +64,10 @@ export default function Projects() {
 
   const saveProject = useCallback(async () => {
     let values: any;
+    form.setFields([
+      { name: 'name', errors: [] },
+      { name: 'code', errors: [] },
+    ]);
     try {
       values = await form.validateFields();
     } catch {
@@ -78,7 +83,16 @@ export default function Projects() {
       closeEditor();
       await load();
     } catch (nextError) {
-      message.error(errorText(nextError, editingProject ? '更新项目失败' : '创建项目失败'));
+      const nextMessage = errorText(nextError, editingProject ? '更新项目失败' : '创建项目失败');
+      if (nextError instanceof ApiError) {
+        if (nextError.code === 'NAME_REQUIRED') {
+          form.setFields([{ name: 'name', errors: [nextMessage] }]);
+        }
+        if (nextError.code === 'PROJECT_CODE_INVALID' || nextError.code === 'PROJECT_CODE_EXISTS') {
+          form.setFields([{ name: 'code', errors: [nextMessage] }]);
+        }
+      }
+      message.error(nextMessage);
     } finally {
       setSaving(false);
     }
@@ -130,10 +144,12 @@ export default function Projects() {
                       onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}
                     >
                       <span className="fl-project-entry-head">
-                        <span className="fl-mono">{textOf(item.code, item.slug)}</span>
+                        <span className="fl-project-entry-identity">
+                          <strong className="fl-project-entry-title">{item.name}</strong>
+                          <span className="fl-project-entry-code fl-mono">{textOf(item.code, item.slug)}</span>
+                        </span>
                         <Badge status={item.archived ? 'default' : 'success'} text={item.archived ? '已归档' : '进行中'} />
                       </span>
-                      <strong className="fl-project-entry-title">{item.name}</strong>
                       {latest ? (
                         <span className="fl-project-version-panel">
                           <span className="fl-project-version-head">

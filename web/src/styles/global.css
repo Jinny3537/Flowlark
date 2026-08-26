@@ -787,16 +787,27 @@ button:active,
 }
 
 .fl-project-entry-head {
+  align-items: flex-start;
   padding-right: 36px;
   color: var(--pw-color-text-secondary);
   font-size: var(--pw-font-size-12);
 }
 
+.fl-project-entry-identity {
+  display: grid;
+  min-width: 0;
+  gap: var(--pw-space-4);
+}
+
 .fl-project-entry-title {
-  margin-top: var(--pw-space-12);
   color: var(--pw-color-text-primary);
   font-size: var(--pw-font-size-16);
   line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.fl-project-entry-code {
+  color: var(--pw-color-text-secondary);
 }
 
 .fl-project-version-panel {
