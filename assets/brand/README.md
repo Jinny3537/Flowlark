@@ -13,7 +13,7 @@
 
 Web 端另有三份拷贝在 `web/public/`（`logo.svg` / `app-icon.svg` / `favicon.svg`），由构建直接产出到 `dist/`。**改动请改这里，再同步过去**，别只改一边。
 
-界面里不要用 `<img src="/logo.svg">`，用 `web/src/components/BrandMark.vue`：它能跟随上下文换色（深色块上传 `mono="#fff"`），内联渲染也不会有 logo 迟到一帧的闪动。
+界面使用 `/logo.svg`；React 工作台外壳在 `web/src/components/AppShell.tsx` 中统一实现品牌标记。
 
 ## 颜色
 
@@ -32,11 +32,11 @@ Web 端另有三份拷贝在 `web/public/`（`logo.svg` / `app-icon.svg` / `favi
 
 主色不是从渐变两端取的，是取中段。原因：`#0B5F55` 在小字上发闷，`#2ED3B7` 在白底上对比度不到 4.5:1。`#0E9384` 对白底是 4.6:1，正文小字也读得清。
 
-改色只改 `web/src/brand.js` —— 那里的值同时供给 Ant Design 主题 token 和手写 CSS。
+界面颜色 token 位于 `web/src/styles/global.css`，Ant Design 主题 token 位于 `web/src/main.tsx` 的 `ConfigProvider`；调整品牌色时同步维护这两个当前来源。
 
 ## 用法边界
 
 - 标记可以等比缩放，不要拉伸、不要旋转、不要改渐变方向。
-- 单色场景（印刷、深色底）用 `BrandMark` 的 `mono` 属性，不要自己给渐变加滤镜。
+- 单色场景（印刷、深色底）使用专门导出的单色标记，不要自己给渐变加滤镜。
 - 标记与文字「Flowlark」之间留 10px，小于这个间距会显得挤。
 - Slogan 在窄屏（<1100px）自动隐藏，功能区优先。

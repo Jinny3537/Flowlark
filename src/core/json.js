@@ -8,7 +8,7 @@
 /** 各实体的键顺序。未列出的键排在末尾，按字母序，保证输出仍然是确定的。 */
 const KEY_ORDER = {
   repo: ['schemaVersion', 'name', 'createdAt', 'settings'],
-  project: ['slug', 'name', 'code', 'description', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'],
+  project: ['slug', 'name', 'code', 'description', 'priority', 'archived', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'],
   version: [
     'versionNo', 'title', 'status', 'reviewStatus', 'note', 'tags',
     'file', 'fileSize', 'sourcePath', 'externalRefs',
@@ -16,7 +16,7 @@ const KEY_ORDER = {
     'createdAt', 'createdBy', 'updatedAt', 'baselineAt', 'specUpdatedAt'
   ],
   change: ['type', 'location', 'content', 'requirement'],
-  requirement: ['code', 'title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'statusOverride', 'external', 'url', 'createdAt', 'updatedAt'],
+  requirement: ['code', 'title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'statusOverride', 'external', 'url', 'createdAt', 'updatedAt'],
   milestone: ['name', 'title', 'startAt', 'endAt', 'items', 'external', 'createdAt', 'updatedAt'],
   snapshot: ['name', 'title', 'milestone', 'items', 'changesDigest', 'createdAt', 'createdBy'],
   attachment: ['name', 'size', 'contentType', 'addedAt', 'addedBy'],

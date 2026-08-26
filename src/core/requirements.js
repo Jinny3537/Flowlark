@@ -7,6 +7,30 @@ import * as store from './store.js'
 import { INTERNAL_DIR } from './repo.js'
 
 export const REQUIREMENT_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+export const DUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+export function normalizeDueDate(value) {
+  const dueDate = String(value || '').trim()
+  if (!dueDate) return ''
+  if (!DUE_DATE_RE.test(dueDate)) {
+    throw err.bad('REQUIREMENT_DUE_DATE_INVALID', `截止日期「${dueDate}」不合法`, '请使用 YYYY-MM-DD 格式')
+  }
+  const [year, month, day] = dueDate.split('-').map(Number)
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
+    throw err.bad('REQUIREMENT_DUE_DATE_INVALID', `截止日期「${dueDate}」不存在`, '请选择有效日历日期')
+  }
+  return dueDate
+}
+
+export function localDate(now = new Date()) {
+  const part = (value) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${part(now.getMonth() + 1)}-${part(now.getDate())}`
+}
+
+export function isRequirementOverdue(item, today = localDate()) {
+  return Boolean(item && item.dueDate && item.dueDate < today && item.derivedStatus !== 'delivered')
+}
 
 export function assertRequirementCode(code) {
   const value = String(code || '').trim()
@@ -49,6 +73,7 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
     type: String(input.type || ''),
     priority: String(input.priority || ''),
     owner: String(input.owner || ''),
+    dueDate: normalizeDueDate(input.dueDate),
     statusOverride: input.statusOverride || null,
     external: input.external || null,
     url: String(input.url || ''),
@@ -63,11 +88,12 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
 
 export function updateRequirement(root, code, patch) {
   const item = readRequirement(root, code)
-  for (const key of ['title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'statusOverride', 'external', 'url']) {
+  for (const key of ['title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'statusOverride', 'external', 'url']) {
     if (patch[key] !== undefined) item[key] = patch[key]
   }
   if (!String(item.title || '').trim()) throw err.bad('REQUIREMENT_TITLE_REQUIRED', '请填写需求标题')
   item.title = String(item.title).trim()
+  item.dueDate = normalizeDueDate(item.dueDate)
   item.updatedAt = new Date().toISOString()
   fs.writeFileSync(store.paths.requirementFile(root, item.code), stringify(item, 'requirement'))
   return item
@@ -152,7 +178,9 @@ export function deriveRequirementStatus(root, code) {
 export function requirementDetail(root, code) {
   const item = readRequirement(root, code)
   const versions = linkedVersions(root, code)
-  return { ...item, derivedStatus: item.statusOverride || deriveRequirementStatus(root, code), manualStatus: !!item.statusOverride, versions }
+  const derivedStatus = item.statusOverride || deriveRequirementStatus(root, code)
+  const detail = { ...item, dueDate: item.dueDate || '', derivedStatus, manualStatus: !!item.statusOverride, versions }
+  return { ...detail, overdue: isRequirementOverdue(detail) }
 }
 
 export function listRequirements(root) {

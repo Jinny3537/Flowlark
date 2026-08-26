@@ -31,10 +31,9 @@
   ],
   "scripts": {
     "test": "node --test",
-    "test:package": "FLOWLARK_PACKAGE_TEST=1 node --test test/package-macos.test.js",
     "build:web": "cd web && npm install && npm run build",
-    "package:macos": "npm run build:web && bash scripts/package-macos.sh $(command -v node) dist",
-    "start": "node bin/flowlark.js serve",
+    "start": "bash ./start.sh",
+    "serve": "node bin/flowlark.js serve",
     "prepublishOnly": "npm run build:web && npm test"
   },
   "keywords": [

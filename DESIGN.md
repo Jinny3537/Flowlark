@@ -50,8 +50,8 @@ Flowlark 是本地原型版本库和产品协作工作台。
 
 ## 视觉与组件约束
 
-- 使用 Vue 3、Arco Design Vue 和现有 `--fl-*` 设计 token。
+- 使用 React 19、React Router 7、Ant Design 6 和现有 `--fl-*` 设计 token。
 - 设计 token、字阶、间距、圆角、阴影和无障碍要求以 `design-system/flowlark/MASTER.md` 为准。
-- 图标统一使用 Arco Design Vue 图标或迁移期选定的单一线性图标族。
+- 图标统一使用 `@ant-design/icons`。
 - 状态不能只靠颜色表达，必须同时有文字标签或可读说明。
 - 顶部栏在窄屏下优先收起仓库路径、辅助状态和文字标签，保留搜索、状态与核心操作入口。

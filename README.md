@@ -6,9 +6,9 @@
 
 本地原型版本库。**CLI 管数据，浏览器看原型，数据是纯文本文件，直接进 Git。**
 
-当前版本：`v0.7.0`。除项目/版本外，已支持标注反馈、需求与迭代视图、交付快照、团队通知、macOS 应用包、只读镜像、跨仓库搜索、原型修改工作台、AI 草稿和需求平台接入。
+当前版本：`v0.7.0`。除项目/版本外，已支持标注反馈、需求与迭代视图、交付快照、团队通知、只读镜像、跨仓库搜索、原型修改工作台、AI 草稿和需求平台接入。
 
-macOS 安装、更新与恢复见 [安装](docs/INSTALL-MACOS.md)、[更新](docs/UPDATES.md)、[镜像](docs/MIRROR.md) 和 [故障恢复](docs/TROUBLESHOOTING.md)。
+更新、镜像与故障恢复见 [更新](docs/UPDATES.md)、[镜像](docs/MIRROR.md) 和 [故障恢复](docs/TROUBLESHOOTING.md)。
 
 给需要在一堆 HTML 原型迭代里说清楚「现在到底按哪一版开发」的产品经理和研发。
 
@@ -25,9 +25,9 @@ macOS 安装、更新与恢复见 [安装](docs/INSTALL-MACOS.md)、[更新](doc
 
 ```bash
 ./start.sh
+# 或
+npm start
 ```
-
-macOS 上也可以直接**双击 `启动.command`**。
 
 脚本做四件事：检查 Node 环境 → 构建浏览器工作台 → 首次运行时初始化仓库并生成一个可点的示例项目 → 起服务并打开浏览器。
 
@@ -313,11 +313,10 @@ npm test                 # 跑全部测试
 node bin/flowlark.js --help
 ```
 
-**运行时零依赖。** CLI 与本地服务只用 Node 内置模块（`node:http`、`node:util` 的 parseArgs、`node:fs`）。本地工具装起来该是一秒的事，不该为了几十行路由拖进一棵依赖树。浏览器工作台的 Vue / Ant Design Vue 只是构建期依赖，产物是静态文件。
+**运行时零依赖。** CLI 与本地服务只用 Node 内置模块（`node:http`、`node:util` 的 parseArgs、`node:fs`）。本地工具装起来该是一秒的事，不该为了几十行路由拖进一棵依赖树。浏览器工作台的 React 19、React Router 7 和 Ant Design 6 只是构建期依赖，产物是静态文件。
 
 ```
 start.sh          一键启动（检查环境 / 构建 / 初始化 / 起服务）
-启动.command       macOS 双击入口
 bin/              CLI 入口
 src/core/         ← CLI 与 HTTP 的唯一事实来源
   store.js        文件读写
@@ -329,7 +328,7 @@ src/core/         ← CLI 与 HTTP 的唯一事实来源
   offline.js      离线版本生成
 src/cli/          命令行（commands / cmd-git / cmd-find）
 src/server/       本地 HTTP 服务 + 沙箱预览
-web/              Vue 3 工作台
+web/              React 19 工作台
 test/             八组测试，全部跑真实进程 / 真实 git / 真实 HTTP
 docs/STORAGE.md   存储设计与 Git 冲突面分析
 docs/ROADMAP.md   产品升级路线图
@@ -449,6 +448,6 @@ docs/V2-BLUEPRINT.md  v2.0 蓝图：需求驱动的全链路
 - **并排对比无法同步页面内滚动**。原型跑在跨源 iframe 里（这正是沙箱隔离的目的），读不到它内部的滚动位置。真正的像素级同步需要往原型里注入脚本，会破坏隔离，不做。
 - **离线版不递归抓取 CSS 里的字体**。`@font-face` 失效只是字体回退，不影响布局；递归抓取会让复杂度和失败面都放大。
 - **搜索是暴力扫描**，不建索引。几百个版本仍是毫秒级；引索引会带来「什么时候重建」这个新问题，不值得。
-- **工作台主 chunk 约 1.5MB**（Ant Design 未做按需加载）。本地加载无感，在意可引 `unplugin-vue-components`。
+- **工作台主 chunk 约 1.7MB**。Vite 构建会给出非阻塞的 chunk-size warning；本地工作台加载不受影响。
 - **局域网只读靠来源 IP 判定**，不是账号鉴权。同一台机器上的其他用户、以及能伪造回环来源的攻击者不在防护范围内。这是「内网协作工具」这个定位下的合理取舍；真需要账号体系的场景，这个产品本来就不合适。
 - **附件没有大小之外的类型限制**。任何文件都能挂上去，包括可执行文件。仓库是团队自己的，这个信任前提和 Git 仓库本身一致。
