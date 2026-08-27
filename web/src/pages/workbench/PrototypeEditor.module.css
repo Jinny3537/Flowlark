@@ -97,13 +97,21 @@
   min-width: 0;
   align-items: center;
   gap: var(--fl-s-2);
-  overflow-x: auto;
+  overflow: hidden;
   padding: var(--fl-s-2);
   border: 1px solid var(--fl-line);
   border-radius: var(--fl-r-4);
   background: color-mix(in srgb, var(--fl-surface) 96%, transparent);
   box-shadow: var(--fl-shadow-3);
   pointer-events: auto;
+}
+
+.toolsScroller {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--fl-s-2);
+  overflow-x: auto;
   scrollbar-width: thin;
 }
 
@@ -118,6 +126,10 @@
   height: 28px;
   flex: 0 0 1px;
   background: var(--fl-line);
+}
+
+.completeButton {
+  flex: 0 0 auto;
 }
 
 .fontSize {

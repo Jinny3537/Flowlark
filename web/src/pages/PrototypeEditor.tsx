@@ -340,102 +340,108 @@ export default function PrototypeEditor() {
 
       <div className={styles.toolbarShell}>
         <div className={styles.toolbar} role="toolbar" aria-label="文字格式工具栏">
-          <Tooltip title="加粗">
-            <Button
-              icon={<BoldOutlined />}
-              aria-label="加粗"
-              aria-pressed={editorState.bold}
-              type={editorState.bold ? 'primary' : 'default'}
-              disabled={!ready || saving}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => sendCommand('bold')}
-            />
-          </Tooltip>
-          <Tooltip title="斜体">
-            <Button
-              icon={<ItalicOutlined />}
-              aria-label="斜体"
-              aria-pressed={editorState.italic}
-              type={editorState.italic ? 'primary' : 'default'}
-              disabled={!ready || saving}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => sendCommand('italic')}
-            />
-          </Tooltip>
-          <Tooltip title="下划线">
-            <Button
-              icon={<UnderlineOutlined />}
-              aria-label="下划线"
-              aria-pressed={editorState.underline}
-              type={editorState.underline ? 'primary' : 'default'}
-              disabled={!ready || saving}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => sendCommand('underline')}
-            />
-          </Tooltip>
-
-          <span className={styles.divider} aria-hidden />
-
-          <Select
-            className={styles.fontSize}
-            aria-label="字号"
-            value={editorState.fontSize}
-            options={FONT_SIZE_OPTIONS}
-            disabled={!ready || saving}
-            onChange={(value) => sendCommand('fontSize', value)}
-          />
-          <Tooltip title="文字颜色">
-            <label className={styles.colorControl} aria-label="文字颜色">
-              <FontColorsOutlined aria-hidden />
-              <input
-                type="color"
-                value={normalizedColor}
+          <div className={styles.toolsScroller}>
+            <Tooltip title="加粗">
+              <Button
+                icon={<BoldOutlined />}
+                aria-label="加粗"
+                aria-pressed={editorState.bold}
+                type={editorState.bold ? 'primary' : 'default'}
                 disabled={!ready || saving}
-                aria-label="选择文字颜色"
-                onChange={(event) => sendCommand('foreColor', event.target.value)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => sendCommand('bold')}
               />
-            </label>
-          </Tooltip>
+            </Tooltip>
+            <Tooltip title="斜体">
+              <Button
+                icon={<ItalicOutlined />}
+                aria-label="斜体"
+                aria-pressed={editorState.italic}
+                type={editorState.italic ? 'primary' : 'default'}
+                disabled={!ready || saving}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => sendCommand('italic')}
+              />
+            </Tooltip>
+            <Tooltip title="下划线">
+              <Button
+                icon={<UnderlineOutlined />}
+                aria-label="下划线"
+                aria-pressed={editorState.underline}
+                type={editorState.underline ? 'primary' : 'default'}
+                disabled={!ready || saving}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => sendCommand('underline')}
+              />
+            </Tooltip>
 
-          <span className={styles.divider} aria-hidden />
+            <span className={styles.divider} aria-hidden />
 
-          <Tooltip title="左对齐">
-            <Button
-              icon={<AlignLeftOutlined />}
-              aria-label="左对齐"
-              aria-pressed={editorState.justifyLeft}
-              type={editorState.justifyLeft ? 'primary' : 'default'}
+            <Select
+              className={styles.fontSize}
+              aria-label="字号"
+              value={editorState.fontSize}
+              options={FONT_SIZE_OPTIONS}
               disabled={!ready || saving}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => sendCommand('justifyLeft')}
+              onChange={(value) => sendCommand('fontSize', value)}
             />
-          </Tooltip>
-          <Tooltip title="居中">
-            <Button
-              icon={<AlignCenterOutlined />}
-              aria-label="居中"
-              aria-pressed={editorState.justifyCenter}
-              type={editorState.justifyCenter ? 'primary' : 'default'}
-              disabled={!ready || saving}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => sendCommand('justifyCenter')}
-            />
-          </Tooltip>
-          <Tooltip title="右对齐">
-            <Button
-              icon={<AlignRightOutlined />}
-              aria-label="右对齐"
-              aria-pressed={editorState.justifyRight}
-              type={editorState.justifyRight ? 'primary' : 'default'}
-              disabled={!ready || saving}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => sendCommand('justifyRight')}
-            />
-          </Tooltip>
+            <Tooltip title="文字颜色">
+              <label className={styles.colorControl} aria-label="文字颜色">
+                <FontColorsOutlined aria-hidden />
+                <input
+                  type="color"
+                  value={normalizedColor}
+                  disabled={!ready || saving}
+                  aria-label="选择文字颜色"
+                  onChange={(event) => sendCommand('foreColor', event.target.value)}
+                />
+              </label>
+            </Tooltip>
 
-          <span className={styles.divider} aria-hidden />
+            <span className={styles.divider} aria-hidden />
 
-          <Button type="primary" loading={saving} disabled={!ready} onClick={() => void save()}>
+            <Tooltip title="左对齐">
+              <Button
+                icon={<AlignLeftOutlined />}
+                aria-label="左对齐"
+                aria-pressed={editorState.justifyLeft}
+                type={editorState.justifyLeft ? 'primary' : 'default'}
+                disabled={!ready || saving}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => sendCommand('justifyLeft')}
+              />
+            </Tooltip>
+            <Tooltip title="居中">
+              <Button
+                icon={<AlignCenterOutlined />}
+                aria-label="居中"
+                aria-pressed={editorState.justifyCenter}
+                type={editorState.justifyCenter ? 'primary' : 'default'}
+                disabled={!ready || saving}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => sendCommand('justifyCenter')}
+              />
+            </Tooltip>
+            <Tooltip title="右对齐">
+              <Button
+                icon={<AlignRightOutlined />}
+                aria-label="右对齐"
+                aria-pressed={editorState.justifyRight}
+                type={editorState.justifyRight ? 'primary' : 'default'}
+                disabled={!ready || saving}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => sendCommand('justifyRight')}
+              />
+            </Tooltip>
+          </div>
+
+          <Button
+            className={styles.completeButton}
+            type="primary"
+            loading={saving}
+            disabled={!ready}
+            onClick={() => void save()}
+          >
             完成
           </Button>
         </div>
