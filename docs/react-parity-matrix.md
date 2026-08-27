@@ -32,10 +32,10 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 
 2026-08-28:
 
-- `npm test`: 417 tests passed with 0 failures.
+- `npm test`: 423 tests passed with 0 failures.
 - `node --test web/src/**/*.test.js`: 74 frontend model tests passed with 0 failures.
 - `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
-- Browser smoke test on a disposable workspace passed for the milestone list, milestone detail, lifecycle transition, freeze blockers, MCP settings, stdio transport selection, and local runtime fields; browser console reported no errors.
+- Browser smoke test on a disposable workspace passed for the milestone list, milestone detail, lifecycle transition, freeze blockers, active-scope dialog, MCP settings, stdio transport selection, and local runtime fields; browser console reported no errors.
 - Target-platform live writes remain unverified because no writable test environment is available. Milestone lifecycle and MCP stdio runtime remain `gap` until the P4 checklist in `docs/ASSESS-TASK-MCP.md` passes.
 
 ## Task 5 Verification Evidence

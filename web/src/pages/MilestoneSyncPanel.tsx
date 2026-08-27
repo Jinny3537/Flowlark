@@ -17,6 +17,7 @@ type Props = {
   item: any;
   preflight: any;
   journal: any;
+  execution: any;
   writable: boolean;
   onChanged: () => Promise<void> | void;
 };
@@ -40,7 +41,7 @@ const LOCAL_TARGETS: Record<string, string> = {
   archive: 'archived',
 };
 
-export function MilestoneSyncPanel({ name, item, preflight, journal, writable, onChanged }: Props) {
+export function MilestoneSyncPanel({ name, item, preflight, journal, execution, writable, onChanged }: Props) {
   const { message } = App.useApp();
   const navigate = useNavigate();
   const [plan, setPlan] = useState<any>(null);
@@ -51,7 +52,7 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
   const [resolutions, setResolutions] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [operationError, setOperationError] = useState('');
-  const [localCancelOpen, setLocalCancelOpen] = useState(false);
+  const [localReasonAction, setLocalReasonAction] = useState('');
   const groups = useMemo(() => groupPlanOperations(plan || {}), [plan]);
   const health = syncHealth({ external: item?.external, journal });
   const lifecycle = milestoneStatusMeta(item?.status);
@@ -117,9 +118,9 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
       await prepare(action);
       return;
     }
-    if (action === 'cancel') {
+    if (action === 'cancel' || action === 'unfreeze') {
       setReason('');
-      setLocalCancelOpen(true);
+      setLocalReasonAction(action);
       return;
     }
     const target = action === 'cancel' ? 'canceled' : LOCAL_TARGETS[action];
@@ -135,15 +136,17 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
     }
   }
 
-  async function confirmLocalCancel() {
-    setBusy('transition:cancel');
+  async function confirmLocalReason() {
+    const action = localReasonAction;
+    const target = action === 'cancel' ? 'canceled' : LOCAL_TARGETS[action];
+    setBusy(`transition:${action}`);
     try {
-      await api.transitionMilestone(name, { target: 'canceled', reason: reason.trim() });
-      message.success('取消迭代完成');
-      setLocalCancelOpen(false);
+      await api.transitionMilestone(name, { target, reason: reason.trim() });
+      message.success(`${ACTION_LABELS[action]}完成`);
+      setLocalReasonAction('');
       await onChanged();
     } catch (error) {
-      message.error(errorText(error, '取消迭代失败'));
+      message.error(errorText(error, `${ACTION_LABELS[action]}失败`));
     } finally {
       setBusy('');
     }
@@ -185,6 +188,9 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
         <Descriptions.Item label="生命周期"><Tag color={lifecycle.color}>{lifecycle.label}</Tag></Descriptions.Item>
         <Descriptions.Item label="平台同步"><Tag color={health.tone}>{health.label}</Tag></Descriptions.Item>
         <Descriptions.Item label="冻结检查"><Tag color={preflight?.ready ? 'success' : 'warning'}>{preflight?.ready ? '已通过' : `${preflight?.blockers?.length || 0} 项阻塞`}</Tag></Descriptions.Item>
+        {execution ? <Descriptions.Item label="平台冲刺状态">{String(execution.sprint?.status ?? '未知')}</Descriptions.Item> : null}
+        {execution ? <Descriptions.Item label="平台任务">{execution.tasks?.total || 0} 项 · 未分配 {execution.tasks?.unassigned || 0}</Descriptions.Item> : null}
+        {execution ? <Descriptions.Item label="任务状态分布">{Object.entries(execution.tasks?.byStatus || {}).map(([status, count]) => `${status}: ${count}`).join(' · ') || '暂无任务'}</Descriptions.Item> : null}
       </Descriptions>
 
       {preflight?.blockers?.length ? (
@@ -274,17 +280,17 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
         <Alert className="fl-mcp-result" type="info" showIcon icon={<SafetyCertificateOutlined />} message={`计划哈希：${plan?.hash || ''}`} />
       </Modal>
       <Modal
-        title="取消本地迭代？"
-        open={localCancelOpen}
-        okText="确认取消"
-        okButtonProps={{ danger: true, disabled: !reason.trim() }}
-        confirmLoading={busy === 'transition:cancel'}
-        onOk={() => void confirmLocalCancel()}
-        onCancel={() => setLocalCancelOpen(false)}
+        title={localReasonAction === 'cancel' ? '取消本地迭代？' : '解除迭代冻结？'}
+        open={Boolean(localReasonAction)}
+        okText={localReasonAction === 'cancel' ? '确认取消' : '确认解除冻结'}
+        okButtonProps={{ danger: localReasonAction === 'cancel', disabled: !reason.trim() }}
+        confirmLoading={busy === `transition:${localReasonAction}`}
+        onOk={() => void confirmLocalReason()}
+        onCancel={() => setLocalReasonAction('')}
       >
-        <p>取消后将进入终态，不能继续编辑。该迭代尚未关联平台冲刺，因此只修改 Flowlark 本地状态。</p>
-        <label htmlFor="milestone-local-cancel-reason">取消原因</label>
-        <Input.TextArea id="milestone-local-cancel-reason" value={reason} rows={3} maxLength={255} showCount onChange={(event) => setReason(event.target.value)} />
+        <p>{localReasonAction === 'cancel' ? '取消后将进入终态，不能继续编辑。该迭代尚未关联平台冲刺，因此只修改 Flowlark 本地状态。' : '解除冻结后迭代回到评审中，可以再次调整范围。原因会写入操作日志。'}</p>
+        <label htmlFor="milestone-local-transition-reason">{localReasonAction === 'cancel' ? '取消原因' : '解除冻结原因'}</label>
+        <Input.TextArea id="milestone-local-transition-reason" value={reason} rows={3} maxLength={255} showCount onChange={(event) => setReason(event.target.value)} />
       </Modal>
     </section>
   );

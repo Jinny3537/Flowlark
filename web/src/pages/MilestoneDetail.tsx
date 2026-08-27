@@ -10,6 +10,7 @@ import { errorText } from '@/services/requestModel.js';
 import { fmtTime, textOf } from '@/utils/format';
 import { milestoneItems, withoutMilestoneItem } from './milestoneModel.js';
 import { MilestoneSyncPanel } from './MilestoneSyncPanel';
+import { ActiveScopeChangeDialog } from './ActiveScopeChangeDialog';
 
 export default function MilestoneDetail() {
   const navigate = useNavigate();
@@ -23,10 +24,12 @@ export default function MilestoneDetail() {
   const [versions, setVersions] = useState<any[]>([]);
   const [preflight, setPreflight] = useState<any>(null);
   const [journal, setJournal] = useState<any>(null);
+  const [execution, setExecution] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [scopeOpen, setScopeOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -42,18 +45,20 @@ export default function MilestoneDetail() {
     setLoading(true);
     setError('');
     try {
-      const [nextItem, nextRequirements, nextProjects, nextPreflight, nextJournal] = await Promise.all([
+      const [nextItem, nextRequirements, nextProjects, nextPreflight, nextJournal, nextExecution] = await Promise.all([
         api.getMilestone(name),
         api.listRequirements(),
         api.listProjects(),
         api.milestonePreflight(name),
         api.milestoneSyncJournal(name),
+        api.milestoneExecutionSummary(name).catch(() => null),
       ]);
       setItem(nextItem);
       setRequirements(nextRequirements);
       setProjects(nextProjects);
       setPreflight(nextPreflight);
       setJournal(nextJournal);
+      setExecution(nextExecution);
     } catch (nextError) {
       setError(errorText(nextError, '无法读取迭代详情'));
     } finally {
@@ -168,6 +173,7 @@ export default function MilestoneDetail() {
           <Space wrap>
             <Button icon={<EditOutlined />} disabled={!editable} onClick={openEdit}>编辑计划</Button>
             <Button icon={<PlusOutlined />} disabled={!editable} onClick={() => setAddOpen(true)}>添加版本</Button>
+            {item.status === 'active' ? <Button danger icon={<EditOutlined />} disabled={!writable} onClick={() => setScopeOpen(true)}>变更范围</Button> : null}
             <Button icon={<ExportOutlined />} loading={exporting} disabled={!writable} onClick={exportPackage}>导出迭代包</Button>
           </Space>
         ) : null}
@@ -192,6 +198,7 @@ export default function MilestoneDetail() {
               item={item}
               preflight={preflight}
               journal={journal}
+              execution={execution}
               writable={writable}
               onChanged={load}
             />
@@ -268,6 +275,18 @@ export default function MilestoneDetail() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {item ? (
+        <ActiveScopeChangeDialog
+          open={scopeOpen}
+          name={name}
+          item={item}
+          requirements={requirements}
+          projects={projects}
+          onClose={() => setScopeOpen(false)}
+          onChanged={load}
+        />
+      ) : null}
 
       <Modal
         title="添加需求版本"

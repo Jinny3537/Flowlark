@@ -319,7 +319,7 @@ ${c.cyan('flowlark git brief')} 就是把这些整理成一段说明，粘给助
   resume <迭代>                      从失败步骤恢复
   transition <迭代> <状态>           本地状态流转
 
-高风险操作必须带 --reason；取消本地迭代还必须显式传入 --confirm。
+高风险操作必须带 --reason；开始、结束、远端取消和进行中范围变化还必须传入 --unfinished；取消本地迭代必须显式传入 --confirm。
 平台写入不会由 plan 触发，只有 sync --confirm 才会执行。
 `,
 

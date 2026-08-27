@@ -599,6 +599,37 @@ export class Hub {
     return this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, input, adapter, config))
   }
 
+  async milestoneExecutionSummary(name) {
+    const item = milestones.readMilestone(this.root, name)
+    const sprintId = Number(item.external?.sprintId || 0)
+    if (!sprintId) return null
+    return this.#withAssessAdapter(false, async (adapter) => {
+      const [sprint, tasks] = await Promise.all([
+        adapter.getSprint(sprintId),
+        adapter.listTasks({ sprintId })
+      ])
+      const byStatus = {}
+      for (const task of tasks) {
+        const key = String(task.status ?? 'unknown')
+        byStatus[key] = (byStatus[key] || 0) + 1
+      }
+      return {
+        sprint: {
+          id: sprint.id,
+          status: sprint.status,
+          revision: sprint.revision,
+          startAt: sprint.startAt,
+          endAt: sprint.endAt
+        },
+        tasks: {
+          total: tasks.length,
+          unassigned: tasks.filter((task) => !task.assigneeId).length,
+          byStatus
+        }
+      }
+    })
+  }
+
   async executeMilestoneSync(name, input = {}) {
     this.#assertWritable('执行迭代同步')
     return this.#withAssessAdapter(true, async (adapter, config) => {
@@ -642,7 +673,9 @@ export class Hub {
     this.#assertWritable('流转迭代状态')
     const item = milestones.readMilestone(this.root, name)
     const target = String(input.target || '')
-    if (target === 'canceled' && !String(input.reason || '').trim()) throw err.bad('MILESTONE_REASON_REQUIRED', '取消迭代必须填写原因')
+    const reason = String(input.reason || '').trim()
+    if (target === 'canceled' && !reason) throw err.bad('MILESTONE_REASON_REQUIRED', '取消迭代必须填写原因')
+    if (item.status === 'frozen' && target === 'reviewing' && !reason) throw err.bad('MILESTONE_REASON_REQUIRED', '解除冻结必须填写原因')
     const transition = transitionMilestoneStatus(item.status, target, { remoteExists: Boolean(item.external?.sprintId) })
     if (transition.requiresRemote) {
       throw err.conflict('MILESTONE_REMOTE_TRANSITION_REQUIRES_SYNC', '该状态流转需要生成并执行平台同步计划')
@@ -654,7 +687,6 @@ export class Hub {
     const updated = transition.changed
       ? milestones.updateMilestone(this.root, name, { status: target }, { system: true })
       : milestones.inspectMilestone(this.root, name)
-    const reason = String(input.reason || '').trim()
     this.#log(null, null, 'MILESTONE_TRANSITION', `迭代 ${name} 从 ${transition.from} 流转到 ${transition.to}${reason ? `：${reason}` : ''}`)
     return updated
   }
@@ -2004,7 +2036,13 @@ export class Hub {
   }
 
   async #buildMilestoneSyncPlan(name, input, adapter, config) {
-    const milestone = milestones.inspectMilestone(this.root, name)
+    const storedMilestone = milestones.inspectMilestone(this.root, name)
+    const scopeItems = input.scopeItems === undefined
+      ? null
+      : milestones.normalizeMilestoneItems(this.root, input.scopeItems)
+    if (scopeItems && storedMilestone.status !== 'active') throw err.conflict('MILESTONE_SCOPE_CHANGE_INVALID', '只有进行中的迭代使用范围变更流程')
+    if (scopeItems && !String(input.reason || '').trim()) throw err.bad('MILESTONE_REASON_REQUIRED', '进行中范围变更必须填写原因')
+    const milestone = scopeItems ? { ...storedMilestone, items: scopeItems } : storedMilestone
     const codes = [...new Set(milestone.items.map((item) => item.requirement))]
     const requirementItems = codes.map((code) => {
       const item = reqx.requirementDetail(this.root, code)
@@ -2045,6 +2083,8 @@ export class Hub {
       managedTaskBindings,
       mapping,
       action: input.action || null,
+      scopeItems,
+      scopeChangeReason: scopeItems ? String(input.reason).trim() : '',
       resolutions: input.resolutions || {}
     })
   }

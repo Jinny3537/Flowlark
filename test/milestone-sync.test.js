@@ -31,7 +31,7 @@ function fixture({ action = null } = {}) {
   const plan = buildMilestoneSyncPlan({
     milestone, requirements: [requirement], mapping, action
   })
-  return { root, plan, mapping }
+  return { root, hub, plan, mapping }
 }
 
 function adapter({ failTaskOnce = false } = {}) {
@@ -39,7 +39,8 @@ function adapter({ failTaskOnce = false } = {}) {
   let taskFailed = false
   const state = {
     sprint: { id: 10, projectId: 123, sprintName: '迭代一', sprintGoal: '完成联调', ownerId: 7, planStartDate: '2026-08-01T00:00:00+08:00', planEndDate: '2026-08-21T00:00:00+08:00', revision: 1, status: 0 },
-    task: null
+    task: null,
+    tasks: new Map()
   }
   return {
     calls,
@@ -59,7 +60,9 @@ function adapter({ failTaskOnce = false } = {}) {
         taskFailed = true
         throw Object.assign(new Error('temporary task failure'), { code: 'MCP_UNAVAILABLE' })
       }
-      state.task = { ...body, id: 20, revision: 1, sprintId: body.currentSprintId, status: 0 }
+      const id = 20 + state.tasks.size
+      state.task = { ...body, id, revision: 1, sprintId: body.currentSprintId, status: 0 }
+      state.tasks.set(id, state.task)
       return state.task
     },
     async updateTask(body) {
@@ -67,9 +70,9 @@ function adapter({ failTaskOnce = false } = {}) {
       state.task = { ...state.task, ...body, revision: Number(body.revision || 0) + 1 }
       return state.task
     },
-    async getTask() {
+    async getTask(taskId) {
       calls.push(['getTask'])
-      return state.task
+      return state.tasks.get(Number(taskId)) || state.task
     },
     async moveTasks(body) {
       calls.push(['moveTasks', body])
@@ -135,8 +138,14 @@ test('resumes failed work without recreating the completed sprint', async () => 
 test('starts a sprint with a fresh revision and transitions local state only after verification', async () => {
   const { root, plan } = fixture({ action: 'start' })
   const remote = adapter()
+  await assert.rejects(
+    executeMilestoneSync({
+      root, milestoneName: 'S1', plan, confirmed: true, reason: '开始执行', adapter: remote
+    }),
+    (error) => error.code === 'MCP_SYNC_IMPACT_CONFIRMATION_REQUIRED'
+  )
   await executeMilestoneSync({
-    root, milestoneName: 'S1', plan, confirmed: true, reason: '开始执行', adapter: remote
+    root, milestoneName: 'S1', plan, confirmed: true, reason: '开始执行', confirmUnfinished: true, adapter: remote
   })
   const call = remote.calls.find(([name]) => name === 'startSprint')
   assert.equal(call[1].sprintId, 10)
@@ -183,6 +192,110 @@ test('accepts a reviewed remote task value as an explicit local edit', async () 
   const local = requirements.readRequirement(root, 'REQ-1')
   assert.equal(local.title, '平台调整标题')
   assert.equal(local.description, '平台调整说明')
+})
+
+test('applies a confirmed active scope draft only after remote verification', async () => {
+  const { root, hub, plan, mapping } = fixture()
+  const remote = adapter()
+  await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
+  milestones.updateMilestone(root, 'S1', { status: 'active' }, { system: true })
+  hub.createRequirement({ code: 'REQ-2', title: '新增范围', description: '第二项', priority: 'P1', owner: 'dev' })
+  hub.addVersion('orders', { versionNo: 'v2', title: '二版', html: html(), requirements: ['REQ-2'], changes: [{ type: 'ADD', location: '列表', content: '新增范围' }] })
+  const scopeItems = [
+    { requirement: 'REQ-1', project: 'orders', version: 'v1' },
+    { requirement: 'REQ-2', project: 'orders', version: 'v2' }
+  ]
+  const current = milestones.inspectMilestone(root, 'S1')
+  const scopePlan = buildMilestoneSyncPlan({
+    milestone: { ...current, items: scopeItems },
+    requirements: [
+      { ...requirements.requirementDetail(root, 'REQ-1'), spec: '# 验收' },
+      { ...requirements.requirementDetail(root, 'REQ-2'), spec: '# 验收' }
+    ],
+    remoteSprint: await remote.getSprint(10),
+    remoteTasks: [await remote.getTask(20)],
+    managedTaskBindings: [{ requirement: 'REQ-1', taskId: 20 }],
+    mapping,
+    scopeItems,
+    scopeChangeReason: '新增第二项范围'
+  })
+  assert.ok(scopePlan.operations.some((operation) => operation.kind === 'local.scope-change'))
+  await executeMilestoneSync({
+    root, milestoneName: 'S1', plan: scopePlan, confirmed: true,
+    reason: '新增第二项范围', confirmUnfinished: true, adapter: remote
+  })
+  const stored = milestones.readMilestone(root, 'S1')
+  assert.equal(stored.status, 'active')
+  assert.deepEqual(stored.items, scopeItems)
+  assert.equal(requirements.readRequirement(root, 'REQ-2').externalTasks[0].taskId, 21)
+})
+
+test('moves tasks with fresh task revisions and an explicit target sprint', async () => {
+  const { root, plan, mapping } = fixture()
+  const remote = adapter()
+  await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
+  remote.state.task.sprintId = 9
+  remote.state.task.revision = 6
+  const movePlan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(root, 'S1'),
+    requirements: [{ ...requirements.requirementDetail(root, 'REQ-1'), spec: '# 验收' }],
+    remoteSprint: await remote.getSprint(10),
+    remoteTasks: [await remote.getTask(20)],
+    mapping
+  })
+  await executeMilestoneSync({ root, milestoneName: 'S1', plan: movePlan, confirmed: true, adapter: remote })
+  const move = remote.calls.find(([name]) => name === 'moveTasks')
+  assert.deepEqual(move[1], {
+    reason: '调整迭代范围',
+    tasks: [{ taskId: 20, taskRevision: 6 }],
+    toSprintId: 10
+  })
+})
+
+test('ends a sprint with reason, unfinished confirmation and fresh revision', async () => {
+  const { root, plan, mapping } = fixture()
+  const remote = adapter()
+  await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
+  milestones.updateMilestone(root, 'S1', { status: 'active' }, { system: true })
+  remote.state.sprint.revision = 8
+  const endPlan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(root, 'S1'),
+    requirements: [{ ...requirements.requirementDetail(root, 'REQ-1'), spec: '# 验收' }],
+    remoteSprint: await remote.getSprint(10),
+    remoteTasks: [await remote.getTask(20)],
+    mapping,
+    action: 'end'
+  })
+  await executeMilestoneSync({
+    root, milestoneName: 'S1', plan: endPlan, confirmed: true,
+    reason: '本轮交付完成', confirmUnfinished: true, adapter: remote
+  })
+  const end = remote.calls.find(([name]) => name === 'endSprint')
+  assert.deepEqual(end[1], { sprintId: 10, revision: 8, reason: '本轮交付完成', confirmUnfinished: true })
+  assert.equal(milestones.readMilestone(root, 'S1').status, 'delivered')
+})
+
+test('cancels a frozen remote sprint with an audited reason', async () => {
+  const { root, plan, mapping } = fixture()
+  const remote = adapter()
+  await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
+  milestones.updateMilestone(root, 'S1', { status: 'frozen' }, { system: true })
+  remote.state.sprint.revision = 5
+  const cancelPlan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(root, 'S1'),
+    requirements: [{ ...requirements.requirementDetail(root, 'REQ-1'), spec: '# 验收' }],
+    remoteSprint: await remote.getSprint(10),
+    remoteTasks: [await remote.getTask(20)],
+    mapping,
+    action: 'cancel'
+  })
+  await executeMilestoneSync({
+    root, milestoneName: 'S1', plan: cancelPlan, confirmed: true,
+    reason: '业务范围取消', confirmUnfinished: true, adapter: remote
+  })
+  const cancel = remote.calls.find(([name]) => name === 'cancelSprint')
+  assert.deepEqual(cancel[1], { sprintId: 10, revision: 5, reason: '业务范围取消', confirmUnfinished: true })
+  assert.equal(milestones.readMilestone(root, 'S1').status, 'canceled')
 })
 
 test('rejects expired plans before creating a journal', async () => {

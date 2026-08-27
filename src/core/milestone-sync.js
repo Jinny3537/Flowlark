@@ -26,6 +26,12 @@ export async function executeMilestoneSync({
   if ((plan.operations || []).some((operation) => operation.risk === 'high') && !String(reason || '').trim()) {
     throw err.bad('MCP_SYNC_REASON_REQUIRED', '高风险同步操作必须填写原因')
   }
+  const requiresImpactConfirmation = (plan.operations || []).some((operation) =>
+    ['sprint.start', 'sprint.end', 'sprint.cancel', 'local.scope-change'].includes(operation.kind) ||
+    (operation.kind === 'task.move' && operation.risk === 'high'))
+  if (requiresImpactConfirmation && !confirmUnfinished) {
+    throw err.bad('MCP_SYNC_IMPACT_CONFIRMATION_REQUIRED', '请确认未完成任务和范围变化的影响')
+  }
   if (!adapter) throw err.bad('MCP_SYNC_ADAPTER_REQUIRED', '同步适配器不可用')
 
   let journal = readMilestoneSyncJournal(root, milestoneName)
@@ -161,6 +167,7 @@ async function runOperation({ root, milestoneName, plan, operation, reason, conf
     }
     throw err.bad('MCP_SYNC_OPERATION_INVALID', '接受平台值缺少对象类型')
   }
+  if (operation.kind === 'local.scope-change') return { local: true, entity: 'scope' }
   if (operation.kind === 'conflict') throw err.conflict('MCP_SYNC_CONFLICT', '同步计划包含未解决冲突')
   throw err.bad('MCP_SYNC_OPERATION_INVALID', `不支持的同步操作：${operation.kind}`)
 }
@@ -246,6 +253,9 @@ async function verifyFinalState(root, plan, adapter) {
 }
 
 function finalizeLocalStatus(root, milestoneName, plan) {
+  if (Array.isArray(plan.scopeItems)) {
+    milestones.updateMilestone(root, milestoneName, { items: plan.scopeItems }, { system: true })
+  }
   const target = { start: 'active', end: 'delivered', cancel: 'canceled' }[
     plan.operations.find((operation) => operation.kind.startsWith('sprint.') && ['sprint.start', 'sprint.end', 'sprint.cancel'].includes(operation.kind))?.kind.split('.')[1]
   ]

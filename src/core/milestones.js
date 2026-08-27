@@ -18,7 +18,7 @@ export function milestoneExists(root, name) {
   return fs.existsSync(store.paths.milestoneFile(root, assertMilestoneName(name)))
 }
 
-function normalizeItems(root, items) {
+export function normalizeMilestoneItems(root, items) {
   const out = []
   const seen = new Set()
   for (const raw of items || []) {
@@ -48,7 +48,7 @@ export function createMilestone(root, input) {
     status: normalizeMilestoneStatus(input.status),
     startAt: input.startAt || null,
     endAt: input.endAt || null,
-    items: normalizeItems(root, input.items),
+    items: normalizeMilestoneItems(root, input.items),
     external: input.external || null,
     createdAt: now,
     updatedAt: now
@@ -86,7 +86,7 @@ export function updateMilestone(root, name, patch, { system = false } = {}) {
   if (patch.status !== undefined) item.status = normalizeMilestoneStatus(patch.status)
   if (patch.startAt !== undefined) item.startAt = patch.startAt || null
   if (patch.endAt !== undefined) item.endAt = patch.endAt || null
-  if (patch.items !== undefined) item.items = normalizeItems(root, patch.items)
+  if (patch.items !== undefined) item.items = normalizeMilestoneItems(root, patch.items)
   if (patch.external !== undefined) item.external = patch.external || null
   item.updatedAt = new Date().toISOString()
   fs.writeFileSync(store.paths.milestoneFile(root, item.name), stringify(item, 'milestone'))

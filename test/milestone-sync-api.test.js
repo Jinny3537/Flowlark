@@ -4,6 +4,7 @@ import path from 'node:path'
 import { cleanup, html, newHub } from './helpers.js'
 import { startServer } from '../src/server/index.js'
 import { unavailableWecomMcp } from '../src/core/wecom-mcp-manager.js'
+import * as milestones from '../src/core/milestones.js'
 
 let root
 let server
@@ -56,6 +57,8 @@ before(async () => {
   })
   ctx.hub.createMilestone({ name: 'S2', title: '本地迭代', startAt: '2026-09-01', endAt: '2026-09-10' })
   ctx.hub.createMilestone({ name: 'S3', title: '待取消迭代', startAt: '2026-09-11', endAt: '2026-09-20' })
+  ctx.hub.createMilestone({ name: 'S5', title: '进行中迭代', goal: '验证范围变更', owner: 'pm', startAt: '2026-09-21', endAt: '2026-09-30', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
+  milestones.updateMilestone(root, 'S5', { status: 'active' }, { system: true })
   remote = fakeAdapter()
   server = await startServer(root, {
     port: 0,
@@ -121,6 +124,10 @@ test('execute endpoint requires confirmation and matching plan hash', async (t) 
   t.assert.strictEqual(milestone.body.external.sprintId, 10)
   const journal = await call('GET', '/api/milestones/S1/sync-journal')
   t.assert.strictEqual(journal.body.status, 'completed')
+  const execution = await call('GET', '/api/milestones/S1/execution')
+  t.assert.strictEqual(execution.status, 200)
+  t.assert.strictEqual(execution.body.sprint.id, 10)
+  t.assert.strictEqual(execution.body.tasks.total, 1)
 })
 
 test('local lifecycle transitions remain explicit', async (t) => {
@@ -168,4 +175,14 @@ test('canceling a local iteration requires an audited reason', async (t) => {
   result = await call('POST', '/api/milestones/S3/transition', { target: 'canceled', reason: '范围调整' })
   t.assert.strictEqual(result.status, 200)
   t.assert.strictEqual(result.body.status, 'canceled')
+})
+
+test('active scope plans require a reason and carry a local scope operation', async (t) => {
+  const scopeItems = [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }]
+  let result = await call('POST', '/api/milestones/S5/sync-plan', { scopeItems })
+  t.assert.strictEqual(result.status, 400)
+  t.assert.strictEqual(result.body.code, 'MILESTONE_REASON_REQUIRED')
+  result = await call('POST', '/api/milestones/S5/sync-plan', { scopeItems, reason: '调整进行中范围' })
+  t.assert.strictEqual(result.status, 200)
+  t.assert.ok(result.body.operations.some((operation) => operation.kind === 'local.scope-change'))
 })

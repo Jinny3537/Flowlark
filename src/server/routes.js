@@ -126,6 +126,8 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, hub.inspectMilestonePreflight(p.name)))
   r.get('/api/milestones/:name/sync-journal', async (req, res, p) =>
     sendJson(res, 200, hub.milestoneSyncJournal(p.name)))
+  r.get('/api/milestones/:name/execution', async (req, res, p) =>
+    sendJson(res, 200, await hub.milestoneExecutionSummary(p.name)))
   r.post('/api/milestones/:name/sync-plan', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, await hub.planMilestoneSync(p.name, body))

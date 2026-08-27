@@ -63,6 +63,18 @@ test('locks business edits after freeze but permits system metadata updates', ()
   assert.equal(updated.external.sprintId, 9)
 })
 
+test('requires an audit reason when unfreezing', () => {
+  const { hub } = fixture()
+  hub.createMilestone({ name: 'S2', title: '迭代二', items: [] })
+  hub.transitionMilestone('S2', { target: 'reviewing' })
+  hub.transitionMilestone('S2', { target: 'frozen' })
+  assert.throws(
+    () => hub.transitionMilestone('S2', { target: 'reviewing' }),
+    (error) => error.code === 'MILESTONE_REASON_REQUIRED'
+  )
+  assert.equal(hub.transitionMilestone('S2', { target: 'reviewing', reason: '范围需要调整' }).status, 'reviewing')
+})
+
 test('freeze preflight reports review and specification blockers with repair targets', () => {
   const { root, hub } = fixture()
   hub.setBaseline('orders', 'v1')

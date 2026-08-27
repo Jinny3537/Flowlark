@@ -11,6 +11,8 @@ export function buildMilestoneSyncPlan({
   managedTaskBindings = [],
   mapping = {},
   action = null,
+  scopeItems = null,
+  scopeChangeReason = '',
   resolutions = {},
   now = new Date()
 } = {}) {
@@ -156,6 +158,18 @@ export function buildMilestoneSyncPlan({
     })
   }
 
+  if (Array.isArray(scopeItems)) {
+    operations.push({
+      key: `local:${milestone.name}:scope-change`,
+      kind: 'local.scope-change',
+      risk: 'high',
+      before: null,
+      after: scopeItems,
+      reason: String(scopeChangeReason || ''),
+      dependsOn: operations.filter((item) => item.kind !== 'conflict').map((item) => item.key)
+    })
+  }
+
   const lifecycleKind = { start: 'sprint.start', end: 'sprint.end', cancel: 'sprint.cancel' }[action]
   if (lifecycleKind) {
     operations.push({
@@ -173,6 +187,8 @@ export function buildMilestoneSyncPlan({
     milestone: milestone.name,
     projectId,
     action,
+    scopeItems,
+    scopeChangeReason: String(scopeChangeReason || ''),
     operations: operations.map(semanticOperation),
     blockers: blockers.map(({ code, target }) => ({ code, target })),
     warnings: warnings.map(({ code, target }) => ({ code, target }))
@@ -181,6 +197,8 @@ export function buildMilestoneSyncPlan({
     milestone: milestone.name,
     server: String(mapping.server || ''),
     projectId,
+    scopeItems: Array.isArray(scopeItems) ? scopeItems : null,
+    scopeChangeReason: String(scopeChangeReason || ''),
     generatedAt,
     expiresAt,
     hash: `sha256:${digest(stableStringify(semantic))}`,
@@ -388,7 +406,7 @@ function escapeRegExp(value) {
 }
 
 function semanticOperation(operation) {
-  return pick(operation, ['key', 'kind', 'risk', 'requirement', 'entity', 'before', 'after', 'localPatch', 'contentHash', 'taskId', 'sprintId', 'dependsOn'])
+  return pick(operation, ['key', 'kind', 'risk', 'requirement', 'entity', 'before', 'after', 'reason', 'localPatch', 'contentHash', 'taskId', 'sprintId', 'dependsOn'])
 }
 
 function problem(code, message, target) {

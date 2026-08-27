@@ -168,6 +168,7 @@ export const api = {
     post(`/api/milestones/${enc(name)}/sync`, { provider, config }),
   milestonePreflight: (name: string) => get<any>(`/api/milestones/${enc(name)}/preflight`),
   milestoneSyncJournal: (name: string) => get<any>(`/api/milestones/${enc(name)}/sync-journal`),
+  milestoneExecutionSummary: (name: string) => get<any>(`/api/milestones/${enc(name)}/execution`),
   planMilestoneSync: (name: string, body: unknown = {}) => post<any>(`/api/milestones/${enc(name)}/sync-plan`, body),
   executeMilestoneSync: (name: string, body: unknown) => post<any>(`/api/milestones/${enc(name)}/sync-execute`, body),
   resumeMilestoneSync: (name: string, body: unknown = {}) => post<any>(`/api/milestones/${enc(name)}/sync-resume`, body),
