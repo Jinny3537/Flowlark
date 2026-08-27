@@ -573,7 +573,26 @@ export class Hub {
 
   inspectMilestonePreflight(name) {
     const item = milestones.inspectMilestone(this.root, name)
-    return freezePreflight(this.root, item, { integrationProblems: mcpConfig.inspect(this.root).problems })
+    const info = mcpConfig.inspect(this.root)
+    const integrationProblems = [...info.problems]
+    const capability = info.config.capabilities.milestones
+    const server = info.config.servers.find((entry) => entry.id === capability?.server)
+    if (capability?.enabled && server?.type === 'stdio' && server.adapter === 'assess-task') {
+      const options = capability.options || {}
+      if (!Number(capability.project)) integrationProblems.push({ code: 'ASSESS_PROJECT_REQUIRED', message: '尚未配置平台项目 ID' })
+      if (!Number(options.ownerId)) integrationProblems.push({ code: 'SPRINT_OWNER_REQUIRED', message: '尚未配置平台冲刺负责人' })
+      if (!Number(options.taskType)) integrationProblems.push({ code: 'TASK_TYPE_REQUIRED', message: '尚未配置平台默认任务类型' })
+      for (const code of new Set(item.items.map((entry) => entry.requirement))) {
+        const requirement = reqx.readRequirement(this.root, code)
+        if (requirement.priority && options.priorities?.[requirement.priority] === undefined) {
+          integrationProblems.push({ code: 'TASK_PRIORITY_UNMAPPED', message: `${code} 的优先级 ${requirement.priority} 尚未映射` })
+        }
+      }
+      if (this.milestoneSyncJournal(name).status !== 'completed') {
+        integrationProblems.push({ code: 'MILESTONE_SYNC_REQUIRED', message: '冻结前需要完成一次已验证的平台同步' })
+      }
+    }
+    return freezePreflight(this.root, item, { integrationProblems })
   }
 
   async planMilestoneSync(name, input = {}) {
@@ -1010,6 +1029,34 @@ export class Hub {
   buildWorkspaceIndex() { return workspaceIndex.buildWorkspaceIndex() }
   searchWorkspaces(query, options) { return workspaceIndex.searchWorkspaces(query, options) }
   mcpConfig() { return mcpConfig.inspect(this.root) }
+  async discoverMcpServerTools(id) {
+    const config = mcpConfig.readMcpConfig(this.root)
+    const server = config.servers.find((item) => item.id === id)
+    if (!server) throw err.notFound(`MCP 服务「${id}」`)
+    if (server.type !== 'stdio') throw err.bad('MCP_DISCOVERY_TRANSPORT_UNSUPPORTED', '当前只对本机 stdio 服务提供工具发现')
+    const profile = mcpRuntime.getRuntimeProfile(this.root, server.runtimeProfile)
+    if (!profile) throw err.notFound(`MCP 本机配置「${server.runtimeProfile}」`)
+    const diagnostic = mcpRuntime.diagnoseExecutable(profile)
+    if (!diagnostic.ready) throw err.conflict('MCP_RUNTIME_BLOCKED', diagnostic.blockers[0]?.message || 'MCP 可执行文件检查未通过')
+    const session = await this.mcpClientManager.connect({
+      type: 'stdio', command: profile.command, args: profile.args,
+      env: mcpRuntime.runtimeEnvironment(this.root, server.runtimeProfile),
+      cwd: this.root, timeoutMs: server.timeoutMs
+    })
+    try {
+      const tools = await session.listTools()
+      return {
+        server: id,
+        tools: tools.map((tool) => ({
+          name: String(tool.name || ''),
+          description: String(tool.description || ''),
+          inputSchema: tool.inputSchema || { type: 'object', properties: {} }
+        }))
+      }
+    } finally {
+      await session.close()
+    }
+  }
   mcpRuntimeProfile(id) { return mcpRuntime.inspectRuntimeProfile(this.root, id) }
   saveMcpRuntimeProfile(id, input) {
     this.#assertWritable('保存 MCP 本机运行配置')
@@ -1986,11 +2033,16 @@ export class Hub {
         }
       }
     }
+    const managedTaskBindings = reqx.listRequirements(this.root).flatMap((requirement) =>
+      (requirement.externalTasks || [])
+        .filter((item) => item.provider === 'assess-task' && item.server === mapping.server && Number(item.projectId) === mapping.projectId)
+        .map((item) => ({ requirement: requirement.code, taskId: item.taskId })))
     return buildMilestoneSyncPlan({
       milestone,
       requirements: requirementItems,
       remoteSprint,
       remoteTasks,
+      managedTaskBindings,
       mapping,
       action: input.action || null,
       resolutions: input.resolutions || {}

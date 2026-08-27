@@ -276,6 +276,7 @@ export const api = {
   getMcpConfig: () => get('/api/mcp'),
   saveMcpServer: (id: string, body: unknown) => put(`/api/mcp/servers/${enc(id)}`, body),
   removeMcpServer: (id: string) => del(`/api/mcp/servers/${enc(id)}`),
+  discoverMcpServerTools: (id: string) => post<any>(`/api/mcp/servers/${enc(id)}/discover`, {}),
   getMcpRuntime: (id: string) => get<any>(`/api/mcp/runtime/${enc(id)}`),
   saveMcpRuntime: (id: string, body: unknown) => put<any>(`/api/mcp/runtime/${enc(id)}`, body),
   removeMcpRuntime: (id: string) => del(`/api/mcp/runtime/${enc(id)}`),

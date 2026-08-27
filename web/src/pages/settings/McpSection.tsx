@@ -294,6 +294,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
   const [editingExtension, setEditingExtension] = useState(false);
   const [secret, setSecret] = useState('');
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
+  const [discoveredTools, setDiscoveredTools] = useState<any[]>([]);
   const serverId = Form.useWatch('id', serverAntForm) || '';
   const serverType = Form.useWatch('type', serverAntForm) || 'http';
   const runtimeProfile = Form.useWatch('runtimeProfile', serverAntForm) || '';
@@ -315,6 +316,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       setEditingServer(false);
       setEditingExtension(false);
       setSecret('');
+      setDiscoveredTools([]);
       serverAntForm.resetFields();
       extensionAntForm.resetFields();
     } catch (error) {
@@ -375,6 +377,21 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       message.error(errorText(error, 'MCP 服务保存失败'));
     } finally {
       setSaving('');
+    }
+  };
+
+  const discoverTools = async () => {
+    const id = String(serverAntForm.getFieldValue('id') || '').trim();
+    if (!id) return;
+    setTesting('discover');
+    try {
+      const result: any = await api.discoverMcpServerTools(id);
+      setDiscoveredTools(result.tools || []);
+      message.success(`已发现 ${result.tools?.length || 0} 个工具`);
+    } catch (error) {
+      message.error(errorText(error, 'MCP 工具发现失败'));
+    } finally {
+      setTesting('');
     }
   };
 
@@ -637,6 +654,27 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                   </Space>
                 </Form>
                 {serverType === 'stdio' ? <McpRuntimeFields runtimeProfile={runtimeProfile} canWrite={canWrite} /> : null}
+                {serverType === 'stdio' ? (
+                  <div className="fl-mcp-runtime">
+                    <Space wrap>
+                      <Button loading={testing === 'discover'} disabled={!String(serverId).trim() || Boolean(testing)} onClick={() => void discoverTools()}>发现并审阅工具</Button>
+                      <span className="fl-muted">只读取工具名、说明和输入 Schema，不执行业务写操作。</span>
+                    </Space>
+                    {discoveredTools.length ? (
+                      <List
+                        className="fl-mcp-result"
+                        size="small"
+                        bordered
+                        dataSource={discoveredTools}
+                        renderItem={(tool: any) => (
+                          <List.Item>
+                            <List.Item.Meta title={<code>{tool.name}</code>} description={tool.description || '未提供工具说明'} />
+                          </List.Item>
+                        )}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
 

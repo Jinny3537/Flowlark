@@ -106,6 +106,16 @@ test('detects out-of-band drift and requires an explicit resolution', () => {
   const result = buildMilestoneSyncPlan(context({ milestone, requirements: [localRequirement], remoteTasks: [remote] }))
   assert.ok(result.blockers.some((item) => item.code === 'REMOTE_DRIFT'))
   assert.ok(result.operations.some((operation) => operation.kind === 'conflict'))
+
+  const resolved = buildMilestoneSyncPlan(context({
+    milestone,
+    requirements: [localRequirement],
+    remoteTasks: [remote],
+    resolutions: { 'task:20': 'accept-remote' }
+  }))
+  assert.equal(resolved.blockers.some((item) => item.code === 'REMOTE_DRIFT'), false)
+  const accept = resolved.operations.find((operation) => operation.kind === 'local.accept-remote')
+  assert.equal(accept.localPatch.title, '平台人工改名')
 })
 
 test('adds high-risk lifecycle operations after synchronization work', () => {
@@ -115,4 +125,19 @@ test('adds high-risk lifecycle operations after synchronization work', () => {
   const operation = result.operations.at(-1)
   assert.equal(operation.kind, 'sprint.start')
   assert.equal(operation.risk, 'high')
+})
+
+test('moves a previously managed task out when it leaves local scope', () => {
+  const milestone = structuredClone(baseMilestone)
+  milestone.external = { provider: 'assess-task', server: mapping.server, projectId: 123, sprintId: 10 }
+  const result = buildMilestoneSyncPlan(context({
+    milestone,
+    remoteSprint: { id: 10, projectId: 123, ownerId: 7, sprintName: '订单迭代', sprintGoal: '完成订单联调', planStartDate: '2026-08-01T00:00:00+08:00', planEndDate: '2026-08-21T00:00:00+08:00' },
+    remoteTasks: [{ id: 99, revision: 3, sprintId: 10 }],
+    managedTaskBindings: [{ requirement: 'REQ-OLD', taskId: 99 }]
+  }))
+  const move = result.operations.find((operation) => operation.key === 'task:99:move-out')
+  assert.equal(move.kind, 'task.move')
+  assert.equal(move.after.sprintId, null)
+  assert.equal(move.risk, 'high')
 })

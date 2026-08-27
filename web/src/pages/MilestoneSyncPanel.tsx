@@ -48,6 +48,7 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
   const [planAction, setPlanAction] = useState('');
   const [reason, setReason] = useState('');
   const [confirmUnfinished, setConfirmUnfinished] = useState(false);
+  const [resolutions, setResolutions] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [operationError, setOperationError] = useState('');
   const [localCancelOpen, setLocalCancelOpen] = useState(false);
@@ -56,13 +57,14 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
   const lifecycle = milestoneStatusMeta(item?.status);
   const actions = allowedMilestoneActions(item);
 
-  async function prepare(action = '') {
+  async function prepare(action = '', nextResolutions: Record<string, string> = {}) {
     setBusy(action ? `plan:${action}` : 'plan');
     setOperationError('');
     try {
-      const next = await api.planMilestoneSync(name, action ? { action } : {});
+      const next = await api.planMilestoneSync(name, { action: action || null, resolutions: nextResolutions });
       setPlan(next);
       setPlanAction(action);
+      setResolutions(nextResolutions);
       setReason('');
       setConfirmUnfinished(false);
       setPlanOpen(true);
@@ -84,6 +86,7 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
         confirmed: true,
         reason: reason.trim(),
         confirmUnfinished,
+        resolutions,
       });
       message.success(planAction ? `${ACTION_LABELS[planAction]}完成` : '迭代同步完成');
       setPlanOpen(false);
@@ -146,7 +149,12 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
     }
   }
 
-  const highRisk = isHighRiskAction(planAction);
+  async function resolveConflict(operation: any, resolution: 'restore-local' | 'accept-remote') {
+    const key = String(operation.key || '').replace(/:conflict$/, '');
+    await prepare(planAction, { ...resolutions, [key]: resolution });
+  }
+
+  const highRisk = isHighRiskAction(planAction) || Boolean(plan?.operations?.some((operation: any) => operation.risk === 'high'));
   const blockers = plan?.blockers || [];
   return (
     <section className="fl-detail-section" aria-live="polite">
@@ -242,6 +250,16 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, writable, o
             { title: '对象', render: (_, operation: any) => operation.requirement || operation.taskId || operation.sprintId || name },
             { title: '变更摘要', render: (_, operation: any) => <span className="fl-muted">{JSON.stringify(operation.after || operation.before || {}).slice(0, 180)}</span> },
             { title: '风险', dataIndex: 'risk', width: 90, render: (value) => <Tag color={value === 'high' ? 'error' : 'default'}>{value === 'high' ? '高风险' : '普通'}</Tag> },
+            {
+              title: '处理',
+              width: 190,
+              render: (_, operation: any) => operation.kind === 'conflict' ? (
+                <Space size={4}>
+                  <Button size="small" onClick={() => void resolveConflict(operation, 'restore-local')}>保留 Flowlark</Button>
+                  <Button size="small" onClick={() => void resolveConflict(operation, 'accept-remote')}>接受平台值</Button>
+                </Space>
+              ) : null,
+            },
           ]}
           scroll={{ x: 760, y: 280 }}
         />

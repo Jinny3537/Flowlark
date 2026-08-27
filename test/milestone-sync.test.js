@@ -43,6 +43,7 @@ function adapter({ failTaskOnce = false } = {}) {
   }
   return {
     calls,
+    state,
     async saveSprint(body) {
       calls.push(['saveSprint', body])
       state.sprint = { ...state.sprint, ...body, id: body.id || 10, revision: Number(body.revision || 0) + 1 }
@@ -160,6 +161,28 @@ test('refreshes the remote revision before updating a sprint', async () => {
   assert.equal(saves.length, 2)
   assert.equal(saves[1][1].id, 10)
   assert.equal(saves[1][1].revision, 1)
+})
+
+test('accepts a reviewed remote task value as an explicit local edit', async () => {
+  const { root, plan, mapping } = fixture()
+  const remote = adapter()
+  await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
+  remote.state.task.title = '[REQ-1] 平台调整标题'
+  remote.state.task.descriptionDoc = '平台调整说明'
+  remote.state.task.revision++
+  const nextPlan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(root, 'S1'),
+    requirements: [{ ...requirements.requirementDetail(root, 'REQ-1'), spec: '# 验收' }],
+    remoteSprint: await remote.getSprint(10),
+    remoteTasks: [await remote.getTask(20)],
+    mapping,
+    resolutions: { 'task:20': 'accept-remote' }
+  })
+  assert.ok(nextPlan.operations.some((operation) => operation.kind === 'local.accept-remote'))
+  await executeMilestoneSync({ root, milestoneName: 'S1', plan: nextPlan, confirmed: true, adapter: remote })
+  const local = requirements.readRequirement(root, 'REQ-1')
+  assert.equal(local.title, '平台调整标题')
+  assert.equal(local.description, '平台调整说明')
 })
 
 test('rejects expired plans before creating a journal', async () => {

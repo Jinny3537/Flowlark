@@ -8,6 +8,7 @@ export function buildMilestoneSyncPlan({
   requirements = [],
   remoteSprint = null,
   remoteTasks = [],
+  managedTaskBindings = [],
   mapping = {},
   action = null,
   resolutions = {},
@@ -59,6 +60,7 @@ export function buildMilestoneSyncPlan({
       remote: remoteSprint,
       lastSyncHash: sprintBinding.lastSyncHash,
       resolution: resolutions[`sprint:${sprintBinding.sprintId}`],
+      acceptPatch: sprintLocalPatch(remoteSprint),
       operations,
       blockers,
       summary
@@ -68,6 +70,7 @@ export function buildMilestoneSyncPlan({
   const requirementsByCode = new Map(requirements.map((item) => [String(item.code), item]))
   const requirementCodes = [...new Set((milestone.items || []).map((item) => String(item.requirement || '')).filter(Boolean))].sort()
   const remoteTasksById = new Map(remoteTasks.map((item) => [Number(item.id), item]))
+  const currentTaskIds = new Set()
   const targetSprintId = positiveId(sprintBinding?.sprintId || remoteSprint?.id)
 
   for (const code of requirementCodes) {
@@ -107,6 +110,7 @@ export function buildMilestoneSyncPlan({
       blockers.push(problem('REMOTE_TASK_MISSING', `平台任务 ${binding.taskId} 不存在或不可访问`, `requirement:${code}`))
       continue
     }
+    currentTaskIds.add(Number(binding.taskId))
     planOwnedChange({
       entity: 'task',
       key: `task:${binding.taskId}`,
@@ -115,6 +119,7 @@ export function buildMilestoneSyncPlan({
       remote: remoteTask,
       lastSyncHash: binding.lastSyncHash,
       resolution: resolutions[`task:${binding.taskId}`],
+      acceptPatch: taskLocalPatch(remoteTask, requirement, mapping),
       operations,
       blockers,
       summary
@@ -132,6 +137,23 @@ export function buildMilestoneSyncPlan({
         dependsOn: []
       })
     }
+  }
+
+  for (const binding of managedTaskBindings) {
+    const taskId = Number(binding.taskId)
+    const remoteTask = remoteTasksById.get(taskId)
+    if (!remoteTask || currentTaskIds.has(taskId) || Number(remoteTask.sprintId) !== targetSprintId) continue
+    addOperation(operations, summary, {
+      key: `task:${taskId}:move-out`,
+      kind: 'task.move',
+      risk: 'high',
+      requirement: binding.requirement,
+      taskId,
+      taskRevision: remoteTask.revision,
+      before: { sprintId: targetSprintId },
+      after: { sprintId: null },
+      dependsOn: []
+    })
   }
 
   const lifecycleKind = { start: 'sprint.start', end: 'sprint.end', cancel: 'sprint.cancel' }[action]
@@ -173,7 +195,7 @@ export function hashProjection(value, type) {
   return `sha256:${digest(stableStringify(type === 'sprint' ? sprintOwned(value) : taskOwned(value)))}`
 }
 
-function planOwnedChange({ entity, key, requirement, local, remote, lastSyncHash, resolution, operations, blockers, summary }) {
+function planOwnedChange({ entity, key, requirement, local, remote, lastSyncHash, resolution, acceptPatch, operations, blockers, summary }) {
   const localHash = hashProjection(local, entity)
   const remoteHash = hashProjection(remote, entity)
   if (localHash === remoteHash) {
@@ -201,8 +223,11 @@ function planOwnedChange({ entity, key, requirement, local, remote, lastSyncHash
       kind: 'local.accept-remote',
       risk: 'normal',
       requirement,
+      entity,
       before: local,
       after: entity === 'sprint' ? sprintOwned(remote) : taskOwned(remote),
+      localPatch: acceptPatch,
+      contentHash: remoteHash,
       dependsOn: []
     })
     return
@@ -283,6 +308,29 @@ function taskOwned(value = {}) {
   }
 }
 
+function sprintLocalPatch(remote) {
+  const value = sprintOwned(remote)
+  return {
+    title: value.sprintName,
+    goal: value.sprintGoal,
+    startAt: dateOnly(value.planStartDate),
+    endAt: dateOnly(value.planEndDate)
+  }
+}
+
+function taskLocalPatch(remote, requirement, mapping) {
+  const value = taskOwned(remote)
+  const priority = Object.entries(mapping.priorities || {}).find(([, id]) => Number(id) === Number(value.priority))?.[0]
+  const owner = Object.entries(mapping.members || {}).find(([, id]) => Number(id) === Number(value.assigneeId))?.[0]
+  const prefix = new RegExp(`^\\[${escapeRegExp(requirement.code)}\\]\\s*`)
+  return {
+    title: value.title.replace(prefix, '') || requirement.title,
+    description: value.descriptionDoc,
+    ...(priority ? { priority } : {}),
+    ...(owner ? { owner } : {})
+  }
+}
+
 function validateSprintProjection(value, blockers) {
   if (!value.sprintName) blockers.push(problem('SPRINT_NAME_REQUIRED', '迭代标题不能为空', 'milestone.title'))
   else if (value.sprintName.length > 64) blockers.push(problem('SPRINT_NAME_TOO_LONG', '平台冲刺名称不能超过 64 字符', 'milestone.title'))
@@ -330,8 +378,17 @@ function toRemoteDate(value, offset = '+08:00') {
   return `${date}T00:00:00${safeOffset}`
 }
 
+function dateOnly(value) {
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(value || ''))
+  return match ? match[1] : null
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function semanticOperation(operation) {
-  return pick(operation, ['key', 'kind', 'risk', 'requirement', 'before', 'after', 'contentHash', 'taskId', 'sprintId', 'dependsOn'])
+  return pick(operation, ['key', 'kind', 'risk', 'requirement', 'entity', 'before', 'after', 'localPatch', 'contentHash', 'taskId', 'sprintId', 'dependsOn'])
 }
 
 function problem(code, message, target) {

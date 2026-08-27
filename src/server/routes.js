@@ -639,6 +639,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.delete('/api/mcp/servers/:id', async (req, res, p) =>
     sendJson(res, 200, hub.removeMcpServer(p.id)))
 
+  r.post('/api/mcp/servers/:id/discover', async (req, res, p) =>
+    sendJson(res, 200, await hub.discoverMcpServerTools(p.id)))
+
   r.get('/api/mcp/runtime/:id', async (req, res, p) =>
     sendJson(res, 200, hub.mcpRuntimeProfile(p.id)))
 

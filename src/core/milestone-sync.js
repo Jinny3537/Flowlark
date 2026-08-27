@@ -137,7 +137,29 @@ async function runOperation({ root, milestoneName, plan, operation, reason, conf
     return adapter.getSprint(binding.sprintId)
   }
   if (operation.kind === 'local.accept-remote') {
-    throw err.conflict('MCP_SYNC_LOCAL_EDIT_REQUIRED', '接受平台值需要先生成并确认本地编辑')
+    if (operation.entity === 'sprint') {
+      const current = milestones.readMilestone(root, milestoneName)
+      milestones.updateMilestone(root, milestoneName, {
+        ...operation.localPatch,
+        external: {
+          ...current.external,
+          lastSyncHash: operation.contentHash,
+          syncedAt: new Date().toISOString()
+        }
+      }, { system: true })
+      return { local: true, entity: 'sprint' }
+    }
+    if (operation.entity === 'task') {
+      requirements.updateRequirement(root, operation.requirement, operation.localPatch || {})
+      const binding = requiredTaskBinding(root, operation.requirement, plan)
+      requirements.upsertExternalTask(root, operation.requirement, {
+        ...binding,
+        lastSyncHash: operation.contentHash,
+        syncedAt: new Date().toISOString()
+      })
+      return { local: true, entity: 'task' }
+    }
+    throw err.bad('MCP_SYNC_OPERATION_INVALID', '接受平台值缺少对象类型')
   }
   if (operation.kind === 'conflict') throw err.conflict('MCP_SYNC_CONFLICT', '同步计划包含未解决冲突')
   throw err.bad('MCP_SYNC_OPERATION_INVALID', `不支持的同步操作：${operation.kind}`)

@@ -10,6 +10,7 @@ let server
 let base
 let remote
 let previousHome
+let previousAssessPassword
 
 const mapping = {
   server: 'assess-task-test', projectId: 123, ownerId: 7, taskType: 2,
@@ -42,7 +43,9 @@ before(async () => {
   const ctx = newHub()
   root = ctx.root
   previousHome = process.env.FLOWLARK_HOME
+  previousAssessPassword = process.env.ASSESS_PASSWORD
   process.env.FLOWLARK_HOME = path.join(root, '.test-flowlark-home')
+  process.env.ASSESS_PASSWORD = 'test-only-password'
   ctx.hub.createProject({ name: '订单', code: 'orders' })
   ctx.hub.createRequirement({ code: 'REQ-1', title: '需求一', description: '说明', priority: 'P1', owner: 'dev' })
   ctx.hub.addVersion('orders', { versionNo: 'v1', title: '一版', html: html(), requirements: ['REQ-1'] })
@@ -59,7 +62,15 @@ before(async () => {
     previewPort: 0,
     wecomMcp: unavailableWecomMcp('test'),
     assessAdapter: remote,
-    assessConfig: { server: { id: 'assess-task-test' }, project: '123', capability: { options: mapping } }
+    assessConfig: { server: { id: 'assess-task-test' }, project: '123', capability: { options: mapping } },
+    mcpClientManager: {
+      async connect() {
+        return {
+          listTools: async () => [{ name: 'task_current_user', description: '当前用户', inputSchema: { type: 'object', properties: {} } }],
+          close: async () => {}
+        }
+      }
+    }
   })
   base = `http://127.0.0.1:${server.port}`
 })
@@ -68,6 +79,8 @@ after(async () => {
   if (server) await server.close()
   if (previousHome === undefined) delete process.env.FLOWLARK_HOME
   else process.env.FLOWLARK_HOME = previousHome
+  if (previousAssessPassword === undefined) delete process.env.ASSESS_PASSWORD
+  else process.env.ASSESS_PASSWORD = previousAssessPassword
   cleanup(root)
 })
 
@@ -130,6 +143,22 @@ test('runtime profile API stores no password and returns executable diagnostics'
   const diagnostic = await call('POST', '/api/mcp/runtime/assess-task-local/diagnose', {})
   t.assert.strictEqual(diagnostic.status, 200)
   t.assert.strictEqual(diagnostic.body.ready, true)
+  const logical = await call('PUT', '/api/mcp/servers/assess-task-local', {
+    name: '研发任务管理', type: 'stdio', adapter: 'assess-task', runtimeProfile: 'assess-task-local', timeoutMs: 1000
+  })
+  t.assert.strictEqual(logical.status, 200)
+  const discovered = await call('POST', '/api/mcp/servers/assess-task-local/discover', {})
+  t.assert.strictEqual(discovered.status, 200)
+  t.assert.deepStrictEqual(discovered.body.tools.map((tool) => tool.name), ['task_current_user'])
+  const capability = await call('PUT', '/api/mcp/capabilities/milestones', {
+    enabled: true,
+    server: 'assess-task-local',
+    project: '123',
+    options: { ownerId: 7, taskType: 2, priorities: { P1: 1 } }
+  })
+  t.assert.strictEqual(capability.status, 200)
+  const freeze = await call('GET', '/api/milestones/S2/preflight')
+  t.assert.ok(freeze.body.blockers.some((blocker) => blocker.code === 'MILESTONE_SYNC_REQUIRED'))
 })
 
 test('canceling a local iteration requires an audited reason', async (t) => {
