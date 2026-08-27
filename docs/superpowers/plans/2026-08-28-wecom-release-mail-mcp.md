@@ -39,7 +39,7 @@
 - Test: `test/release-mail.test.js`
 - Modify: `src/core/projects.js`
 
-- [ ] **Step 1: Write failing normalization and template tests**
+- [x] **Step 1: Write failing normalization and template tests**
 
 ```js
 import test from 'node:test'
@@ -75,13 +75,13 @@ test('renders only supported release variables', () => {
 })
 ```
 
-- [ ] **Step 2: Run the focused test and confirm it fails**
+- [x] **Step 2: Run the focused test and confirm it fails**
 
 Run: `node --test test/release-mail.test.js`
 
 Expected: FAIL because `src/core/release-mail.js` does not exist.
 
-- [ ] **Step 3: Implement release-mail normalization and rendering**
+- [x] **Step 3: Implement release-mail normalization and rendering**
 
 ```js
 const VARIABLES = new Set([
@@ -122,7 +122,7 @@ export function renderReleaseMail(config, context) {
 
 Add `normalizeReleaseMail` to project creation/update paths so `project.json.releaseMail` is always normalized.
 
-- [ ] **Step 4: Add queue tests and implementation**
+- [x] **Step 4: Add queue tests and implementation**
 
 Test the stable ID, duplicate enqueue, pending-to-sent transition, retry attempts, and public sanitization. Implement `enqueueReleaseMail`, `listReleaseMails`, `markReleaseMailSent`, `markReleaseMailFailed`, `readReleaseMail`, and `publicReleaseMail` in `src/core/release-mail.js`, storing `{ schemaVersion: 1, items: [] }` at `.flowlark/cache/release-mails.json` with atomic rename writes.
 
@@ -140,13 +140,13 @@ assert.equal(listReleaseMails(root).length, 1)
 assert.equal('userid' in publicReleaseMail(first).to[0], false)
 ```
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run: `node --test test/release-mail.test.js test/projects.test.js`
 
 Expected: all release-mail and existing project tests pass.
 
-- [ ] **Step 6: Commit the core model**
+- [x] **Step 6: Commit the core model**
 
 ```bash
 git add src/core/release-mail.js src/core/projects.js src/core/service.js test/release-mail.test.js test/projects.test.js
@@ -160,7 +160,7 @@ git commit -m "feat: add release mail model and queue"
 - Create: `src/mcp/wecom-server.js`
 - Test: `test/wecom-mcp.test.js`
 
-- [ ] **Step 1: Write failing CLI-adapter tests**
+- [x] **Step 1: Write failing CLI-adapter tests**
 
 Inject a command runner and assert exact argument arrays without a shell:
 
@@ -180,11 +180,11 @@ assert.equal((await tools.authStatus()).authorized, true)
 assert.equal((await tools.resolveContacts({ names: ['张三'] })).results[0].status, 'unique')
 ```
 
-- [ ] **Step 2: Implement `wecom-tools.js`**
+- [x] **Step 2: Implement `wecom-tools.js`**
 
 Use `execFile`, JSON-only stdout parsing, a minimum CLI version of `1.1.0`, one contact query per name, and a random `0600` Markdown file under `os.tmpdir()`. Always remove the file in `finally`; preserve `error.message` and `error.instruction`, but remove `code`, `callid`, `mail_id`, Bot ID, and tokens from returned values.
 
-- [ ] **Step 3: Write failing MCP protocol tests**
+- [x] **Step 3: Write failing MCP protocol tests**
 
 Start the server on port `0` and assert:
 
@@ -200,17 +200,17 @@ assert.deepEqual(listed.result.tools.map((tool) => tool.name), [
 assert.equal((await fetch(baseUrl, { method: 'POST' })).status, 401)
 ```
 
-- [ ] **Step 4: Implement `wecom-server.js`**
+- [x] **Step 4: Implement `wecom-server.js`**
 
 Implement an ESM entrypoint and exported `startWecomMcpServer` using built-in `http`. Require `Authorization: Bearer <runtime token>`, reject bodies above 1 MB, return JSON-RPC errors, and support `initialize`, `ping`, `tools/list`, and `tools/call`. Return both `content: [{ type: 'text', text: JSON.stringify(value) }]` and `structuredContent: value` for successful tools.
 
-- [ ] **Step 5: Verify protocol and cleanup behavior**
+- [x] **Step 5: Verify protocol and cleanup behavior**
 
 Run: `node --test test/wecom-mcp.test.js`
 
 Expected: protocol, unauthorized request, tool annotations, CLI arguments, error sanitization, and temporary-file deletion tests all pass.
 
-- [ ] **Step 6: Commit the MCP server**
+- [x] **Step 6: Commit the MCP server**
 
 ```bash
 git add src/mcp/wecom-tools.js src/mcp/wecom-server.js test/wecom-mcp.test.js
@@ -226,29 +226,29 @@ git commit -m "feat: expose WeCom mail through local MCP"
 - Test: `test/wecom-mcp.test.js`
 - Test: `test/server.test.js`
 
-- [ ] **Step 1: Write lifecycle tests**
+- [x] **Step 1: Write lifecycle tests**
 
 Assert the manager starts the child on a random loopback port, reports `{ baseUrl, headers }`, rejects an invalid ready message, times out with a readable degraded status, and terminates the child during `close()`.
 
-- [ ] **Step 2: Implement the manager**
+- [x] **Step 2: Implement the manager**
 
 Generate a 32-byte token with `crypto.randomBytes`, spawn `process.execPath` with `src/mcp/wecom-server.js`, pass `FLOWLARK_WECOM_MCP_TOKEN`, `FLOWLARK_WECOM_MCP_PORT=0`, and the configured CLI command, and consume exactly one JSON ready line from stdout. Keep stderr bounded for diagnosis and never log the token.
 
-- [ ] **Step 3: Integrate lifecycle with `startServer`**
+- [x] **Step 3: Integrate lifecycle with `startServer`**
 
 Start the sidecar before building API routes, pass its MCP config into the `Hub` runtime, and include sidecar shutdown in the existing `close()` promise. A sidecar startup failure must return a disabled runtime adapter rather than reject `startServer`.
 
-- [ ] **Step 4: Preserve MCP error instructions**
+- [x] **Step 4: Preserve MCP error instructions**
 
 Extend `callTool` so a tool error containing structured `{ message, instruction }` becomes a `PhError` with the message and hint. Add a test that `code`, `callid`, and internal IDs do not appear in the resulting message.
 
-- [ ] **Step 5: Run lifecycle and regression tests**
+- [x] **Step 5: Run lifecycle and regression tests**
 
 Run: `node --test test/wecom-mcp.test.js test/server.test.js test/mcp-config.test.js`
 
 Expected: all tests pass and every server test closes the sidecar child.
 
-- [ ] **Step 6: Commit lifecycle support**
+- [x] **Step 6: Commit lifecycle support**
 
 ```bash
 git add src/core/wecom-mcp-manager.js src/core/integrations/mcp-jsonrpc.js src/server/index.js test/wecom-mcp.test.js test/server.test.js
@@ -263,7 +263,7 @@ git commit -m "feat: manage WeCom MCP sidecar lifecycle"
 - Modify: `test/release-mail.test.js`
 - Modify: `test/project-edit-api.test.js`
 
-- [ ] **Step 1: Add dependency injection and failing orchestration tests**
+- [x] **Step 1: Add dependency injection and failing orchestration tests**
 
 Allow `new Hub(root, { wecomMcp, gitSync })` while preserving existing callers. Inject fakes and record order:
 
@@ -282,15 +282,15 @@ await hub.formalRelease('orders', 'v2', request)
 assert.deepEqual(order, ['baseline', 'git', 'mail'])
 ```
 
-- [ ] **Step 2: Implement preflight**
+- [x] **Step 2: Implement preflight**
 
 Add `preflightFormalRelease(slug, versionNo, input)` that reuses existing baseline rules, validates Git identity/remote/conflicts, calls auth and contact tools, renders the frozen preview, and returns `{ ready, blockers, warnings, releasedAt, recipients, subject, markdown }`. It performs no project, baseline, Git, or queue writes.
 
-- [ ] **Step 3: Implement execution and retry**
+- [x] **Step 3: Implement execution and retry**
 
 Add `formalRelease`, `listReleaseMails`, and `retryReleaseMail`. Execution must revalidate, allow the already-target-baseline continuation case, call the injected Git sync, enqueue before sending, and mark `sent` or retain `pending`. Retry must reject a changed baseline and call only the mail tool.
 
-- [ ] **Step 4: Add route contracts**
+- [x] **Step 4: Add route contracts**
 
 Register:
 
@@ -303,7 +303,7 @@ POST /api/release-mails/:id/retry
 
 Return `200` for preflight/execution/retry and sanitize all release-mail output before `sendJson`.
 
-- [ ] **Step 5: Verify failure semantics**
+- [x] **Step 5: Verify failure semantics**
 
 Tests must prove: preflight is read-only; Git failure never calls mail; mail failure keeps the baseline and queue item; Git continuation skips baseline; mail retry skips Git; duplicate success does not send twice; changed baseline blocks retry; project config persists through the existing update API.
 
@@ -311,7 +311,7 @@ Run: `node --test test/release-mail.test.js test/project-edit-api.test.js test/m
 
 Expected: all focused tests pass.
 
-- [ ] **Step 6: Commit the release API**
+- [x] **Step 6: Commit the release API**
 
 ```bash
 git add src/core/service.js src/server/routes.js test/release-mail.test.js test/project-edit-api.test.js
@@ -325,7 +325,7 @@ git commit -m "feat: add formal release orchestration"
 - Modify: `web/src/pages/projectsModel.test.js`
 - Modify: `web/src/pages/Projects.tsx`
 
-- [ ] **Step 1: Write failing model tests**
+- [x] **Step 1: Write failing model tests**
 
 ```js
 assert.deepEqual(initialProjectValues({ releaseMail: {
@@ -340,21 +340,21 @@ assert.deepEqual(projectPayload({
 }).releaseMail.to, ['张三'])
 ```
 
-- [ ] **Step 2: Implement model normalization**
+- [x] **Step 2: Implement model normalization**
 
 Keep release mail nested under `releaseMail`, trim/dedupe names, and preserve disabled templates. Do not change unrelated project filtering or code validation.
 
-- [ ] **Step 3: Add the project editor fields**
+- [x] **Step 3: Add the project editor fields**
 
 Use an Ant Design `Switch`, `Select mode="tags"` for recipient names, an `Input` for subject, and `Input.TextArea` for Markdown. Require at least one recipient, a subject, and a body only when enabled. Show the supported variable names below the template field.
 
-- [ ] **Step 4: Run model and build checks**
+- [x] **Step 4: Run model and build checks**
 
 Run: `node --test web/src/pages/projectsModel.test.js && npm --prefix web run build`
 
 Expected: model tests pass and Vite exits 0.
 
-- [ ] **Step 5: Commit project settings UI**
+- [x] **Step 5: Commit project settings UI**
 
 ```bash
 git add web/src/pages/projectsModel.js web/src/pages/projectsModel.test.js web/src/pages/Projects.tsx
@@ -371,7 +371,7 @@ git commit -m "feat: configure project release mail"
 - Modify: `web/src/services/api.ts`
 - Modify: `web/src/styles/global.css`
 
-- [ ] **Step 1: Write failing dialog-model tests**
+- [x] **Step 1: Write failing dialog-model tests**
 
 Test name list normalization, candidate selection keyed by query, `ready` derivation, mail-failure result labels, and hidden internal IDs:
 
@@ -381,29 +381,29 @@ assert.equal(state.selections['张三'].key, 'candidate-1')
 assert.equal(releaseOutcome({ released: true, mail: { status: 'pending' } }).kind, 'mail-pending')
 ```
 
-- [ ] **Step 2: Add API methods**
+- [x] **Step 2: Add API methods**
 
 Add `preflightFormalRelease`, `formalRelease`, `listReleaseMails`, and `retryReleaseMail` using the exact routes from Task 4. Follow existing `request` error handling and do not add a second HTTP client.
 
-- [ ] **Step 3: Implement `FormalReleaseDialog`**
+- [x] **Step 3: Implement `FormalReleaseDialog`**
 
 The dialog must load project defaults, allow one-off recipient changes, debounce or explicitly run preflight, render candidate radio choices, show subject and Markdown preview, disable confirmation until `ready`, lock controls during execution, and show the four result states from the design. It must never render `userid`, `mail_id`, Bot ID, or tokens.
 
-- [ ] **Step 4: Integrate without changing existing baseline behavior**
+- [x] **Step 4: Integrate without changing existing baseline behavior**
 
 Add a “正式发版” action beside the existing baseline action for non-void versions. Keep “设为基线” available as the lower-level action. On release completion, clear the selected-version cache and call the existing page/planning reload functions.
 
-- [ ] **Step 5: Add responsive styles**
+- [x] **Step 5: Add responsive styles**
 
 Use a single-column layout below 700 px, allow long department paths and Markdown lines to wrap, and keep action buttons reachable at 390 px. Do not restyle unrelated pages.
 
-- [ ] **Step 6: Run UI-focused checks**
+- [x] **Step 6: Run UI-focused checks**
 
 Run: `node --test web/src/components/formalReleaseModel.test.js web/src/pages/projectsModel.test.js web/src/pages/projectVersionsModel.test.js && npm --prefix web run build`
 
 Expected: all model tests pass and Vite exits 0.
 
-- [ ] **Step 7: Commit the formal release UI**
+- [x] **Step 7: Commit the formal release UI**
 
 ```bash
 git add web/src/components/formalReleaseModel.js web/src/components/formalReleaseModel.test.js web/src/components/FormalReleaseDialog.tsx web/src/pages/ProjectVersions.tsx web/src/services/api.ts web/src/styles/global.css
@@ -416,7 +416,7 @@ git commit -m "feat: add formal release workflow UI"
 - Modify: `README.md`
 - Modify: `docs/superpowers/plans/2026-08-28-wecom-release-mail-mcp.md`
 
-- [ ] **Step 1: Document safe setup**
+- [x] **Step 1: Document safe setup**
 
 Add commands and behavior:
 
@@ -428,7 +428,7 @@ wecom-cli auth show --status
 
 Explain project recipients/templates, the formal release order, mail-only retry, test-enterprise recommendation, and that Flowlark never stores the Bot Secret.
 
-- [ ] **Step 2: Run formatting and focused security scans**
+- [x] **Step 2: Run formatting and focused security scans**
 
 Run:
 
@@ -439,27 +439,27 @@ rg -n "mail_id|userid|BOT_SECRET|WECOM.*TOKEN" src web/src test README.md
 
 Expected: no whitespace errors; sensitive names occur only in internal adapters, sanitizers, and explicit non-rendering tests.
 
-- [ ] **Step 3: Run the complete backend suite**
+- [x] **Step 3: Run the complete backend suite**
 
 Run: `npm test`
 
 Expected: every Node test passes.
 
-- [ ] **Step 4: Run the complete web verification**
+- [x] **Step 4: Run the complete web verification**
 
 Run: `node --test web/src/**/*.test.js && npm --prefix web run build`
 
 Expected: every web model test passes and Vite exits 0.
 
-- [ ] **Step 5: Run fake-CLI end-to-end verification**
+- [x] **Step 5: Run fake-CLI end-to-end verification**
 
 Start Flowlark with a temporary repository and fake `wecom-cli`, execute project configuration, preflight, formal release, failed mail, and retry through HTTP, and assert the fake command log contains contact search followed by exactly one successful `mail send`. Confirm no network request reaches real WeCom.
 
-- [ ] **Step 6: Audit every completion criterion**
+- [x] **Step 6: Audit every completion criterion**
 
 Record evidence for sidecar lifecycle, loopback binding, project config, name ambiguity blocking, exact operation order, retry idempotency, secret/ID non-disclosure, full tests, and web build. Leave the task active if any criterion lacks direct evidence.
 
-- [ ] **Step 7: Commit documentation and verification updates**
+- [x] **Step 7: Commit documentation and verification updates**
 
 ```bash
 git add README.md docs/superpowers/plans/2026-08-28-wecom-release-mail-mcp.md
