@@ -3,9 +3,9 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { CLI, html, newHub, cleanup } from './helpers.js'
+import { CLI, html, newHub, throwsCode, cleanup } from './helpers.js'
 import { inferVersionNo } from '../src/cli/commands.js'
-import { collectWatchFile, listWatchInbox, updateWatchItem } from '../src/core/watch-inbox.js'
+import { collectWatchFile, listWatchInbox, removeWatchItem, updateWatchItem } from '../src/core/watch-inbox.js'
 
 /**
  * watch 的测试。上一轮交付时这块是承认没覆盖的空白 ——
@@ -150,5 +150,25 @@ describe('watch 自动归档', () => {
     const saved = listWatchInbox(root).find((candidate) => candidate.id === item.id)
     t.assert.strictEqual(saved.status, 'failed')
     t.assert.strictEqual(saved.error, '版本号冲突')
+  })
+
+  test('只清理已归档记录，不丢失失败诊断', (t) => {
+    const { root } = newHub()
+    dirs.push(root)
+    const archivedFile = path.join(root, 'archived_v4.html')
+    fs.writeFileSync(archivedFile, html('已归档'))
+    const archived = collectWatchFile(root, 'ord', archivedFile)
+    updateWatchItem(root, archived.id, { status: 'archived', versionNo: 'v4' })
+
+    const failedFile = path.join(root, 'failed_v5.html')
+    fs.writeFileSync(failedFile, html('失败'))
+    const failed = collectWatchFile(root, 'ord', failedFile)
+    updateWatchItem(root, failed.id, { status: 'failed', error: '版本冲突' })
+
+    const removed = removeWatchItem(root, archived.id)
+    t.assert.strictEqual(removed.id, archived.id)
+    t.assert.deepStrictEqual(listWatchInbox(root).map((item) => item.id), [failed.id])
+    throwsCode(t, 'WATCH_ITEM_NOT_ARCHIVED', () => removeWatchItem(root, failed.id))
+    throwsCode(t, 'NOT_FOUND', () => removeWatchItem(root, archived.id))
   })
 })
