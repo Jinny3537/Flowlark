@@ -125,7 +125,7 @@ test('resumes failed work without recreating the completed sprint', async () => 
     /temporary task failure/
   )
   assert.equal(readMilestoneSyncJournal(root, 'S1').status, 'failed')
-  const result = await resumeMilestoneSync({ root, milestoneName: 'S1', plan, adapter: remote })
+  const result = await resumeMilestoneSync({ root, milestoneName: 'S1', adapter: remote })
   assert.equal(result.status, 'completed')
   assert.equal(remote.calls.filter(([name]) => name === 'saveSprint').length, 1)
   assert.equal(remote.calls.filter(([name]) => name === 'createTask').length, 2)

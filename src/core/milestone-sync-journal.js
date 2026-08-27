@@ -24,6 +24,7 @@ export function newMilestoneSyncJournal(plan, reason = '') {
     schemaVersion: 1,
     milestone: plan.milestone,
     planHash: plan.hash,
+    plan,
     status: 'running',
     reason: String(reason || ''),
     startedAt: now,

@@ -16,11 +16,12 @@ export async function executeMilestoneSync({
   reason = '',
   confirmUnfinished = false,
   adapter,
-  now = new Date()
+  now = new Date(),
+  resume = false
 } = {}) {
   if (!confirmed) throw err.bad('MCP_SYNC_CONFIRMATION_REQUIRED', '请先确认同步计划')
   if (!plan || plan.milestone !== milestoneName) throw err.bad('MCP_SYNC_PLAN_INVALID', '同步计划与迭代不匹配')
-  if (new Date(plan.expiresAt).getTime() <= new Date(now).getTime()) throw err.conflict('MCP_SYNC_PLAN_EXPIRED', '同步计划已过期，请重新生成')
+  if (!resume && new Date(plan.expiresAt).getTime() <= new Date(now).getTime()) throw err.conflict('MCP_SYNC_PLAN_EXPIRED', '同步计划已过期，请重新生成')
   if ((plan.blockers || []).length) throw err.conflict('MCP_SYNC_BLOCKED', `同步计划仍有 ${plan.blockers.length} 个阻塞项`)
   if ((plan.operations || []).some((operation) => operation.risk === 'high') && !String(reason || '').trim()) {
     throw err.bad('MCP_SYNC_REASON_REQUIRED', '高风险同步操作必须填写原因')
@@ -88,8 +89,9 @@ export async function executeMilestoneSync({
 export async function resumeMilestoneSync(options = {}) {
   const journal = readMilestoneSyncJournal(options.root, options.milestoneName)
   if (!journal) throw err.notFound(`迭代「${options.milestoneName}」的同步记录`)
-  if (!options.plan || options.plan.hash !== journal.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
-  return executeMilestoneSync({ ...options, confirmed: true, reason: options.reason || journal.reason })
+  const plan = options.plan || journal.plan
+  if (!plan || plan.hash !== journal.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+  return executeMilestoneSync({ ...options, plan, confirmed: true, reason: options.reason || journal.reason, resume: true })
 }
 
 async function runOperation({ root, milestoneName, plan, operation, reason, confirmUnfinished, adapter }) {

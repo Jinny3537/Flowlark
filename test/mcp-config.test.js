@@ -73,6 +73,15 @@ describe('MCP 配置文件', () => {
       timeoutMs: 15000,
       headers: {}
     })
+    const configured = hub.saveMcpCapability('milestones', {
+      enabled: true,
+      server: 'assess-task-local',
+      project: '123',
+      options: { ownerId: 7, taskType: 2, priorities: { P1: 1 }, timezoneOffset: '+08:00' }
+    })
+    t.assert.deepStrictEqual(configured.config.capabilities.milestones.options, {
+      ownerId: 7, taskType: 2, priorities: { P1: 1 }, timezoneOffset: '+08:00'
+    })
   })
 
   test('schema 1 HTTP 服务读取后升级且配置不丢失', (t) => {

@@ -122,6 +122,26 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 201, hub.createMilestone(body))
   })
   r.get('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.getMilestone(p.name)))
+  r.get('/api/milestones/:name/preflight', async (req, res, p) =>
+    sendJson(res, 200, hub.inspectMilestonePreflight(p.name)))
+  r.get('/api/milestones/:name/sync-journal', async (req, res, p) =>
+    sendJson(res, 200, hub.milestoneSyncJournal(p.name)))
+  r.post('/api/milestones/:name/sync-plan', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.planMilestoneSync(p.name, body))
+  })
+  r.post('/api/milestones/:name/sync-execute', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.executeMilestoneSync(p.name, body))
+  })
+  r.post('/api/milestones/:name/sync-resume', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.resumeMilestoneSync(p.name, body))
+  })
+  r.post('/api/milestones/:name/transition', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.transitionMilestone(p.name, body))
+  })
   r.post('/api/milestones/:name/sync', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, await hub.syncMilestoneToExternal(p.name, body.provider || null, body.config || body))
@@ -618,6 +638,28 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   r.delete('/api/mcp/servers/:id', async (req, res, p) =>
     sendJson(res, 200, hub.removeMcpServer(p.id)))
+
+  r.get('/api/mcp/runtime/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.mcpRuntimeProfile(p.id)))
+
+  r.put('/api/mcp/runtime/:id', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.saveMcpRuntimeProfile(p.id, body))
+  })
+
+  r.delete('/api/mcp/runtime/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.removeMcpRuntimeProfile(p.id)))
+
+  r.post('/api/mcp/runtime/:id/diagnose', async (req, res, p) =>
+    sendJson(res, 200, hub.diagnoseMcpRuntime(p.id)))
+
+  r.put('/api/mcp/runtime/:id/password', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.setMcpRuntimePassword(p.id, body.value || body.password))
+  })
+
+  r.delete('/api/mcp/runtime/:id/password', async (req, res, p) =>
+    sendJson(res, 200, hub.deleteMcpRuntimePassword(p.id)))
 
   r.put('/api/mcp/servers/:id/secret', async (req, res, p) => {
     const body = await readJson(req, maxBody)

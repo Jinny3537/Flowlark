@@ -35,6 +35,13 @@ import * as updater from './updater.js'
 import * as mirror from './mirror.js'
 import * as workspaceIndex from './workspace-index.js'
 import * as mcpConfig from './mcp-config.js'
+import * as mcpRuntime from './mcp-runtime.js'
+import { createMcpClientManager } from './integrations/mcp-client.js'
+import { createAssessTaskAdapter } from './integrations/assess-task/adapter.js'
+import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycle.js'
+import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
+import { executeMilestoneSync as executeSync, resumeMilestoneSync as resumeSync } from './milestone-sync.js'
+import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -59,10 +66,13 @@ function trashRestoreState(root, entry) {
  * 且行为完全一致」。任何一边绕过它直接读写文件，两边就会开始漂移。
  */
 export class Hub {
-  constructor(root, { wecomMcp = null, gitSync = null } = {}) {
+  constructor(root, { wecomMcp = null, gitSync = null, assessAdapter = null, assessConfig = null, mcpClientManager = null } = {}) {
     this.root = root
     this.wecomMcp = wecomMcp
     this.gitSyncOverride = gitSync
+    this.assessAdapter = assessAdapter
+    this.assessConfig = assessConfig
+    this.mcpClientManager = mcpClientManager || createMcpClientManager()
     const initial = readConfig(root)
     if (initial.schemaVersion < 2) migrate.migrateToSchema2(root)
     this.config = readConfig(root)
@@ -561,6 +571,73 @@ export class Hub {
     return item
   }
 
+  inspectMilestonePreflight(name) {
+    const item = milestones.inspectMilestone(this.root, name)
+    return freezePreflight(this.root, item, { integrationProblems: mcpConfig.inspect(this.root).problems })
+  }
+
+  async planMilestoneSync(name, input = {}) {
+    return this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, input, adapter, config))
+  }
+
+  async executeMilestoneSync(name, input = {}) {
+    this.#assertWritable('执行迭代同步')
+    return this.#withAssessAdapter(true, async (adapter, config) => {
+      const plan = await this.#buildMilestoneSyncPlan(name, input, adapter, config)
+      if (input.confirmed && !input.planHash) throw err.bad('MCP_SYNC_PLAN_HASH_REQUIRED', '确认同步时必须提供计划哈希')
+      if (input.planHash && input.planHash !== plan.hash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+      const result = await executeSync({
+        root: this.root,
+        milestoneName: name,
+        plan,
+        confirmed: input.confirmed === true,
+        reason: input.reason || '',
+        confirmUnfinished: input.confirmUnfinished === true,
+        adapter
+      })
+      this.#log(null, null, 'MILESTONE_SYNC_EXECUTE', `执行迭代 ${name} 同步计划 ${plan.hash}`)
+      return result
+    })
+  }
+
+  async resumeMilestoneSync(name, input = {}) {
+    this.#assertWritable('恢复迭代同步')
+    return this.#withAssessAdapter(true, async (adapter) => {
+      const result = await resumeSync({
+        root: this.root,
+        milestoneName: name,
+        reason: input.reason || '',
+        confirmUnfinished: input.confirmUnfinished === true,
+        adapter
+      })
+      this.#log(null, null, 'MILESTONE_SYNC_RESUME', `恢复迭代 ${name} 同步`)
+      return result
+    })
+  }
+
+  milestoneSyncJournal(name) {
+    return readMilestoneSyncJournal(this.root, name) || { milestone: name, status: 'not-started', operations: [] }
+  }
+
+  transitionMilestone(name, input = {}) {
+    this.#assertWritable('流转迭代状态')
+    const item = milestones.readMilestone(this.root, name)
+    const target = String(input.target || '')
+    const transition = transitionMilestoneStatus(item.status, target, { remoteExists: Boolean(item.external?.sprintId) })
+    if (transition.requiresRemote) {
+      throw err.conflict('MILESTONE_REMOTE_TRANSITION_REQUIRES_SYNC', '该状态流转需要生成并执行平台同步计划')
+    }
+    if (target === 'frozen') {
+      const check = this.inspectMilestonePreflight(name)
+      if (!check.ready) throw err.conflict('MILESTONE_FREEZE_BLOCKED', `迭代仍有 ${check.blockers.length} 个冻结阻塞项`)
+    }
+    const updated = transition.changed
+      ? milestones.updateMilestone(this.root, name, { status: target }, { system: true })
+      : milestones.inspectMilestone(this.root, name)
+    this.#log(null, null, 'MILESTONE_TRANSITION', `迭代 ${name} 从 ${transition.from} 流转到 ${transition.to}`)
+    return updated
+  }
+
   listSavedViews() {
     return savedViews.listSavedViews(this.root)
   }
@@ -914,6 +991,28 @@ export class Hub {
   buildWorkspaceIndex() { return workspaceIndex.buildWorkspaceIndex() }
   searchWorkspaces(query, options) { return workspaceIndex.searchWorkspaces(query, options) }
   mcpConfig() { return mcpConfig.inspect(this.root) }
+  mcpRuntimeProfile(id) { return mcpRuntime.inspectRuntimeProfile(this.root, id) }
+  saveMcpRuntimeProfile(id, input) {
+    this.#assertWritable('保存 MCP 本机运行配置')
+    return mcpRuntime.saveRuntimeProfile(this.root, id, input)
+  }
+  removeMcpRuntimeProfile(id) {
+    this.#assertWritable('删除 MCP 本机运行配置')
+    return mcpRuntime.removeRuntimeProfile(this.root, id)
+  }
+  diagnoseMcpRuntime(id) {
+    const profile = mcpRuntime.getRuntimeProfile(this.root, id)
+    if (!profile) throw err.notFound(`MCP 本机配置「${id}」`)
+    return mcpRuntime.diagnoseExecutable(profile)
+  }
+  setMcpRuntimePassword(id, value) {
+    this.#assertWritable('保存 MCP 平台密码')
+    return mcpRuntime.setRuntimePassword(this.root, id, value)
+  }
+  deleteMcpRuntimePassword(id) {
+    this.#assertWritable('删除 MCP 平台密码')
+    return mcpRuntime.deleteRuntimePassword(this.root, id)
+  }
   saveMcpServer(input) {
     this.#assertWritable('保存 MCP 服务')
     return mcpConfig.saveServer(this.root, input)
@@ -932,7 +1031,16 @@ export class Hub {
   }
   async testMcpCapability(name) {
     if (name === 'requirements') return this.testRequirementConnection('mcp')
-    if (name === 'milestones') return this.testMilestoneConnection('mcp')
+    if (name === 'milestones') {
+      const config = mcpConfig.resolveCapability(this.root, 'milestones')
+      if (config.transport === 'stdio' && config.adapter === 'assess-task') {
+        return this.#withAssessAdapter(false, async (adapter) => {
+          const identity = await adapter.probe()
+          return { provider: 'assess-task', ok: true, identity: identity.name || identity.account, account: identity.account }
+        })
+      }
+      return this.testMilestoneConnection('mcp')
+    }
     const config = mcpConfig.resolveCapability(this.root, name)
     const testTool = config.tools.test || config.mePath
     if (!testTool) throw err.bad('MCP_CAPABILITY_TEST_MISSING', `${config.capability.label || name} MCP 能力没有配置连接测试工具`)
@@ -1790,6 +1898,85 @@ export class Hub {
   }
 
   // ==================== 内部 ====================
+
+  async #withAssessAdapter(write, fn) {
+    if (this.assessAdapter) {
+      const config = this.assessConfig || { server: { id: 'assess-task-test' }, project: '', capability: { options: {} } }
+      return fn(this.assessAdapter, config)
+    }
+    const config = mcpConfig.resolveCapability(this.root, 'milestones')
+    if (config.transport !== 'stdio' || config.adapter !== 'assess-task') {
+      throw err.bad('ASSESS_MCP_NOT_CONFIGURED', '迭代能力尚未绑定 Assess Task stdio MCP')
+    }
+    const profile = mcpRuntime.getRuntimeProfile(this.root, config.runtimeProfile)
+    if (!profile) throw err.notFound(`MCP 本机配置「${config.runtimeProfile}」`)
+    const diagnostic = mcpRuntime.diagnoseExecutable(profile)
+    if (!diagnostic.ready) {
+      throw err.conflict('MCP_RUNTIME_BLOCKED', diagnostic.blockers[0]?.message || 'MCP 可执行文件检查未通过')
+    }
+    const session = await this.mcpClientManager.connect({
+      type: 'stdio',
+      command: profile.command,
+      args: profile.args,
+      env: mcpRuntime.runtimeEnvironment(this.root, config.runtimeProfile),
+      cwd: this.root,
+      timeoutMs: config.timeoutMs
+    })
+    try {
+      const tools = await session.listTools()
+      const adapter = createAssessTaskAdapter({
+        session,
+        tools,
+        mapping: config.tools,
+        projectId: config.project,
+        write
+      })
+      return await fn(adapter, config)
+    } finally {
+      await session.close()
+    }
+  }
+
+  async #buildMilestoneSyncPlan(name, input, adapter, config) {
+    const milestone = milestones.inspectMilestone(this.root, name)
+    const codes = [...new Set(milestone.items.map((item) => item.requirement))]
+    const requirementItems = codes.map((code) => {
+      const item = reqx.requirementDetail(this.root, code)
+      const specFile = store.paths.requirementSpec(this.root, code)
+      return { ...item, spec: fs.existsSync(specFile) ? fs.readFileSync(specFile, 'utf8') : '' }
+    })
+    const options = config.capability?.options || {}
+    const mapping = {
+      ...options,
+      ...(input.mapping || {}),
+      server: config.server?.id || input.mapping?.server || '',
+      projectId: Number(config.project || input.mapping?.projectId || options.projectId)
+    }
+    const sprintId = Number(milestone.external?.sprintId || 0)
+    const remoteSprint = sprintId ? await adapter.getSprint(sprintId) : null
+    const remoteTasks = sprintId ? await adapter.listTasks({ sprintId }) : []
+    const known = new Set(remoteTasks.map((item) => Number(item.id)))
+    for (const requirement of requirementItems) {
+      const binding = (requirement.externalTasks || []).find((item) =>
+        item.provider === 'assess-task' && item.server === mapping.server && Number(item.projectId) === mapping.projectId)
+      if (binding?.taskId && !known.has(Number(binding.taskId))) {
+        const remote = await adapter.getTask(binding.taskId)
+        if (remote) {
+          remoteTasks.push(remote)
+          known.add(Number(remote.id))
+        }
+      }
+    }
+    return buildMilestoneSyncPlan({
+      milestone,
+      requirements: requirementItems,
+      remoteSprint,
+      remoteTasks,
+      mapping,
+      action: input.action || null,
+      resolutions: input.resolutions || {}
+    })
+  }
 
   #decorate(v, baselineNo) {
     const links = reqx.resolveRequirementLinks(this.root, v.requirements)

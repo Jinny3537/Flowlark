@@ -129,6 +129,7 @@ function normalizeCapability(name, input = {}) {
     category: String(input.category || meta.category || 'extension').trim(),
     description: String(input.description || meta.description || '').trim(),
     project: String(input.project || '').trim(),
+    options: normalizeOptions(input.options),
     tools
   }
 }
@@ -142,6 +143,11 @@ function normalizeTools(input) {
     if (k && v) out[k] = v
   }
   return out
+}
+
+function normalizeOptions(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  return JSON.parse(JSON.stringify(input))
 }
 
 export function validate(config) {

@@ -186,8 +186,19 @@ function editablePreviewHtml(buf) {
  *
  * 开放局域网时，写操作按来源拦截：只有 127.0.0.1 能写。详见 core/net.js。
  */
-export async function startServer(root, { port, previewPort, lan, host, mirror = false, wecomMcp = null, gitSync = null } = {}) {
-  const hub = new Hub(root, { gitSync })
+export async function startServer(root, {
+  port,
+  previewPort,
+  lan,
+  host,
+  mirror = false,
+  wecomMcp = null,
+  gitSync = null,
+  assessAdapter = null,
+  assessConfig = null,
+  mcpClientManager = null
+} = {}) {
+  const hub = new Hub(root, { gitSync, assessAdapter, assessConfig, mcpClientManager })
   const s = hub.settings
   let wecomRuntime = wecomMcp
   if (!wecomRuntime) {
