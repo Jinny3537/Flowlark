@@ -8,7 +8,7 @@
 
 当前版本：`v0.7.0`。除项目/版本外，已支持标注反馈、需求与迭代视图、交付快照、团队通知、只读镜像、跨仓库搜索、原型修改工作台、AI 草稿和需求平台接入。
 
-更新、镜像与故障恢复见 [更新](docs/UPDATES.md)、[镜像](docs/MIRROR.md) 和 [故障恢复](docs/TROUBLESHOOTING.md)。
+更新、镜像与故障恢复见 [更新](docs/UPDATES.md)、[镜像](docs/MIRROR.md) 和 [故障恢复](docs/TROUBLESHOOTING.md)。研发任务平台的 stdio MCP 迭代同步见 [Assess Task MCP](docs/ASSESS-TASK-MCP.md)。
 
 给需要在一堆 HTML 原型迭代里说清楚「现在到底按哪一版开发」的产品经理和研发。
 

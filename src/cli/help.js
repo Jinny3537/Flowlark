@@ -29,7 +29,7 @@ ${c.bold('检索与组织')}
   ${c.cyan('compare')} <项目> <v1> <v2>  浏览器里并排对比两个版本
   ${c.cyan('feedback')}             反馈草稿：list / export / submit / rm
   ${c.cyan('req')}                  需求：list / show / new / link / unlink
-  ${c.cyan('milestone')}            迭代：list / show / new / add / rm
+  ${c.cyan('milestone')}            迭代：查看、预检、同步计划、状态流转
   ${c.cyan('export')}               导出需求或迭代静态交付包
   ${c.cyan('workspace')}            工作区：list / add / clone / remove
   ${c.cyan('mirror')}               只读镜像：status / refresh / serve
@@ -306,6 +306,21 @@ ${c.cyan('flowlark git brief')} 就是把这些整理成一段说明，粘给助
 
 版本号从文件名推断（如 订单中心_v1.4.html → v1.4），推不出来时按日期生成。
 撞号时自动加后缀。
+`,
+
+  milestone: `${c.bold('flowlark milestone')} <子命令> [参数]
+
+  list / show / new / add / rm       基础迭代管理
+  preflight <迭代>                   冻结前检查
+  plan <迭代> [--action start|end|cancel]
+                                      读取平台状态并生成确定的同步计划
+  sync <迭代> --plan-hash <哈希> --confirm
+                                      执行已审阅计划
+  resume <迭代>                      从失败步骤恢复
+  transition <迭代> <状态>           本地状态流转
+
+高风险操作必须带 --reason；取消本地迭代还必须显式传入 --confirm。
+平台写入不会由 plan 触发，只有 sync --confirm 才会执行。
 `,
 
   attach: `${c.bold('flowlark attach')} <项目> <版本号> [文件…]

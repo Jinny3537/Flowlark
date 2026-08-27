@@ -105,7 +105,7 @@ git commit -m "build: add official MCP client runtime"
 
 **Files:**
 - Create: `src/core/integrations/mcp-client.js`
-- Create: `test/fixtures/fake-mcp-server.js`
+- Create: `fixtures/fake-mcp-server.js`
 - Create: `test/mcp-client.test.js`
 - Modify: `src/core/integrations/mcp-jsonrpc.js`
 
@@ -226,7 +226,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit transport foundation**
 
 ```bash
-git add src/core/integrations/mcp-client.js src/core/integrations/mcp-jsonrpc.js test/fixtures/fake-mcp-server.js test/mcp-client.test.js
+git add src/core/integrations/mcp-client.js src/core/integrations/mcp-jsonrpc.js fixtures/fake-mcp-server.js test/mcp-client.test.js
 git commit -m "feat: add stdio MCP client sessions"
 ```
 

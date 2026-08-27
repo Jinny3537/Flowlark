@@ -152,6 +152,11 @@ const OPTIONS = {
   owner: { type: 'string' },
   start: { type: 'string' },
   end: { type: 'string' },
+  action: { type: 'string' },
+  reason: { type: 'string' },
+  'plan-hash': { type: 'string' },
+  confirm: { type: 'boolean' },
+  unfinished: { type: 'boolean' },
   mode: { type: 'string' },
   help: { type: 'boolean', short: 'h' }
 }
