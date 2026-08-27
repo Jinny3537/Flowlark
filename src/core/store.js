@@ -251,6 +251,37 @@ export function writeSpec(root, slug, no, markdown) {
  * 不需要每个查询都记得带 `WHERE deleted_at IS NULL` —— 那个条件漏写一次就是一个 bug。
  */
 const TRASH_META = '_trash.json'
+const TRASH_ID_RE = /^[A-Za-z0-9_-]{8,512}$/
+
+function trashId(slug, entry) {
+  return Buffer.from(JSON.stringify([slug, entry]), 'utf8').toString('base64url')
+}
+
+function decodeTrashId(id) {
+  const value = String(id || '')
+  if (!TRASH_ID_RE.test(value)) throw err.bad('TRASH_ID_INVALID', '回收站记录编号不合法')
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'))
+    if (!Array.isArray(parsed) || parsed.length !== 2) throw new Error('shape')
+    const [slug, entry] = parsed.map(String)
+    if (!SLUG_RE.test(slug) || !entry || path.basename(entry) !== entry) throw new Error('path')
+    return { slug, entry }
+  } catch {
+    throw err.bad('TRASH_ID_INVALID', '回收站记录编号不合法')
+  }
+}
+
+export function readTrashEntry(root, id) {
+  const { slug, entry } = decodeTrashId(id)
+  const base = path.resolve(paths.trash(root))
+  const dir = path.resolve(base, slug, entry)
+  if (!dir.startsWith(`${base}${path.sep}`)) throw err.bad('TRASH_ID_INVALID', '回收站记录编号不合法')
+  const metaFile = path.join(dir, TRASH_META)
+  if (!fs.existsSync(metaFile)) throw err.notFound('回收站记录')
+  const meta = parse(fs.readFileSync(metaFile, 'utf8'), TRASH_META)
+  if (meta.project !== slug) throw err.bad('TRASH_ENTRY_INVALID', '回收站记录的项目元数据不一致')
+  return { ...meta, id: trashId(slug, entry), dir }
+}
 
 export function trashVersion(root, slug, no, deletedBy) {
   const deletedAt = new Date().toISOString()
@@ -287,7 +318,7 @@ export function listTrash(root, slug = null) {
       const metaFile = path.join(entryDir, TRASH_META)
       if (!fs.existsSync(metaFile)) continue
       const meta = parse(fs.readFileSync(metaFile, 'utf8'), TRASH_META)
-      out.push({ ...meta, dir: entryDir })
+      out.push({ ...meta, id: trashId(s.name, entry), dir: entryDir })
     }
   }
   return out.sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : -1))
