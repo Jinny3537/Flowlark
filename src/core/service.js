@@ -19,6 +19,8 @@ import * as drafts from './drafts.js'
 import * as watchbox from './watch-inbox.js'
 import * as reqx from './requirements.js'
 import * as projectx from './projects.js'
+import * as projectPreferences from './project-preferences.js'
+import * as versionPlanning from './version-planning.js'
 import * as migrate from './migrate.js'
 import * as milestones from './milestones.js'
 import * as savedViews from './views.js'
@@ -62,6 +64,53 @@ export class Hub {
 
   getProject(slug) {
     return this.#projectDetail(slug, reqx.listRequirements(this.root))
+  }
+
+  projectPlanning(slug) {
+    const project = this.getProject(slug)
+    const versions = this.listVersions(slug, { includeDraft: true, includeVoid: true, markNew: false })
+    const baseline = versions.find((item) => item.isBaseline) || null
+    let history = []
+    let historyError = null
+    try {
+      history = this.gitBaselineHistory(slug, 50)
+    } catch (error) {
+      historyError = error instanceof Error ? error.message : String(error)
+    }
+    const previous = baseline
+      ? versionPlanning.previousBaseline(versions, baseline.versionNo, history)
+      : null
+    const changes = baseline && previous
+      ? this.cumulative(slug, previous.version.versionNo, baseline.versionNo)
+      : { fromVersionNo: null, toVersionNo: baseline?.versionNo || null, versionCount: baseline ? 1 : 0, itemCount: 0, items: [], locationCounts: {} }
+    const review = versionPlanning.reviewSummary(versions, baseline?.versionNo || '')
+    const watchCount = this.listWatchInbox()
+      .filter((item) => item.project === slug && item.status !== 'archived').length
+    return {
+      project: { slug: project.slug, name: project.name, code: project.code },
+      baseline,
+      previousBaseline: previous?.version || null,
+      previousBaselineSource: previous?.source || null,
+      previousBaselineHistory: previous?.history || null,
+      history,
+      historyError,
+      latest: versions.find((item) => item.status !== 'VOID') || null,
+      review,
+      changes,
+      changeCounts: versionPlanning.changeCounts(changes.items),
+      watchCount,
+      notificationProvider: this.settings.integrations.notificationProvider || 'none'
+    }
+  }
+
+  getProjectPreference(slug) {
+    store.readProject(this.root, slug)
+    return projectPreferences.getProjectPreference(this.root, slug)
+  }
+
+  setProjectPreference(slug, input) {
+    store.readProject(this.root, slug)
+    return projectPreferences.setProjectPreference(this.root, slug, input)
   }
 
   #projectDetail(slug, requirements) {
@@ -242,6 +291,19 @@ export class Hub {
     store.writeVersion(this.root, slug, version)
     this.#log(slug, versionNo, 'VERSION_ADD', `新增版本 ${versionNo}（${t}）`)
     return this.getVersion(slug, versionNo)
+  }
+
+  preflightVersion(slug, input = {}) {
+    store.readProject(this.root, slug)
+    const permission = this.writePermission()
+    return versionPlanning.preflightVersion({
+      ...input,
+      existingVersionNos: store.listVersionNos(this.root, slug),
+      maxFileBytes: this.settings.server.maxFileBytes,
+      impacts: runImpact(this.root, input.changes || []),
+      canWrite: input.canWrite !== false && permission.canWrite,
+      gitKnown: input.gitKnown !== false && permission.mode !== 'unknown'
+    })
   }
 
   updateVersion(slug, versionNo, { title, note }) {
@@ -660,6 +722,31 @@ export class Hub {
         `${baselineNo} 是唯一当过基线的版本`)
     }
     return this.setBaseline(slug, candidates[0].versionNo)
+  }
+
+  rollbackPreview(slug) {
+    const baselineNo = store.readBaseline(this.root, slug)
+    if (!baselineNo) throw err.bad('NO_BASELINE', `项目 ${slug} 当前没有基线`, '先设置一个基线')
+    const candidates = store
+      .listVersionNos(this.root, slug)
+      .map((no) => store.readVersion(this.root, slug, no))
+      .filter((version) => version.versionNo !== baselineNo && version.baselineAt && version.status !== 'VOID')
+      .sort((a, b) => String(b.baselineAt).localeCompare(String(a.baselineAt)))
+    if (!candidates.length) {
+      throw err.bad('NO_PREVIOUS_BASELINE', `项目 ${slug} 没有可回滚的历史基线`, `${baselineNo} 是唯一当过基线的版本`)
+    }
+    const current = this.getVersion(slug, baselineNo)
+    const target = this.getVersion(slug, candidates[0].versionNo)
+    const changes = this.cumulative(slug, target.versionNo, current.versionNo)
+    const requirements = [...new Set(changes.items.map((item) => String(item.requirement || '').trim()).filter(Boolean))]
+    return {
+      current,
+      target,
+      changes,
+      changeCounts: versionPlanning.changeCounts(changes.items),
+      requirements,
+      notificationProvider: this.settings.integrations.notificationProvider || 'none'
+    }
   }
 
   // ==================== 生命周期 ====================

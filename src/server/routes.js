@@ -208,6 +208,25 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, hub.updateProject(p.slug, body))
   })
 
+  r.post('/api/projects/:slug/version-preflight', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.preflightVersion(p.slug, body))
+  })
+
+  r.get('/api/projects/:slug/planning', async (req, res, p) =>
+    sendJson(res, 200, hub.projectPlanning(p.slug)))
+
+  r.get('/api/projects/:slug/preferences', async (req, res, p) =>
+    sendJson(res, 200, hub.getProjectPreference(p.slug)))
+
+  r.put('/api/projects/:slug/preferences', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.setProjectPreference(p.slug, body))
+  })
+
+  r.get('/api/projects/:slug/rollback-preview', async (req, res, p) =>
+    sendJson(res, 200, hub.rollbackPreview(p.slug)))
+
   r.post('/api/projects/:slug/rollback', async (req, res, p) =>
     sendJson(res, 200, hub.rollback(p.slug)))
 

@@ -95,6 +95,11 @@ export const api = {
   getProject: (slug: string) => get<any>(`/api/projects/${enc(slug)}`),
   createProject: (body: unknown) => post<any>('/api/projects', body),
   updateProject: (slug: string, body: unknown) => put<any>(`/api/projects/${enc(slug)}`, body),
+  preflightVersion: (slug: string, body: unknown) => post<any>(`/api/projects/${enc(slug)}/version-preflight`, body),
+  projectPlanning: (slug: string) => get<any>(`/api/projects/${enc(slug)}/planning`),
+  projectPreference: (slug: string) => get<any>(`/api/projects/${enc(slug)}/preferences`),
+  setProjectPreference: (slug: string, body: unknown) => put<any>(`/api/projects/${enc(slug)}/preferences`, body),
+  rollbackPreview: (slug: string) => get<any>(`/api/projects/${enc(slug)}/rollback-preview`),
   rollbackProject: (slug: string) => post(`/api/projects/${enc(slug)}/rollback`),
   listVersions: (slug: string, { includeDraft = true, includeVoid = false } = {}) =>
     get<any[]>(`/api/projects/${enc(slug)}/versions?includeDraft=${includeDraft}&includeVoid=${includeVoid}`),

@@ -131,3 +131,65 @@ describe('项目最新原型摘要', () => {
     t.assert.strictEqual(summary.latestVersion, null)
   })
 })
+
+describe('项目原型规划摘要', () => {
+  test('聚合基线、上一基线、评审数量和累计变更', (t) => {
+    const { hub, project } = fixture()
+    hub.addVersion(project.slug, { versionNo: 'v1', title: '首版', html: html() })
+    hub.setBaseline(project.slug, 'v1')
+    hub.addVersion(project.slug, {
+      versionNo: 'v2', title: '第二版', html: html(), requirements: [],
+      changes: [{ type: 'ADD', location: '首页', content: '增加入口', requirement: 'REQ-1' }]
+    })
+    hub.setBaseline(project.slug, 'v2')
+    hub.addVersion(project.slug, {
+      versionNo: 'v3', title: '待评审版', html: html(),
+      changes: [{ type: 'MODIFY', location: '首页', content: '调整入口' }]
+    })
+    hub.addVersion(project.slug, {
+      versionNo: 'v4', title: '有疑问版', html: html(),
+      changes: [{ type: 'MODIFY', location: '列表', content: '调整筛选' }]
+    })
+    hub.setReviewStatus(project.slug, 'v4', 'questions')
+
+    const planning = hub.projectPlanning(project.slug)
+    t.assert.strictEqual(planning.baseline.versionNo, 'v2')
+    t.assert.strictEqual(planning.previousBaseline.versionNo, 'v1')
+    t.assert.strictEqual(planning.previousBaselineSource, 'local')
+    t.assert.deepStrictEqual(planning.review, { pending: 1, questions: 1, newerThanBaseline: 2 })
+    t.assert.strictEqual(planning.changes.itemCount, 1)
+    t.assert.deepStrictEqual(planning.changeCounts, { ADD: 1, MODIFY: 0, REMOVE: 0 })
+    t.assert.strictEqual(planning.watchCount, 0)
+  })
+
+  test('保存个人项目筛选到 cache 并规范化字段', (t) => {
+    const { root, hub, project } = fixture()
+    const saved = hub.setProjectPreference(project.slug, {
+      query: 'REQ-1', task: 'pending', order: 'oldest', author: 'PM', requirement: 'REQ', external: true,
+      ignored: 'value'
+    })
+    t.assert.deepStrictEqual(saved, {
+      query: 'REQ-1', task: 'pending', order: 'oldest', author: 'PM', requirement: 'REQ', external: true
+    })
+    t.assert.deepStrictEqual(hub.getProjectPreference(project.slug), saved)
+    t.assert.strictEqual(fs.existsSync(`${root}/.flowlark/cache/project-preferences.json`), true)
+    t.assert.strictEqual(fs.existsSync(`${root}/projects/${project.slug}/preferences.json`), false)
+  })
+
+  test('回滚预览说明目标版本和将撤回的变更', (t) => {
+    const { hub, project } = fixture()
+    hub.addVersion(project.slug, { versionNo: 'v1', title: '首版', html: html() })
+    hub.setBaseline(project.slug, 'v1')
+    hub.addVersion(project.slug, {
+      versionNo: 'v2', title: '第二版', html: html(), requirements: ['REQ-X'],
+      changes: [{ type: 'MODIFY', location: '首页', content: '调整入口', requirement: 'REQ-X' }]
+    })
+    hub.setBaseline(project.slug, 'v2')
+
+    const preview = hub.rollbackPreview(project.slug)
+    t.assert.strictEqual(preview.current.versionNo, 'v2')
+    t.assert.strictEqual(preview.target.versionNo, 'v1')
+    t.assert.strictEqual(preview.changes.itemCount, 1)
+    t.assert.deepStrictEqual(preview.requirements, ['REQ-X'])
+  })
+})
