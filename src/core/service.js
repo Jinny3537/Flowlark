@@ -40,6 +40,20 @@ import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
 import { readConfig, writeConfig, currentUser } from './repo.js'
 
+function trashRestoreState(root, entry) {
+  if (!store.projectExists(root, entry.project)) {
+    return { canRestore: false, blockedReason: 'PROJECT_NOT_FOUND' }
+  }
+  if (store.versionExists(root, entry.project, entry.versionNo)) {
+    return { canRestore: false, blockedReason: 'VERSION_EXISTS' }
+  }
+  const required = [`${entry.versionNo}.json`, `${entry.versionNo}.html`]
+  if (required.some((name) => !fs.existsSync(path.join(entry.dir, name)))) {
+    return { canRestore: false, blockedReason: 'TRASH_INCOMPLETE' }
+  }
+  return { canRestore: true, blockedReason: null }
+}
+
 /**
  * 业务门面。CLI 与 HTTP API 都只调这一层 —— 保证「命令行能做的事，网页也能做，
  * 且行为完全一致」。任何一边绕过它直接读写文件，两边就会开始漂移。
@@ -791,7 +805,28 @@ export class Hub {
   }
 
   listTrash(slug = null) {
-    return store.listTrash(this.root, slug)
+    return store.listTrash(this.root, slug).map((entry) => ({
+      ...entry,
+      ...trashRestoreState(this.root, entry)
+    }))
+  }
+
+  restoreTrashEntry(id) {
+    this.#assertWritable('恢复版本')
+    const entry = store.readTrashEntry(this.root, id)
+    const state = trashRestoreState(this.root, entry)
+    if (!state.canRestore) {
+      if (state.blockedReason === 'VERSION_EXISTS') {
+        throw err.conflict('VERSION_EXISTS', `版本号「${entry.versionNo}」已被重新占用，无法恢复`, '先处理现有同号版本')
+      }
+      if (state.blockedReason === 'PROJECT_NOT_FOUND') {
+        throw err.conflict('PROJECT_NOT_FOUND', `项目「${entry.project}」已不存在，无法恢复`, '先恢复或重建项目')
+      }
+      throw err.conflict('TRASH_INCOMPLETE', '回收站记录数据不完整，无法恢复', '检查回收站中的版本 JSON 和 HTML 文件')
+    }
+    store.restoreFromTrash(this.root, entry.dir, entry.project)
+    this.#log(entry.project, entry.versionNo, 'VERSION_RESTORE', `从回收站恢复版本 ${entry.versionNo}`)
+    return this.getVersion(entry.project, entry.versionNo)
   }
 
   restoreVersion(slug, versionNo) {

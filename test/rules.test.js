@@ -250,6 +250,39 @@ describe('R7 逻辑删除', () => {
     throwsCode(t, 'TRASH_ID_INVALID', () => store.readTrashEntry(root, '../projects'))
     throwsCode(t, 'TRASH_ID_INVALID', () => store.readTrashEntry(root, 'not-base64'))
   })
+
+  test('回收站列表给出恢复资格并按 ID 恢复指定记录', (t) => {
+    const { hub, slug } = fresh()
+    hub.addVersion(slug, { versionNo: 'v1.0', title: '旧版', html: html('old') })
+    hub.removeVersion(slug, 'v1.0')
+    const first = hub.listTrash(slug)[0]
+
+    hub.addVersion(slug, { versionNo: 'v1.0', title: '新版', html: html('new') })
+    let blocked = hub.listTrash(slug).find((item) => item.id === first.id)
+    t.assert.strictEqual(blocked.canRestore, false)
+    t.assert.strictEqual(blocked.blockedReason, 'VERSION_EXISTS')
+
+    hub.removeVersion(slug, 'v1.0')
+    const entries = hub.listTrash(slug)
+    const target = entries.find((item) => item.id === first.id)
+    t.assert.strictEqual(target.canRestore, true)
+    const restored = hub.restoreTrashEntry(target.id)
+    t.assert.strictEqual(restored.title, '旧版')
+  })
+
+  test('项目缺失和数据不完整会阻断恢复', (t) => {
+    const { root, hub, slug } = fresh()
+    hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
+    hub.removeVersion(slug, 'v1.0')
+    const entry = hub.listTrash(slug)[0]
+
+    fs.rmSync(store.paths.projectFile(root, slug))
+    t.assert.strictEqual(hub.listTrash(slug)[0].blockedReason, 'PROJECT_NOT_FOUND')
+    fs.writeFileSync(store.paths.projectFile(root, slug), JSON.stringify({ name: '恢复项目', code: slug }))
+    fs.rmSync(path.join(entry.dir, 'v1.0.json'))
+    t.assert.strictEqual(hub.listTrash(slug)[0].blockedReason, 'TRASH_INCOMPLETE')
+    throwsCode(t, 'TRASH_INCOMPLETE', () => hub.restoreTrashEntry(entry.id))
+  })
 })
 
 describe('基线保护', () => {
