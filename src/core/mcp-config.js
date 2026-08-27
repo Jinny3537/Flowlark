@@ -5,6 +5,7 @@ import { stringify, parse } from './json.js'
 import * as secrets from './secrets.js'
 
 export const MCP_FILE = 'mcp.json'
+const MCP_SCHEMA_VERSION = 2
 
 const DEFAULT_REQUIREMENT_TOOLS = {
   test: 'requirements.test',
@@ -37,7 +38,7 @@ const BUILTIN_CAPABILITIES = {
 
 export function defaultMcpConfig() {
   return {
-    schemaVersion: 1,
+    schemaVersion: MCP_SCHEMA_VERSION,
     servers: [],
     capabilities: {
       requirements: {
@@ -76,7 +77,7 @@ export function normalize(raw = {}) {
     capabilities[name] = normalizeCapability(name, value)
   }
   return {
-    schemaVersion: Number(raw.schemaVersion || 1),
+    schemaVersion: MCP_SCHEMA_VERSION,
     servers,
     capabilities
   }
@@ -84,14 +85,19 @@ export function normalize(raw = {}) {
 
 function normalizeServer(input = {}) {
   const id = String(input.id || '').trim()
+  const type = ['http', 'sse', 'stdio'].includes(input.type) ? input.type : 'http'
   return {
     id,
     name: String(input.name || id || 'MCP Server').trim(),
-    type: input.type === 'sse' ? 'sse' : 'http',
+    type,
+    ...(type === 'stdio' ? {
+      adapter: String(input.adapter || '').trim(),
+      runtimeProfile: String(input.runtimeProfile || '').trim()
+    } : {}),
     enabled: input.enabled !== false,
-    url: String(input.url || '').trim(),
+    url: type === 'stdio' ? '' : String(input.url || '').trim(),
     timeoutMs: Number(input.timeoutMs || 10000),
-    headers: normalizeHeaders(input.headers)
+    headers: type === 'stdio' ? {} : normalizeHeaders(input.headers)
   }
 }
 
@@ -145,7 +151,10 @@ export function validate(config) {
     if (!validId(server.id)) problems.push(`MCP 服务标识不合法：${server.id || '（空）'}`)
     if (ids.has(server.id)) problems.push(`MCP 服务标识重复：${server.id}`)
     ids.add(server.id)
-    if (!server.url) problems.push(`MCP 服务 ${server.id || server.name} 缺少 URL`)
+    if (server.type === 'stdio') {
+      if (!validId(server.adapter)) problems.push(`MCP 服务 ${server.id || server.name} 缺少有效适配器`)
+      if (!validId(server.runtimeProfile)) problems.push(`MCP 服务 ${server.id || server.name} 缺少有效本机运行配置`)
+    } else if (!server.url) problems.push(`MCP 服务 ${server.id || server.name} 缺少 URL`)
     else {
       try {
         const url = new URL(server.url)
@@ -166,8 +175,11 @@ export function validate(config) {
 export function saveServer(root, input) {
   const server = normalizeServer(input)
   if (!validId(server.id)) throw err.bad('MCP_SERVER_ID_INVALID', 'MCP 服务标识只能包含小写字母、数字、点、下划线和连字符')
-  if (!server.url) throw err.bad('MCP_SERVER_URL_REQUIRED', '请填写 MCP 服务 URL')
-  if (!Object.keys(server.headers).length) {
+  if (server.type === 'stdio') {
+    if (!validId(server.adapter)) throw err.bad('MCP_SERVER_ADAPTER_REQUIRED', '请填写 MCP 服务适配器')
+    if (!validId(server.runtimeProfile)) throw err.bad('MCP_RUNTIME_PROFILE_REQUIRED', '请填写 MCP 本机运行配置')
+  } else if (!server.url) throw err.bad('MCP_SERVER_URL_REQUIRED', '请填写 MCP 服务 URL')
+  if (server.type !== 'stdio' && !Object.keys(server.headers).length) {
     server.headers = { Authorization: 'Bearer ${secret}' }
   }
   const config = readMcpConfig(root)
@@ -221,6 +233,9 @@ export function resolveCapability(root, name) {
   if (!server.enabled) throw err.bad('MCP_SERVER_DISABLED', `MCP 服务 ${server.name} 已停用`)
   const result = {
     provider: 'mcp',
+    transport: server.type,
+    adapter: server.adapter,
+    runtimeProfile: server.runtimeProfile,
     baseUrl: server.url,
     server,
     capability,

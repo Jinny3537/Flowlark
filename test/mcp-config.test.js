@@ -50,6 +50,56 @@ after(() => {
 })
 
 describe('MCP 配置文件', () => {
+  test('schema 2 支持 stdio 服务并保留本机配置引用', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    const info = hub.saveMcpServer({
+      id: 'assess-task-local',
+      name: '研发任务管理',
+      type: 'stdio',
+      adapter: 'assess-task',
+      runtimeProfile: 'assess-task-local',
+      timeoutMs: 15000
+    })
+    t.assert.strictEqual(info.config.schemaVersion, 2)
+    t.assert.deepStrictEqual(info.config.servers[0], {
+      id: 'assess-task-local',
+      name: '研发任务管理',
+      type: 'stdio',
+      adapter: 'assess-task',
+      runtimeProfile: 'assess-task-local',
+      enabled: true,
+      url: '',
+      timeoutMs: 15000,
+      headers: {}
+    })
+  })
+
+  test('schema 1 HTTP 服务读取后升级且配置不丢失', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    fs.writeFileSync(path.join(root, 'mcp.json'), JSON.stringify({
+      schemaVersion: 1,
+      servers: [{ id: 'legacy', name: '旧 MCP', type: 'http', url: 'https://mcp.example/api', headers: { 'X-Test': 'yes' } }],
+      capabilities: {}
+    }))
+    const info = hub.mcpConfig()
+    t.assert.strictEqual(info.config.schemaVersion, 2)
+    t.assert.strictEqual(info.config.servers[0].url, 'https://mcp.example/api')
+    t.assert.deepStrictEqual(info.config.servers[0].headers, { 'X-Test': 'yes' })
+  })
+
+  test('stdio 服务缺少适配器或本机配置引用时拒绝保存', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    t.assert.throws(() => hub.saveMcpServer({
+      id: 'missing-adapter', type: 'stdio', runtimeProfile: 'profile'
+    }), /适配器/)
+    t.assert.throws(() => hub.saveMcpServer({
+      id: 'missing-profile', type: 'stdio', adapter: 'assess-task'
+    }), /本机运行配置/)
+  })
+
   test('保存服务和需求能力会写入 mcp.json，并驱动需求导入', async (t) => {
     const { root, hub } = newHub()
     dirs.push(root)
