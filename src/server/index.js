@@ -200,15 +200,7 @@ export async function startServer(root, {
 } = {}) {
   const hub = new Hub(root, { gitSync, assessAdapter, assessConfig, mcpClientManager })
   const s = hub.settings
-  let wecomRuntime = wecomMcp
-  if (!wecomRuntime) {
-    try {
-      wecomRuntime = await startWecomMcpSidecar({ command: s.integrations.wecomCliCommand || 'wecom-cli' })
-    } catch (error) {
-      wecomRuntime = unavailableWecomMcp(error)
-      console.error(`[flowlark] 企业微信 MCP Sidecar 未启动：${error.message}`)
-    }
-  }
+  let wecomRuntime = wecomMcp || unavailableWecomMcp('企业微信 MCP Sidecar 正在启动')
   hub.attachWecomMcp(wecomRuntime)
 
   // 用 ?? 而不是 ||：端口 0 是「让内核分配一个空闲端口」的合法值，
@@ -314,6 +306,19 @@ export async function startServer(root, {
     listen(mainServer, mainPort, bind, '工作台'),
     listen(previewServer, pvPort, bind, '预览服务')
   ])
+
+  // 先占住工作台和预览端口，再让 Sidecar 申请随机端口。
+  // 否则 macOS 可能把用户指定的工作台端口分给 port=0 的 Sidecar，
+  // 主服务随后会误报 EADDRINUSE。
+  if (!wecomMcp) {
+    try {
+      wecomRuntime = await startWecomMcpSidecar({ command: s.integrations.wecomCliCommand || 'wecom-cli' })
+    } catch (error) {
+      wecomRuntime = unavailableWecomMcp(error)
+      console.error(`[flowlark] 企业微信 MCP Sidecar 未启动：${error.message}`)
+    }
+    hub.attachWecomMcp(wecomRuntime)
+  }
 
   // 端口传 0 时内核才决定实际端口，要回填后再对外报告
   const actualPort = mainServer.address().port
