@@ -6,6 +6,7 @@ import { Hub } from '../core/service.js'
 import * as store from '../core/store.js'
 import * as offline from '../core/offline.js'
 import * as net from '../core/net.js'
+import { startWecomMcpSidecar, unavailableWecomMcp } from '../core/wecom-mcp-manager.js'
 import { buildApi } from './routes.js'
 import { sendJson, sendError } from './router.js'
 
@@ -185,9 +186,19 @@ function editablePreviewHtml(buf) {
  *
  * 开放局域网时，写操作按来源拦截：只有 127.0.0.1 能写。详见 core/net.js。
  */
-export async function startServer(root, { port, previewPort, lan, host, mirror = false } = {}) {
-  const hub = new Hub(root)
+export async function startServer(root, { port, previewPort, lan, host, mirror = false, wecomMcp = null, gitSync = null } = {}) {
+  const hub = new Hub(root, { gitSync })
   const s = hub.settings
+  let wecomRuntime = wecomMcp
+  if (!wecomRuntime) {
+    try {
+      wecomRuntime = await startWecomMcpSidecar({ command: s.integrations.wecomCliCommand || 'wecom-cli' })
+    } catch (error) {
+      wecomRuntime = unavailableWecomMcp(error)
+      console.error(`[flowlark] 企业微信 MCP Sidecar 未启动：${error.message}`)
+    }
+  }
+  hub.attachWecomMcp(wecomRuntime)
 
   // 用 ?? 而不是 ||：端口 0 是「让内核分配一个空闲端口」的合法值，
   // 被当成假值忽略掉的话，调用方以为拿到了随机端口，实际却去抢固定端口。
@@ -300,7 +311,8 @@ export async function startServer(root, { port, previewPort, lan, host, mirror =
   const close = () =>
     Promise.all([
       new Promise((r) => mainServer.close(r)),
-      new Promise((r) => previewServer.close(r))
+      new Promise((r) => previewServer.close(r)),
+      wecomRuntime.close()
     ])
 
   for (const sig of ['SIGINT', 'SIGTERM']) {
@@ -318,6 +330,7 @@ export async function startServer(root, { port, previewPort, lan, host, mirror =
     lan: lanEnabled,
     readonlyFromLan,
     bind,
+    wecomMcp: wecomRuntime.diagnostics(),
     port: actualPort,
     previewPort: actualPreviewPort,
     close

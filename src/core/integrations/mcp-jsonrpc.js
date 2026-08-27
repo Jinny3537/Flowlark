@@ -63,7 +63,7 @@ export async function callTool(config, name, args = {}) {
 function parseResponseText(text) {
   const trimmed = String(text || '').trim()
   if (!trimmed) return null
-  if (trimmed.startsWith('data:')) {
+  if (trimmed.startsWith('data:') || /(^|\n)data:/.test(trimmed)) {
     const line = trimmed.split(/\r?\n/).find((item) => item.startsWith('data:') && item.slice(5).trim() !== '[DONE]')
     return line ? JSON.parse(line.slice(5).trim()) : null
   }

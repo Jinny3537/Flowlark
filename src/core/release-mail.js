@@ -163,6 +163,10 @@ function publicRecipient(input = {}) {
   }
 }
 
+export function publicReleaseRecipient(input = {}) {
+  return publicRecipient(recipient(input))
+}
+
 function taskId(project, version, baselineAt) {
   return crypto.createHash('sha256')
     .update(`release-mail:${project}:${version}:${baselineAt}`)
@@ -267,4 +271,3 @@ export function publicReleaseMail(item) {
     sentAt: item.sentAt || null
   }
 }
-

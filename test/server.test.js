@@ -150,6 +150,12 @@ describe('沙箱隔离', () => {
     t.assert.notStrictEqual(server.port, server.previewPort)
   })
 
+  test('工作台自动管理仅供本机使用的企业微信 MCP Sidecar', (t) => {
+    t.assert.equal(server.wecomMcp.available, true)
+    t.assert.equal(typeof server.wecomMcp.pid, 'number')
+    t.assert.doesNotMatch(server.wecomMcp.stderr, /Bearer|FLOWLARK_WECOM_MCP_TOKEN/)
+  })
+
   test('文件缺失时返回可读占位页，而非浏览器原生错误', async (t) => {
     const r = await fetch(`${previewBase}/p/ord/v9.9`)
     t.assert.strictEqual(r.status, 200)

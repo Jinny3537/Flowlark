@@ -189,6 +189,13 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.delete('/api/notifications/:provider/webhook', async (req, res, p) =>
     sendJson(res, 200, hub.deleteNotificationWebhook(p.provider)))
 
+  // ---- 正式发版邮件 ----
+  r.get('/api/release-mails', async (req, res) =>
+    sendJson(res, 200, hub.listReleaseMails()))
+
+  r.post('/api/release-mails/:id/retry', async (req, res, p) =>
+    sendJson(res, 200, await hub.retryReleaseMail(p.id)))
+
   // ---- 工作区、更新与镜像 ----
   r.get('/api/workspaces', async (req, res) => sendJson(res, 200, hub.listWorkspaces()))
   r.post('/api/workspaces/register', async (req, res) => { const body=await readJson(req,maxBody);sendJson(res,201,hub.registerWorkspace(body.path,body)) })
@@ -280,6 +287,16 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     const result = hub.setBaseline(p.slug, p.no)
     const notificationResults = await hub.flushNotifications().catch((e) => [{ ok: false, error: e.message }])
     sendJson(res, 200, { ...result, notificationResults })
+  })
+
+  r.post('/api/versions/:slug/:no/formal-release/preflight', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.preflightFormalRelease(p.slug, p.no, body))
+  })
+
+  r.post('/api/versions/:slug/:no/formal-release', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.formalRelease(p.slug, p.no, body))
   })
 
   r.put('/api/versions/:slug/:no/review', async (req, res, p) => {

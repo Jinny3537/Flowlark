@@ -59,8 +59,10 @@ function trashRestoreState(root, entry) {
  * 且行为完全一致」。任何一边绕过它直接读写文件，两边就会开始漂移。
  */
 export class Hub {
-  constructor(root) {
+  constructor(root, { wecomMcp = null, gitSync = null } = {}) {
     this.root = root
+    this.wecomMcp = wecomMcp
+    this.gitSyncOverride = gitSync
     const initial = readConfig(root)
     if (initial.schemaVersion < 2) migrate.migrateToSchema2(root)
     this.config = readConfig(root)
@@ -68,6 +70,11 @@ export class Hub {
 
   get settings() {
     return this.config.settings
+  }
+
+  attachWecomMcp(adapter) {
+    this.wecomMcp = adapter
+    return this
   }
 
   // ==================== 项目 ====================
@@ -630,6 +637,268 @@ export class Hub {
   }
   setNotificationWebhook(provider, value) { return secrets.setSecret(`webhook-${provider}`, value) }
   deleteNotificationWebhook(provider) { return secrets.deleteSecret(`webhook-${provider}`) }
+
+  // ==================== 正式发版邮件 ====================
+
+  async #prepareFormalRelease(slug, versionNo, input = {}) {
+    const blockers = []
+    const warnings = []
+    const pushBlocker = (code, message, hint = null, extra = {}) => blockers.push({ code, message, hint, ...extra })
+    const project = store.readProject(this.root, slug)
+    const version = store.readVersion(this.root, slug, versionNo)
+    const baselineNo = store.readBaseline(this.root, slug)
+    const releasedAt = validReleaseTime(input.releasedAt)
+    const gitIdentity = this.gitSyncOverride
+      ? { name: 'Test User', email: 'test@example.com', complete: true }
+      : this.gitIdentity()
+
+    if (version.status === 'VOID') pushBlocker('VERSION_VOID', `${versionNo} 已废弃，不能正式发版`)
+    if (!version.baselineAt && version.reviewStatus === 'questions') {
+      pushBlocker('REVIEW_QUESTIONS_BLOCKED', `${versionNo} 仍有评审疑问，不能正式发版`)
+    }
+    if (!store.readHtml(this.root, slug, versionNo)) {
+      pushBlocker('FILE_MISSING', `${versionNo} 的原型文件丢失，不能正式发版`)
+    }
+    try {
+      rules.assertChangelogReady(version, store.listVersionNos(this.root, slug).length, {
+        enabled: this.settings.rules.requireChangelog
+      })
+    } catch (error) {
+      pushBlocker(error.code || 'CHANGELOG_REQUIRED', error.message, error.hint)
+    }
+
+    if (!gitIdentity.complete) {
+      pushBlocker('GIT_IDENTITY_REQUIRED', '正式发版前需要配置 Git 提交身份', '在 Git 面板中设置姓名和邮箱')
+    }
+    if (!this.gitSyncOverride) {
+      const conflicts = this.gitConflicts()
+      if (conflicts.length) pushBlocker('GIT_CONFLICTS', 'Git 仍有未解决冲突，不能正式发版', '先在 Git 面板完成冲突处理')
+      if (this.gitInProgress()) pushBlocker('GIT_IN_PROGRESS', 'Git 同步流程尚未结束，不能正式发版', '先继续或放弃当前同步')
+      if (!this.gitRemote()) pushBlocker('GIT_REMOTE_REQUIRED', '正式发版前需要配置 Git 远端')
+    }
+
+    let config = releaseMail.normalizeReleaseMail(project.releaseMail)
+    try {
+      config = releaseMail.assertReleaseMailConfig({
+        ...config,
+        to: input.to !== undefined ? input.to : config.to,
+        cc: input.cc !== undefined ? input.cc : config.cc
+      })
+    } catch (error) {
+      pushBlocker(error.code || 'RELEASE_MAIL_CONFIG_INVALID', error.message, error.hint)
+    }
+    const toNames = config.to
+    const toSet = new Set(toNames)
+    const ccNames = config.cc.filter((name) => !toSet.has(name))
+    const allNames = [...new Set([...toNames, ...ccNames])]
+
+    let authStatus = null
+    let resolution = []
+    if (!this.wecomMcp) {
+      pushBlocker('WECOM_MCP_UNAVAILABLE', '企业微信 MCP Sidecar 尚未连接')
+    } else {
+      try {
+        authStatus = await this.wecomMcp.authStatus()
+        if (!authStatus.installed || !authStatus.versionOk || !authStatus.authorized) {
+          pushBlocker(
+            'WECOM_AUTH_REQUIRED',
+            authStatus.message || '企业微信 CLI 尚未就绪',
+            authStatus.instruction || null
+          )
+        } else if (allNames.length) {
+          resolution = (await this.wecomMcp.resolveContacts({ names: allNames })).results || []
+        }
+      } catch (error) {
+        pushBlocker(error.code || 'WECOM_MCP_REJECTED', error.message, error.hint)
+      }
+    }
+
+    const selections = input.selections && typeof input.selections === 'object' ? input.selections : {}
+    const selected = new Map()
+    for (const result of resolution) {
+      const candidates = Array.isArray(result.candidates) ? result.candidates : []
+      const requestedKey = String(selections[result.query] || '')
+      const chosen = result.status === 'unique'
+        ? (result.candidate || candidates[0])
+        : candidates.find((candidate) => candidate.key === requestedKey)
+      if (chosen) {
+        selected.set(result.query, chosen)
+        continue
+      }
+      if (result.status === 'missing') {
+        pushBlocker('RELEASE_RECIPIENT_MISSING', `企业微信通讯录中没有找到「${result.query}」`, result.hint || null, {
+          query: result.query,
+          candidates: []
+        })
+      } else {
+        pushBlocker('RELEASE_RECIPIENT_AMBIGUOUS', `企业微信通讯录中「${result.query}」存在多个候选人`, result.hint || '请选择明确的成员', {
+          query: result.query,
+          candidates: candidates.map(releaseMail.publicReleaseRecipient)
+        })
+      }
+    }
+
+    const unresolved = allNames.filter((name) => !selected.has(name) && !blockers.some((item) => item.query === name))
+    for (const name of unresolved) {
+      pushBlocker('RELEASE_RECIPIENT_UNRESOLVED', `尚未解析企业微信成员「${name}」`, null, { query: name, candidates: [] })
+    }
+
+    const otherBaselines = this.listVersions(slug, { includeDraft: true, includeVoid: true, markNew: false })
+      .filter((item) => item.versionNo !== versionNo && item.baselineAt)
+      .sort((a, b) => String(b.baselineAt).localeCompare(String(a.baselineAt)))
+    const previousBaseline = baselineNo && baselineNo !== versionNo ? baselineNo : (otherBaselines[0]?.versionNo || '')
+    let rendered = { subject: '', markdown: '' }
+    try {
+      rendered = releaseMail.renderReleaseMail(config, releaseMail.releaseTemplateContext({
+        project,
+        version,
+        previousBaseline,
+        releasedAt,
+        releasedBy: gitIdentity.name || currentUser()
+      }))
+    } catch (error) {
+      pushBlocker(error.code || 'RELEASE_MAIL_TEMPLATE_INVALID', error.message, error.hint)
+    }
+
+    const internalTo = toNames.map((name) => selected.get(name)).filter(Boolean)
+    const internalCc = ccNames.map((name) => selected.get(name)).filter(Boolean)
+    return {
+      ready: blockers.length === 0,
+      blockers,
+      warnings,
+      project: { slug, name: project.name, code: project.code },
+      version: { versionNo, title: version.title },
+      previousBaseline,
+      releasedAt,
+      releasedBy: gitIdentity.name || currentUser(),
+      authStatus,
+      to: internalTo.map(releaseMail.publicReleaseRecipient),
+      cc: internalCc.map(releaseMail.publicReleaseRecipient),
+      resolution: resolution.map((item) => ({
+        query: item.query,
+        status: item.status,
+        candidate: item.candidate ? releaseMail.publicReleaseRecipient(item.candidate) : null,
+        candidates: (item.candidates || []).map(releaseMail.publicReleaseRecipient),
+        hint: item.hint || null
+      })),
+      subject: rendered.subject,
+      markdown: rendered.markdown,
+      internalTo,
+      internalCc
+    }
+  }
+
+  async preflightFormalRelease(slug, versionNo, input = {}) {
+    return publicFormalReleasePreflight(await this.#prepareFormalRelease(slug, versionNo, input))
+  }
+
+  async formalRelease(slug, versionNo, input = {}) {
+    this.#assertWritable('正式发版')
+    const prepared = await this.#prepareFormalRelease(slug, versionNo, input)
+    if (!prepared.ready) {
+      throw err.bad(
+        'FORMAL_RELEASE_BLOCKED',
+        prepared.blockers[0]?.message || '正式发版预检未通过',
+        prepared.blockers.map((item) => item.message).join('；')
+      )
+    }
+
+    const currentBaseline = store.readBaseline(this.root, slug)
+    const baseline = currentBaseline !== versionNo
+      ? this.setBaseline(slug, versionNo)
+      : this.getVersion(slug, versionNo)
+    const baselineAt = baseline.baselineAt
+    const existing = releaseMail.listReleaseMails(this.root)
+      .find((item) => item.project === slug && item.version === versionNo && item.baselineAt === baselineAt)
+    if (existing?.status === 'sent') {
+      return {
+        status: 'complete',
+        released: true,
+        duplicate: true,
+        baseline: { project: slug, version: versionNo, baselineAt },
+        git: { ok: true, skipped: true },
+        mail: releaseMail.publicReleaseMail(existing)
+      }
+    }
+    if (existing) return this.#sendReleaseMailTask(existing, { git: { ok: true, skipped: true } })
+
+    let gitResult
+    try {
+      gitResult = await Promise.resolve(this.gitSyncOverride
+        ? this.gitSyncOverride({ message: `release: ${slug}/${versionNo}`, push: true })
+        : this.gitSync({ message: `release: ${slug}/${versionNo}`, push: true }))
+    } catch (error) {
+      return {
+        status: 'git_failed',
+        released: false,
+        baseline: { project: slug, version: versionNo, baselineAt },
+        git: { ok: false, error: error.message, hint: error.hint || null },
+        mail: null
+      }
+    }
+
+    const task = releaseMail.enqueueReleaseMail(this.root, {
+      project: slug,
+      version: versionNo,
+      baselineAt,
+      subject: prepared.subject,
+      markdown: prepared.markdown,
+      to: prepared.internalTo,
+      cc: prepared.internalCc
+    })
+    return this.#sendReleaseMailTask(task, { git: { ok: true, result: gitResult } })
+  }
+
+  async #sendReleaseMailTask(task, { git = { ok: true, skipped: true } } = {}) {
+    if (task.status === 'sent') {
+      return {
+        status: 'complete', released: true, duplicate: true,
+        baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+        git,
+        mail: releaseMail.publicReleaseMail(task)
+      }
+    }
+    try {
+      await this.wecomMcp.sendReleaseMail({
+        to: task.to,
+        cc: task.cc,
+        subject: task.subject,
+        markdown: task.markdown,
+        idempotencyKey: task.idempotencyKey
+      })
+      const sent = releaseMail.markReleaseMailSent(this.root, task.id)
+      return {
+        status: 'complete', released: true, duplicate: false,
+        baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+        git,
+        mail: releaseMail.publicReleaseMail(sent)
+      }
+    } catch (error) {
+      const pending = releaseMail.markReleaseMailFailed(this.root, task.id, error)
+      return {
+        status: 'mail_pending', released: true, duplicate: false,
+        baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+        git,
+        mail: releaseMail.publicReleaseMail(pending)
+      }
+    }
+  }
+
+  listReleaseMails() {
+    return releaseMail.listReleaseMails(this.root).map(releaseMail.publicReleaseMail)
+  }
+
+  async retryReleaseMail(id) {
+    this.#assertWritable('重试发版邮件')
+    const task = releaseMail.readReleaseMail(this.root, id)
+    const baselineNo = store.readBaseline(this.root, task.project)
+    const version = store.readVersion(this.root, task.project, task.version)
+    if (baselineNo !== task.version || version.baselineAt !== task.baselineAt) {
+      throw err.conflict('RELEASE_BASELINE_CHANGED', '当前基线已变化，不能自动重试这封发版邮件', '请人工核对版本后重新正式发版')
+    }
+    return this.#sendReleaseMailTask(task)
+  }
+
   listWorkspaces() { return workspaces.listWorkspaces() }
   addWorkspace(input) { return workspaces.addWorkspace(input) }
   removeWorkspace(pathname) { return workspaces.removeWorkspace(pathname) }
@@ -1638,4 +1907,16 @@ function guessContentType(name) {
 function identityFromMcpTest(body) {
   if (!body || typeof body !== 'object') return null
   return body.identity || body.name || body.login || body.email || body.text || null
+}
+
+function validReleaseTime(value) {
+  if (value === undefined || value === null || value === '') return new Date().toISOString()
+  const time = new Date(value)
+  if (!Number.isFinite(time.getTime())) throw err.bad('RELEASE_TIME_INVALID', '发版时间不合法')
+  return time.toISOString()
+}
+
+function publicFormalReleasePreflight(value) {
+  const { internalTo, internalCc, ...publicValue } = value
+  return publicValue
 }
