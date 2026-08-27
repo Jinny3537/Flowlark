@@ -4,6 +4,7 @@ import { err } from './errors.js'
 import { parse, stringify } from './json.js'
 import * as store from './store.js'
 import { requirementExists } from './requirements.js'
+import { MILESTONE_STATUSES, normalizeMilestoneStatus } from './milestone-lifecycle.js'
 
 export const MILESTONE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
@@ -42,6 +43,9 @@ export function createMilestone(root, input) {
   const item = {
     name,
     title: String(input.title || name).trim(),
+    goal: String(input.goal || ''),
+    owner: String(input.owner || ''),
+    status: normalizeMilestoneStatus(input.status),
     startAt: input.startAt || null,
     endAt: input.endAt || null,
     items: normalizeItems(root, input.items),
@@ -58,7 +62,7 @@ export function readMilestone(root, name) {
   const safe = assertMilestoneName(name)
   const file = store.paths.milestoneFile(root, safe)
   if (!fs.existsSync(file)) throw err.notFound(`迭代「${safe}」`)
-  return parse(fs.readFileSync(file, 'utf8'), `${safe}.json`)
+  return normalizeStoredMilestone(parse(fs.readFileSync(file, 'utf8'), `${safe}.json`))
 }
 
 export function listMilestones(root) {
@@ -69,9 +73,17 @@ export function listMilestones(root) {
     .sort((a, b) => String(b.endAt || b.updatedAt).localeCompare(String(a.endAt || a.updatedAt)))
 }
 
-export function updateMilestone(root, name, patch) {
+export function updateMilestone(root, name, patch, { system = false } = {}) {
   const item = readMilestone(root, name)
+  const businessFields = ['title', 'goal', 'owner', 'startAt', 'endAt', 'items']
+  if (!system && isLocked(item.status) && businessFields.some((key) => patch[key] !== undefined)) {
+    throw err.conflict('MILESTONE_LOCKED', `迭代「${item.name}」处于 ${item.status} 状态，不能直接编辑`)
+  }
+  if (!system && patch.status !== undefined) throw err.bad('MILESTONE_STATUS_MANAGED', '请通过迭代状态流转操作修改状态')
   if (patch.title !== undefined) item.title = String(patch.title || '').trim() || item.name
+  if (patch.goal !== undefined) item.goal = String(patch.goal || '')
+  if (patch.owner !== undefined) item.owner = String(patch.owner || '')
+  if (patch.status !== undefined) item.status = normalizeMilestoneStatus(patch.status)
   if (patch.startAt !== undefined) item.startAt = patch.startAt || null
   if (patch.endAt !== undefined) item.endAt = patch.endAt || null
   if (patch.items !== undefined) item.items = normalizeItems(root, patch.items)
@@ -88,7 +100,7 @@ export function removeMilestone(root, name) {
 }
 
 export function inspectMilestone(root, input) {
-  const item = typeof input === 'string' ? readMilestone(root, input) : input
+  const item = typeof input === 'string' ? readMilestone(root, input) : normalizeStoredMilestone(input)
   const warnings = []
   const details = item.items.map((entry) => {
     const version = store.readVersion(root, entry.project, entry.version)
@@ -99,4 +111,19 @@ export function inspectMilestone(root, input) {
     return { ...entry, versionTitle: version.title, versionStatus: version.status, reviewStatus: version.reviewStatus, currentBaseline: baseline }
   })
   return { ...item, items: details, warnings, ready: warnings.length === 0 }
+}
+
+function normalizeStoredMilestone(input = {}) {
+  return {
+    ...input,
+    goal: String(input.goal || ''),
+    owner: String(input.owner || ''),
+    status: normalizeMilestoneStatus(input.status),
+    items: Array.isArray(input.items) ? input.items : [],
+    external: input.external || null
+  }
+}
+
+function isLocked(status) {
+  return MILESTONE_STATUSES.has(status) && !['planning', 'reviewing'].includes(status)
 }

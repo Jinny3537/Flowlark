@@ -48,7 +48,7 @@ export function readRequirement(root, code) {
   const safe = assertRequirementCode(code)
   const file = store.paths.requirementFile(root, safe)
   if (!fs.existsSync(file)) throw err.notFound(`需求「${safe}」`)
-  return parse(fs.readFileSync(file, 'utf8'), `${safe}/requirement.json`)
+  return normalizeStoredRequirement(parse(fs.readFileSync(file, 'utf8'), `${safe}/requirement.json`))
 }
 
 export function listRequirementCodes(root) {
@@ -76,6 +76,7 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
     dueDate: normalizeDueDate(input.dueDate),
     statusOverride: input.statusOverride || null,
     external: input.external || null,
+    externalTasks: normalizeExternalTasks(input.externalTasks),
     url: String(input.url || ''),
     createdAt: now,
     updatedAt: now
@@ -94,6 +95,19 @@ export function updateRequirement(root, code, patch) {
   if (!String(item.title || '').trim()) throw err.bad('REQUIREMENT_TITLE_REQUIRED', '请填写需求标题')
   item.title = String(item.title).trim()
   item.dueDate = normalizeDueDate(item.dueDate)
+  item.updatedAt = new Date().toISOString()
+  fs.writeFileSync(store.paths.requirementFile(root, item.code), stringify(item, 'requirement'))
+  return item
+}
+
+export function upsertExternalTask(root, code, binding) {
+  const item = readRequirement(root, code)
+  const normalized = normalizeExternalTask(binding)
+  const key = externalTaskKey(normalized)
+  const existing = item.externalTasks.findIndex((entry) => externalTaskKey(entry) === key)
+  if (existing >= 0) item.externalTasks[existing] = normalized
+  else item.externalTasks.push(normalized)
+  item.externalTasks.sort((a, b) => externalTaskKey(a).localeCompare(externalTaskKey(b)))
   item.updatedAt = new Date().toISOString()
   fs.writeFileSync(store.paths.requirementFile(root, item.code), stringify(item, 'requirement'))
   return item
@@ -185,4 +199,48 @@ export function requirementDetail(root, code) {
 
 export function listRequirements(root) {
   return listRequirementCodes(root).map((code) => requirementDetail(root, code))
+}
+
+function normalizeStoredRequirement(input = {}) {
+  return { ...input, external: input.external || null, externalTasks: normalizeExternalTasks(input.externalTasks) }
+}
+
+function normalizeExternalTasks(input) {
+  return (Array.isArray(input) ? input : []).map(normalizeExternalTask)
+    .sort((a, b) => externalTaskKey(a).localeCompare(externalTaskKey(b)))
+}
+
+function normalizeExternalTask(input = {}) {
+  const provider = String(input.provider || '').trim()
+  const server = String(input.server || '').trim()
+  const projectId = positiveId(input.projectId, '平台项目 ID')
+  const taskId = positiveId(input.taskId, '平台任务 ID')
+  if (!provider || !server) throw err.bad('EXTERNAL_TASK_INVALID', '外部任务绑定缺少 Provider 或服务标识')
+  return {
+    provider,
+    server,
+    projectId,
+    taskId,
+    revision: finiteOrNull(input.revision),
+    remoteStatus: input.remoteStatus ?? null,
+    url: String(input.url || ''),
+    lastSyncHash: String(input.lastSyncHash || ''),
+    syncedAt: input.syncedAt || null
+  }
+}
+
+function externalTaskKey(item) {
+  return `${item.provider}:${item.server}:${item.projectId}`
+}
+
+function positiveId(value, label) {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number <= 0) throw err.bad('EXTERNAL_TASK_INVALID', `${label} 必须是正整数`)
+  return number
+}
+
+function finiteOrNull(value) {
+  if (value == null || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
 }

@@ -16,6 +16,21 @@ function fixture() {
 }
 
 describe('需求实体与反向索引', () => {
+  test('外部执行任务绑定独立存储并按平台项目唯一更新', (t) => {
+    const { root, hub } = fixture()
+    hub.createRequirement({ code: 'REQ-TASK', title: '任务绑定' })
+    let item = reqx.upsertExternalTask(root, 'REQ-TASK', {
+      provider: 'assess-task', server: 'local', projectId: 123, taskId: 7, revision: 1
+    })
+    t.assert.strictEqual(item.externalTasks.length, 1)
+    item = reqx.upsertExternalTask(root, 'REQ-TASK', {
+      provider: 'assess-task', server: 'local', projectId: 123, taskId: 7, revision: 2
+    })
+    t.assert.strictEqual(item.externalTasks.length, 1)
+    t.assert.strictEqual(item.externalTasks[0].revision, 2)
+    t.assert.strictEqual(item.external, null)
+  })
+
   test('版本落盘只保存编号，Hub 返回完整需求对象', (t) => {
     const { root, hub } = fixture()
     hub.addVersion('orders', {
