@@ -151,6 +151,7 @@ function normalizeSprint(raw) {
   const item = objectFrom(raw)
   return {
     id: numericId(item.id ?? item.sprintId),
+    projectId: numberOrNull(item.projectId),
     name: String(item.name || item.sprintName || item.title || ''),
     title: String(item.title || item.sprintName || item.name || ''),
     goal: String(item.goal || item.sprintGoal || ''),
@@ -167,12 +168,19 @@ function normalizeTask(raw) {
   const id = numericId(item.id ?? item.taskId)
   return {
     id,
+    projectId: numberOrNull(item.projectId),
     code: String(item.code || item.taskCode || id),
     title: String(item.title || item.taskName || item.name || ''),
+    taskType: numberOrNull(item.taskType),
+    descriptionDoc: String(item.descriptionDoc || ''),
+    acceptanceDoc: String(item.acceptanceDoc || ''),
+    priority: numberOrNull(item.priority),
     status: item.status ?? item.state ?? null,
     revision: numberOrNull(item.revision),
     sprintId: numberOrNull(item.sprintId ?? item.currentSprintId),
-    assigneeId: numberOrNull(item.assigneeId)
+    assigneeId: numberOrNull(item.assigneeId),
+    planStartDate: item.planStartDate || null,
+    planEndDate: item.planEndDate || null
   }
 }
 

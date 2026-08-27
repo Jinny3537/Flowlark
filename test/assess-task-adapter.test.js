@@ -103,6 +103,7 @@ test('normalizes identity, projects, members, sprints and tasks', async () => {
   assert.deepEqual((await adapter.listMembers())[0], { id: 7, account: 'zhangsan', name: '张三' })
   assert.deepEqual((await adapter.listSprints())[0], {
     id: 9,
+    projectId: null,
     name: 'S12',
     title: 'S12',
     goal: '',
@@ -114,12 +115,19 @@ test('normalizes identity, projects, members, sprints and tasks', async () => {
   })
   assert.deepEqual((await adapter.listTasks({ sprintId: 9 }))[0], {
     id: 21,
+    projectId: null,
     code: 'TASK-21',
     title: '任务',
+    taskType: null,
+    descriptionDoc: '',
+    acceptanceDoc: '',
+    priority: null,
     status: 2,
     revision: 4,
     sprintId: 9,
-    assigneeId: null
+    assigneeId: null,
+    planStartDate: null,
+    planEndDate: null
   })
   assert.ok(session.calls.some((item) => item.name === mapping.listTasks && item.args.projectId === 123 && item.args.sprintIds[0] === 9))
 })
