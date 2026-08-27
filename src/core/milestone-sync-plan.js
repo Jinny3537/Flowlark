@@ -157,6 +157,8 @@ export function buildMilestoneSyncPlan({
   }
   return {
     milestone: milestone.name,
+    server: String(mapping.server || ''),
+    projectId,
     generatedAt,
     expiresAt,
     hash: `sha256:${digest(stableStringify(semantic))}`,
