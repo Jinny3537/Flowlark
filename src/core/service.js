@@ -612,6 +612,9 @@ export class Hub {
     if (v.status === 'VOID') {
       throw err.bad('VERSION_VOID', `${versionNo} 已废弃，不能设为基线`, '先 reopen 恢复')
     }
+    if (!v.baselineAt && v.reviewStatus === 'questions') {
+      throw err.bad('REVIEW_QUESTIONS_BLOCKED', `${versionNo} 仍有评审疑问，不能设为基线`, '先处理问题并更新评审状态')
+    }
     if (!store.readHtml(this.root, slug, versionNo)) {
       throw err.bad('FILE_MISSING', `${versionNo} 的原型文件丢失，不能设为基线`)
     }
