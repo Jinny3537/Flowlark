@@ -4,7 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createMcpClientManager } from '../src/core/integrations/mcp-client.js'
 
-const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-mcp-server.js')
+const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'fake-mcp-server.js')
 
 async function open(options = {}) {
   const manager = createMcpClientManager()

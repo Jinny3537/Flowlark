@@ -46,4 +46,3 @@ if (args[0] === 'mail' && args[1] === 'send') {
 
 output({ error: { message: `不支持的测试命令：${args.join(' ')}`, instruction: '检查测试 fixture' } })
 process.exit(1)
-
