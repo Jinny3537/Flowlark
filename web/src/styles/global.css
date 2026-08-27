@@ -2199,6 +2199,21 @@ button:active,
   display: none;
 }
 
+.fl-queue-batch {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border: 1px solid var(--fl-line);
+  border-radius: 12px;
+  background: var(--fl-surface);
+  box-shadow: var(--fl-shadow-3);
+}
+
 @media (max-width: 1439px) {
   .fl-project-entry-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
