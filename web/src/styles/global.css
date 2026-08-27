@@ -2174,6 +2174,31 @@ button:active,
   color: var(--pw-color-text-secondary);
 }
 
+.fl-queue-tabs,
+.fl-queue-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fl-queue-filters > * {
+  min-width: 220px;
+}
+
+.fl-queue-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.fl-queue-desktop {
+  display: block;
+}
+
+.fl-queue-mobile {
+  display: none;
+}
+
 @media (max-width: 1439px) {
   .fl-project-entry-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2199,6 +2224,18 @@ button:active,
 }
 
 @media (max-width: 767px) {
+  .fl-queue-filters > * {
+    width: 100%;
+  }
+
+  .fl-queue-desktop {
+    display: none;
+  }
+
+  .fl-queue-mobile {
+    display: block;
+  }
+
   .fl-new-version-dialog .ant-modal-body {
     max-height: calc(100dvh - 160px);
   }
