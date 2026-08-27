@@ -1,5 +1,5 @@
 function versionNoOf(version) {
-  return String(version.versionNo ?? version.no ?? '')
+  return String(version?.versionNo ?? version?.no ?? '')
 }
 
 function timestampOf(version) {

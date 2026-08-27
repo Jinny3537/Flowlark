@@ -119,6 +119,11 @@ test('chooses only valid distinct common comparison targets', () => {
     latestVsBaseline: { a: 'v2', b: 'v3' },
     baselineVsPrevious: null,
   })
+  assert.deepEqual(comparisonTargets([], '', '', ''), {
+    selectedVsBaseline: null,
+    latestVsBaseline: null,
+    baselineVsPrevious: null,
+  })
 })
 
 test('serializes filters to stable shareable query state', () => {

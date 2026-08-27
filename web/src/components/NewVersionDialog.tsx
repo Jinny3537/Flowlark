@@ -648,6 +648,18 @@ export function NewVersionDialog({
     void submit();
   };
 
+  const handleCancel = () => {
+    if (publishResult) {
+      onCreated(publishResult.project, publishResult.versionNo);
+      return;
+    }
+    if (batchSummary.pending === 0 && firstCreatedBatch) {
+      onCreated(String(slug || form.getFieldValue('project') || ''), firstCreatedBatch.versionNo);
+      return;
+    }
+    onClose();
+  };
+
   return (
     <Modal
       className="fl-new-version-dialog"
@@ -664,7 +676,7 @@ export function NewVersionDialog({
       closable={!saving}
       maskClosable={!saving}
       onOk={handleOk}
-      onCancel={onClose}
+      onCancel={handleCancel}
     >
       {publishResult ? (
         <Result
