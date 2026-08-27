@@ -28,6 +28,7 @@ import * as exporter from './exporter.js'
 import * as snapshots from './snapshots.js'
 import { suggestImpact as runImpact } from './impact.js'
 import * as notifications from './notifications.js'
+import * as releaseMail from './release-mail.js'
 import * as workspaces from './workspaces.js'
 import * as setupx from './setup.js'
 import * as updater from './updater.js'
@@ -137,7 +138,7 @@ export class Hub {
     }
   }
 
-  createProject({ name, code, description = '', priority = '', archived = false }) {
+  createProject({ name, code, description = '', priority = '', archived = false, releaseMail: releaseMailInput = {} }) {
     this.#assertWritable('创建项目')
     const trimmedName = String(name || '').trim()
     if (!trimmedName) throw err.bad('NAME_REQUIRED', '请填写项目名称')
@@ -160,6 +161,7 @@ export class Hub {
       description: String(description || ''),
       priority: projectx.normalizeProjectPriority(priority),
       archived: projectx.normalizeArchived(archived),
+      releaseMail: releaseMail.normalizeReleaseMail(releaseMailInput),
       createdAt: now,
       createdBy: who,
       updatedAt: now,
@@ -189,8 +191,10 @@ export class Hub {
     if (patch.description !== undefined) next.description = String(patch.description || '')
     if (patch.priority !== undefined) next.priority = projectx.normalizeProjectPriority(patch.priority)
     if (patch.archived !== undefined) next.archived = projectx.normalizeArchived(patch.archived)
+    if (patch.releaseMail !== undefined) next.releaseMail = releaseMail.normalizeReleaseMail(patch.releaseMail)
     if (next.priority === undefined) next.priority = ''
     if (next.archived === undefined) next.archived = false
+    if (next.releaseMail === undefined) next.releaseMail = releaseMail.normalizeReleaseMail()
 
     next.updatedAt = new Date().toISOString()
     next.updatedBy = currentUser()
