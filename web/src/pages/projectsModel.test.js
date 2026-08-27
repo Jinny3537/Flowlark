@@ -17,12 +17,27 @@ test('filters project rows by visible query fields, priority, and archive state'
 })
 
 test('normalizes create and edit form values', () => {
-  assert.deepEqual(initialProjectValues(), { name: '', code: '', description: '', priority: undefined, archived: false })
-  assert.deepEqual(initialProjectValues(items[0]), {
-    name: '华油中蓝', code: 'HYZL', description: '安全生产', priority: 'P1', archived: false
+  assert.deepEqual(initialProjectValues(), {
+    name: '', code: '', description: '', priority: undefined, archived: false,
+    releaseMail: {
+      enabled: false, to: [], cc: [],
+      subjectTemplate: '【发版】{{project}} {{version}}',
+      bodyTemplate: '# {{project}} {{version}}\n\n## 版本说明\n\n{{title}}\n\n## 变更摘要\n\n{{changes}}\n\n## 关联需求\n\n{{requirements}}\n\n---\n\n发布人：{{releasedBy}}  \n发布时间：{{releasedAt}}'
+    }
   })
-  assert.deepEqual(projectPayload({ name: ' 华油中蓝 ', code: ' HYZL ', description: ' 范围 ', priority: undefined, archived: false }), {
-    name: '华油中蓝', code: 'HYZL', description: ' 范围 ', priority: '', archived: false
+  assert.deepEqual(initialProjectValues(items[0]), {
+    name: '华油中蓝', code: 'HYZL', description: '安全生产', priority: 'P1', archived: false,
+    releaseMail: initialProjectValues().releaseMail,
+  })
+  assert.deepEqual(projectPayload({
+    name: ' 华油中蓝 ', code: ' HYZL ', description: ' 范围 ', priority: undefined, archived: false,
+    releaseMail: {
+      enabled: true, to: [' 张三 ', '张三'], cc: [' 李四 '],
+      subjectTemplate: '主题', bodyTemplate: '正文'
+    }
+  }), {
+    name: '华油中蓝', code: 'HYZL', description: ' 范围 ', priority: '', archived: false,
+    releaseMail: { enabled: true, to: ['张三'], cc: ['李四'], subjectTemplate: '主题', bodyTemplate: '正文' }
   })
 })
 
