@@ -19,6 +19,7 @@ async function connectStdio(config) {
   if (!command) throw err.bad('MCP_COMMAND_REQUIRED', '请配置 MCP 可执行文件')
 
   const timeoutMs = positiveNumber(config.timeoutMs, 10_000)
+  const connectTimeoutMs = positiveNumber(config.connectTimeoutMs, Math.max(timeoutMs, 3_000))
   const secretValues = Object.values(config.env || {}).filter((value) => String(value || '').length >= 4).map(String)
   let stderr = ''
   let closed = false
@@ -41,16 +42,17 @@ async function connectStdio(config) {
   )
 
   try {
-    await client.connect(transport, { timeout: timeoutMs, maxTotalTimeout: timeoutMs })
+    await client.connect(transport, { timeout: connectTimeoutMs, maxTotalTimeout: connectTimeoutMs })
   } catch (error) {
     await client.close().catch(() => {})
+    await transport.close().catch(() => {})
     throw mapClientError(error, secretValues, 'MCP 服务连接失败')
   }
 
   async function close() {
     if (closed) return closePromise
     closed = true
-    closePromise = client.close().catch(() => {})
+    closePromise = Promise.allSettled([client.close(), transport.close()]).then(() => {})
     return closePromise
   }
 
