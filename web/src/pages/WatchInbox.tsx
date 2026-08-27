@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { App, Button, List, Tag } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
@@ -9,9 +9,12 @@ import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { fmtTime, textOf } from '@/utils/format';
+import { filterWatchItems } from './watchInboxModel.js';
 
 export default function WatchInbox() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const projectFilter = searchParams.get('project') || '';
   const { message } = App.useApp();
   const { health } = useAppRuntime();
   const writable = health?.canWrite !== false;
@@ -19,6 +22,7 @@ export default function WatchInbox() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const filteredItems = filterWatchItems(items, projectFilter);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,16 +57,29 @@ export default function WatchInbox() {
     <main className="fl-page">
       <PageHeader
         eyebrow="导入暂存"
-        title="草稿箱"
-        description="自动归档成功后可进入版本补充变更日志；失败项会保留原因并允许重试。"
-        actions={<Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新</Button>}
+        title={projectFilter ? `草稿箱 · ${projectFilter}` : '草稿箱'}
+        description={projectFilter
+          ? '仅显示当前项目的监听归档项；失败项会保留原因并允许重试。'
+          : '自动归档成功后可进入版本补充变更日志；失败项会保留原因并允许重试。'}
+        actions={(
+          <>
+            {projectFilter ? <Button onClick={() => setSearchParams({})}>查看全部草稿</Button> : null}
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新</Button>
+          </>
+        )}
       />
-      <State loading={loading && !items.length} error={error} onRetry={load} empty={!items.length} emptyText="还没有草稿">
+      <State
+        loading={loading && !items.length}
+        error={error}
+        onRetry={load}
+        empty={!filteredItems.length}
+        emptyText={projectFilter ? '当前项目还没有草稿' : '还没有草稿'}
+      >
         <section className="fl-surface fl-list-surface" aria-label="草稿箱列表">
           <List
             rowKey="id"
             loading={loading}
-            dataSource={items}
+            dataSource={filteredItems}
             renderItem={(item) => {
               const status = statusMeta(WATCH_STATUS, item.status);
               const action = item.status === 'archived' ? (
