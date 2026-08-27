@@ -873,6 +873,23 @@ export class Hub {
 
   async formalRelease(slug, versionNo, input = {}) {
     this.#assertWritable('正式发版')
+    const earlyBaseline = store.readBaseline(this.root, slug)
+    const earlyVersion = store.readVersion(this.root, slug, versionNo)
+    if (earlyBaseline === versionNo && earlyVersion.baselineAt) {
+      const existing = releaseMail.listReleaseMails(this.root)
+        .find((item) => item.project === slug && item.version === versionNo && item.baselineAt === earlyVersion.baselineAt)
+      if (existing?.status === 'sent') {
+        return {
+          status: 'complete',
+          released: true,
+          duplicate: true,
+          baseline: { project: slug, version: versionNo, baselineAt: earlyVersion.baselineAt },
+          git: { ok: true, skipped: true },
+          mail: releaseMail.publicReleaseMail(existing)
+        }
+      }
+      if (existing) return this.#sendReleaseMailTask(existing, { git: { ok: true, skipped: true } })
+    }
     const prepared = await this.#prepareFormalRelease(slug, versionNo, input)
     if (!prepared.ready) {
       throw err.bad(

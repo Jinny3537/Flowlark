@@ -158,7 +158,7 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
 }
 
 test('正式发版严格按基线、Git、邮件顺序且重复请求不重复发送', async (t) => {
-  const { hub, project, calls } = releaseFixture(t)
+  const { hub, project, calls, wecomMcp } = releaseFixture(t)
   const preflight = await hub.preflightFormalRelease(project.slug, 'v2', { releasedAt: '2026-08-28T10:00:00Z' })
   assert.equal(preflight.ready, true)
   assert.equal(preflight.previousBaseline, 'v1')
@@ -172,6 +172,7 @@ test('正式发版严格按基线、Git、邮件顺序且重复请求不重复�
   assert.equal(hub.getBaseline(project.slug).versionNo, 'v2')
   assert.equal(result.mail.status, 'sent')
 
+  wecomMcp.authStatus = async () => { throw new Error('授权已过期') }
   const duplicate = await hub.formalRelease(project.slug, 'v2', { releasedAt: preflight.releasedAt })
   assert.equal(duplicate.duplicate, true)
   assert.deepEqual(calls, ['baseline', 'git', 'mail'])

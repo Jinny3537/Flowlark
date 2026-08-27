@@ -346,6 +346,26 @@ export function FormalReleaseDialog({
                       {preflight.authStatus?.message || '尚未检查'}
                     </Tag>
                   </Descriptions.Item>
+                  <Descriptions.Item label="收件人">
+                    <Space size={[4, 4]} wrap>
+                      {(preflight.to || []).map((recipient: any) => (
+                        <Tag key={`to-${recipient.key || recipient.name}`}>
+                          {recipient.name}{recipient.departments?.length ? ` · ${recipient.departments.join('/')}` : ''}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </Descriptions.Item>
+                  {preflight.cc?.length ? (
+                    <Descriptions.Item label="抄送">
+                      <Space size={[4, 4]} wrap>
+                        {preflight.cc.map((recipient: any) => (
+                          <Tag key={`cc-${recipient.key || recipient.name}`}>
+                            {recipient.name}{recipient.departments?.length ? ` · ${recipient.departments.join('/')}` : ''}
+                          </Tag>
+                        ))}
+                      </Space>
+                    </Descriptions.Item>
+                  ) : null}
                   <Descriptions.Item label="主题">{preflight.subject || '模板尚未生成主题'}</Descriptions.Item>
                 </Descriptions>
                 <Divider orientation="left">Markdown 正文</Divider>
