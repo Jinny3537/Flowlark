@@ -124,6 +124,15 @@ describe('沙箱隔离', () => {
     t.assert.match(body, /首版/)
     t.assert.match(body, /flowlark-edit-bridge/)
     t.assert.match(body, /flowlark:get-edit-html/)
+    t.assert.match(body, /flowlark:edit-command/)
+    t.assert.match(body, /flowlark:edit-dirty/)
+    t.assert.match(body, /flowlark:edit-state/)
+    t.assert.match(body, /flowlark-edit-style/)
+    t.assert.match(body, /ALLOWED_COMMANDS/)
+    t.assert.match(body, /data-flowlark-edit-target/)
+
+    const normal = await fetch(`${previewBase}/p/ord/v1.0`)
+    t.assert.doesNotMatch(await normal.text(), /flowlark-edit-bridge/)
   })
 
   test('主端口拒绝 /p/ —— 否则原型可被同源加载，隔离就白做了', async (t) => {

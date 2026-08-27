@@ -26,31 +26,145 @@ const MIME = {
 function editablePreviewHtml(buf) {
   const bridge = `<script id="flowlark-edit-bridge">
 (() => {
+  const ALLOWED_COMMANDS = new Set([
+    'bold', 'italic', 'underline', 'fontSize', 'foreColor',
+    'justifyLeft', 'justifyCenter', 'justifyRight'
+  ])
+  const TEXT_SELECTOR = 'h1,h2,h3,h4,h5,h6,p,span,a,li,button,label,td,th,dt,dd,figcaption,div'
+  let savedRange = null
+  let selectedTarget = null
+  let stateFrame = 0
+
+  const post = (payload) => window.parent.postMessage(payload, '*')
+  const formatState = () => {
+    try {
+      return {
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        justifyLeft: document.queryCommandState('justifyLeft'),
+        justifyCenter: document.queryCommandState('justifyCenter'),
+        justifyRight: document.queryCommandState('justifyRight'),
+        fontSize: document.queryCommandValue('fontSize'),
+        foreColor: document.queryCommandValue('foreColor')
+      }
+    } catch {
+      return {}
+    }
+  }
+  const postState = () => {
+    if (stateFrame) cancelAnimationFrame(stateFrame)
+    stateFrame = requestAnimationFrame(() => {
+      stateFrame = 0
+      post({ type: 'flowlark:edit-state', state: formatState() })
+    })
+  }
+  const markDirty = () => post({ type: 'flowlark:edit-dirty' })
+  const rememberSelection = () => {
+    const selection = window.getSelection()
+    if (!selection || !selection.rangeCount || !document.body || !document.body.contains(selection.anchorNode)) return
+    savedRange = selection.getRangeAt(0).cloneRange()
+  }
+  const restoreSelection = () => {
+    if (!savedRange) return
+    const selection = window.getSelection()
+    if (!selection) return
+    selection.removeAllRanges()
+    selection.addRange(savedRange)
+  }
+  const restoreNode = (node, parent, next) => {
+    if (!node || !parent) return
+    parent.insertBefore(node, next && next.parentNode === parent ? next : null)
+  }
   const serialize = () => {
     const bridge = document.getElementById('flowlark-edit-bridge')
+    const style = document.getElementById('flowlark-edit-style')
+    const bridgeParent = bridge && bridge.parentNode
+    const bridgeNext = bridge && bridge.nextSibling
+    const styleParent = style && style.parentNode
+    const styleNext = style && style.nextSibling
+    const targets = Array.from(document.querySelectorAll('[data-flowlark-edit-target]'))
     if (bridge) bridge.remove()
+    if (style) style.remove()
+    targets.forEach((node) => node.removeAttribute('data-flowlark-edit-target'))
     const previousEditable = document.body && document.body.getAttribute('contenteditable')
+    const previousSpellcheck = document.body && document.body.getAttribute('spellcheck')
     if (document.body) document.body.removeAttribute('contenteditable')
+    if (document.body) document.body.removeAttribute('spellcheck')
     const dt = document.doctype
     const doctype = dt ? '<!DOCTYPE ' + dt.name + (dt.publicId ? ' PUBLIC "' + dt.publicId + '"' : '') + (dt.systemId ? ' "' + dt.systemId + '"' : '') + '>' : '<!DOCTYPE html>'
     const html = doctype + '\\n' + document.documentElement.outerHTML
     if (document.body && previousEditable != null) document.body.setAttribute('contenteditable', previousEditable)
-    document.documentElement.appendChild(bridge)
+    if (document.body && previousSpellcheck != null) document.body.setAttribute('spellcheck', previousSpellcheck)
+    targets.forEach((node) => node.setAttribute('data-flowlark-edit-target', ''))
+    restoreNode(style, styleParent, styleNext)
+    restoreNode(bridge, bridgeParent, bridgeNext)
     return html
+  }
+  const addEditorStyle = () => {
+    if (document.getElementById('flowlark-edit-style')) return
+    const style = document.createElement('style')
+    style.id = 'flowlark-edit-style'
+    style.textContent =
+      ':where(h1,h2,h3,h4,h5,h6,p,span,a,li,button,label,td,th,dt,dd,figcaption,div):hover{' +
+      'outline:1px dashed rgba(14,147,132,.55);outline-offset:2px;cursor:text}' +
+      '[data-flowlark-edit-target]{outline:2px solid #0e9384!important;outline-offset:2px}'
+    ;(document.head || document.documentElement).appendChild(style)
+  }
+  const markTarget = (event) => {
+    const element = event.target instanceof Element ? event.target.closest(TEXT_SELECTOR) : null
+    const next = element && element !== document.body && element.textContent && element.textContent.trim()
+      ? element
+      : null
+    if (selectedTarget === next) return
+    if (selectedTarget) selectedTarget.removeAttribute('data-flowlark-edit-target')
+    selectedTarget = next
+    if (selectedTarget) selectedTarget.setAttribute('data-flowlark-edit-target', '')
   }
   const enable = () => {
     try {
+      addEditorStyle()
       document.designMode = 'on'
       if (document.body) {
         document.body.setAttribute('contenteditable', 'true')
         document.body.spellcheck = false
       }
+      document.addEventListener('selectionchange', () => {
+        rememberSelection()
+        postState()
+      })
+      document.addEventListener('input', markDirty)
+      document.addEventListener('pointerover', markTarget)
+      document.addEventListener('click', markTarget)
+      post({ type: 'flowlark:edit-ready', state: formatState() })
     } catch {}
   }
   window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return
     const data = event.data || {}
-    if (data.type !== 'flowlark:get-edit-html') return
-    event.source && event.source.postMessage({ type: 'flowlark:edit-html', id: data.id, html: serialize() }, event.origin || '*')
+    if (data.type === 'flowlark:get-edit-html') {
+      event.source.postMessage({ type: 'flowlark:edit-html', id: data.id, html: serialize() }, event.origin || '*')
+      return
+    }
+    if (data.type !== 'flowlark:edit-command') return
+    const command = String(data.command || '')
+    if (!ALLOWED_COMMANDS.has(command)) {
+      event.source.postMessage({ type: 'flowlark:edit-command-result', id: data.id, ok: false }, event.origin || '*')
+      return
+    }
+    let ok = false
+    try {
+      restoreSelection()
+      ok = document.execCommand(command, false, data.value == null ? null : String(data.value))
+      rememberSelection()
+      if (ok) markDirty()
+    } catch {}
+    event.source.postMessage({
+      type: 'flowlark:edit-command-result',
+      id: data.id,
+      ok,
+      state: formatState()
+    }, event.origin || '*')
   })
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', enable, { once: true })
   else enable()
