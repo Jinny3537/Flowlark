@@ -52,6 +52,7 @@ before(async () => {
     items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }]
   })
   ctx.hub.createMilestone({ name: 'S2', title: '本地迭代', startAt: '2026-09-01', endAt: '2026-09-10' })
+  ctx.hub.createMilestone({ name: 'S3', title: '待取消迭代', startAt: '2026-09-11', endAt: '2026-09-20' })
   remote = fakeAdapter()
   server = await startServer(root, {
     port: 0,
@@ -129,4 +130,13 @@ test('runtime profile API stores no password and returns executable diagnostics'
   const diagnostic = await call('POST', '/api/mcp/runtime/assess-task-local/diagnose', {})
   t.assert.strictEqual(diagnostic.status, 200)
   t.assert.strictEqual(diagnostic.body.ready, true)
+})
+
+test('canceling a local iteration requires an audited reason', async (t) => {
+  let result = await call('POST', '/api/milestones/S3/transition', { target: 'canceled' })
+  t.assert.strictEqual(result.status, 400)
+  t.assert.strictEqual(result.body.code, 'MILESTONE_REASON_REQUIRED')
+  result = await call('POST', '/api/milestones/S3/transition', { target: 'canceled', reason: '范围调整' })
+  t.assert.strictEqual(result.status, 200)
+  t.assert.strictEqual(result.body.status, 'canceled')
 })

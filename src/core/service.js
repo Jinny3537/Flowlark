@@ -623,6 +623,7 @@ export class Hub {
     this.#assertWritable('流转迭代状态')
     const item = milestones.readMilestone(this.root, name)
     const target = String(input.target || '')
+    if (target === 'canceled' && !String(input.reason || '').trim()) throw err.bad('MILESTONE_REASON_REQUIRED', '取消迭代必须填写原因')
     const transition = transitionMilestoneStatus(item.status, target, { remoteExists: Boolean(item.external?.sprintId) })
     if (transition.requiresRemote) {
       throw err.conflict('MILESTONE_REMOTE_TRANSITION_REQUIRES_SYNC', '该状态流转需要生成并执行平台同步计划')
@@ -634,7 +635,8 @@ export class Hub {
     const updated = transition.changed
       ? milestones.updateMilestone(this.root, name, { status: target }, { system: true })
       : milestones.inspectMilestone(this.root, name)
-    this.#log(null, null, 'MILESTONE_TRANSITION', `迭代 ${name} 从 ${transition.from} 流转到 ${transition.to}`)
+    const reason = String(input.reason || '').trim()
+    this.#log(null, null, 'MILESTONE_TRANSITION', `迭代 ${name} 从 ${transition.from} 流转到 ${transition.to}${reason ? `：${reason}` : ''}`)
     return updated
   }
 
