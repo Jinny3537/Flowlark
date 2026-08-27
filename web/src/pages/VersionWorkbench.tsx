@@ -13,7 +13,7 @@ import { api, type HealthInfo } from '@/services/api';
 import { textOf } from '@/utils/format';
 import { FeedbackDrawer } from './workbench/FeedbackDrawer';
 import { PrototypeEditorDrawer } from './workbench/PrototypeEditorDrawer';
-import { PrototypeStage, type PrototypeStageHandle } from './workbench/PrototypeStage';
+import { PrototypeStage } from './workbench/PrototypeStage';
 import { BaselineModal, ReviewStatusControl } from './workbench/WorkbenchPrimitives';
 import { WorkbenchDocuments } from './workbench/WorkbenchDocuments';
 import { VersionHistoryDrawer } from './workbench/WorkbenchDrawers';
@@ -22,6 +22,7 @@ import {
   decodeAnchor,
   encodeAnchor,
   previewUrl,
+  prototypeEditorRoute,
 } from './workbench/workbenchModel.js';
 import styles from './workbench/VersionWorkbench.module.css';
 
@@ -59,7 +60,6 @@ export default function VersionWorkbench() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [useOffline, setUseOffline] = useState(false);
   const [annotationMode, setAnnotationMode] = useState(false);
-  const [prototypeEditMode, setPrototypeEditMode] = useState(false);
   const [docsCollapsed, setDocsCollapsed] = useState(
     () => localStorage.getItem('flowlark.docsCollapsed') === '1',
   );
@@ -67,7 +67,6 @@ export default function VersionWorkbench() {
   const [selectedAnchor, setSelectedAnchor] = useState<any>(null);
   const [captureRect, setCaptureRect] = useState<DOMRect | null>(null);
   const [buildingOffline, setBuildingOffline] = useState(false);
-  const [htmlSaving, setHtmlSaving] = useState(false);
   const [previewRefresh, setPreviewRefresh] = useState(0);
   const [leftPct, setLeftPct] = useState(
     () => Number(localStorage.getItem('flowlark.split')) || DEFAULT_SPLIT,
@@ -76,7 +75,6 @@ export default function VersionWorkbench() {
 
   const requestIdRef = useRef(0);
   const supplementaryRequestRef = useRef(0);
-  const stageRef = useRef<PrototypeStageHandle>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const routeKey = `${slug}\u0000${versionNo}`;
   const routeKeyRef = useRef(routeKey);
@@ -105,15 +103,6 @@ export default function VersionWorkbench() {
     () => withRefresh(previewBase, previewRefresh),
     [previewBase, previewRefresh],
   );
-  const editPreviewSrc = useMemo(() => previewUrl({
-    protocol: window.location.protocol,
-    hostname: window.location.hostname,
-    previewPort: health?.previewPort || 7789,
-    slug,
-    versionNo,
-    edit: true,
-  }), [health?.previewPort, slug, versionNo]);
-
   const refreshVersion = useCallback(async (nextVersion?: any) => {
     const expectedRoute = routeKey;
     if (routeKeyRef.current !== expectedRoute) return;
@@ -217,7 +206,6 @@ export default function VersionWorkbench() {
     setHtmlEditorOpen(false);
     setFeedbackOpen(false);
     setAnnotationMode(false);
-    setPrototypeEditMode(false);
     setSelectedAnchor(decodeAnchor(anchorQuery));
     setCaptureRect(null);
     setPreviewRefresh(0);
@@ -277,54 +265,18 @@ export default function VersionWorkbench() {
   };
 
   const toggleAnnotation = () => {
-    if (prototypeEditMode) {
-      message.info('请先退出在线编辑，再进行标注反馈');
-      return;
-    }
     setAnnotationMode((value) => !value);
     setSelectedAnchor(null);
   };
 
-  const togglePrototypeEdit = () => {
+  const openPrototypeEditor = () => {
     if (!editable) {
       message.info('只有编辑中版本可以在线编辑');
       return;
     }
     setAnnotationMode(false);
     setUseOffline(false);
-    setPrototypeEditMode((value) => !value);
-  };
-
-  const savePrototypeEdit = async () => {
-    if (!editable) return;
-    const expectedRoute = routeKey;
-    setHtmlSaving(true);
-    let html = '';
-    try {
-      html = await stageRef.current?.readEditedHtml() || '';
-      if (!html?.trim()) throw new Error('EMPTY_EDIT_HTML');
-      if (routeKeyRef.current !== expectedRoute) {
-        setHtmlSaving(false);
-        return;
-      }
-    } catch {
-      message.error('读取在线编辑内容失败，请重试');
-      setHtmlSaving(false);
-      return;
-    }
-    try {
-      const nextVersion = await api.replaceHtml(slug, versionNo, html);
-      if (routeKeyRef.current !== expectedRoute) return;
-      setVersion(nextVersion);
-      setPrototypeEditMode(false);
-      setUseOffline(false);
-      setPreviewRefresh((value) => value + 1);
-      message.success('原型文件已保存，预览已刷新');
-    } catch (saveError) {
-      message.error(saveError instanceof Error ? saveError.message : '原型文件保存失败');
-    } finally {
-      setHtmlSaving(false);
-    }
+    navigate(prototypeEditorRoute(slug, versionNo));
   };
 
   const buildOffline = async () => {
@@ -493,22 +445,17 @@ export default function VersionWorkbench() {
               aria-label="原型预览区域"
             >
               <PrototypeStage
-                ref={stageRef}
                 version={version}
                 previewSrc={previewSrc}
-                editPreviewSrc={editPreviewSrc}
                 editable={editable}
                 docsCollapsed={docsCollapsed}
                 useOffline={useOffline}
                 annotationMode={annotationMode}
-                prototypeEditMode={prototypeEditMode}
                 selectedAnchor={selectedAnchor}
                 buildingOffline={buildingOffline}
-                htmlSaving={htmlSaving}
                 onOfflineChange={setUseOffline}
                 onToggleAnnotation={toggleAnnotation}
-                onTogglePrototypeEdit={togglePrototypeEdit}
-                onSavePrototypeEdit={() => void savePrototypeEdit()}
+                onOpenPrototypeEditor={openPrototypeEditor}
                 onOpenHtmlEditor={() => setHtmlEditorOpen(true)}
                 onToggleDocs={() => setDocsCollapsed((value) => !value)}
                 onBuildOffline={() => void buildOffline()}

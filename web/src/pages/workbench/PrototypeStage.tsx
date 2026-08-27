@@ -7,12 +7,9 @@ import {
   ExpandOutlined,
   HighlightOutlined,
   SafetyCertificateOutlined,
-  SaveOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Checkbox, Tag, Tooltip, Typography } from 'antd';
 import {
-  forwardRef,
-  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -20,26 +17,18 @@ import {
 } from 'react';
 import { AnnotationOverlay, type Anchor } from './AnnotationOverlay';
 
-export type PrototypeStageHandle = {
-  readEditedHtml: () => Promise<string>;
-};
-
 export type PrototypeStageProps = {
   version: any;
   previewSrc: string;
-  editPreviewSrc: string;
   editable: boolean;
   docsCollapsed: boolean;
   useOffline: boolean;
   annotationMode: boolean;
-  prototypeEditMode: boolean;
   selectedAnchor: Anchor | null;
   buildingOffline: boolean;
-  htmlSaving: boolean;
   onOfflineChange: (value: boolean) => void;
   onToggleAnnotation: () => void;
-  onTogglePrototypeEdit: () => void;
-  onSavePrototypeEdit: () => void;
+  onOpenPrototypeEditor: () => void;
   onOpenHtmlEditor: () => void;
   onToggleDocs: () => void;
   onBuildOffline: () => void;
@@ -148,35 +137,24 @@ function formatBytes(value: unknown) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function messageId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-export const PrototypeStage = forwardRef<PrototypeStageHandle, PrototypeStageProps>(function PrototypeStage({
+export function PrototypeStage({
   version,
   previewSrc,
-  editPreviewSrc,
   editable,
   docsCollapsed,
   useOffline,
   annotationMode,
-  prototypeEditMode,
   selectedAnchor,
   buildingOffline,
-  htmlSaving,
   onOfflineChange,
   onToggleAnnotation,
-  onTogglePrototypeEdit,
-  onSavePrototypeEdit,
+  onOpenPrototypeEditor,
   onOpenHtmlEditor,
   onToggleDocs,
   onBuildOffline,
   onSelectAnchor,
   onCancelAnnotation,
-}, ref) {
+}: PrototypeStageProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [refsOpen, setRefsOpen] = useState(false);
@@ -184,41 +162,6 @@ export const PrototypeStage = forwardRef<PrototypeStageHandle, PrototypeStagePro
     () => (Array.isArray(version?.externalRefs) ? version.externalRefs.map(String) : []),
     [version?.externalRefs],
   );
-
-  useImperativeHandle(ref, () => ({
-    readEditedHtml: () => new Promise<string>((resolve, reject) => {
-      const frameWindow = frameRef.current?.contentWindow;
-      if (!frameWindow) {
-        reject(new Error('NO_FRAME'));
-        return;
-      }
-
-      const id = messageId();
-      const cleanup = () => {
-        window.clearTimeout(timer);
-        window.removeEventListener('message', onMessage);
-      };
-      const onMessage = (event: MessageEvent) => {
-        if (event.source !== frameWindow) return;
-        const data = event.data && typeof event.data === 'object' ? event.data : {};
-        if (data.type !== 'flowlark:edit-html' || data.id !== id) return;
-        cleanup();
-        resolve(String(data.html || ''));
-      };
-      const timer = window.setTimeout(() => {
-        cleanup();
-        reject(new Error('EDIT_HTML_TIMEOUT'));
-      }, 3000);
-
-      window.addEventListener('message', onMessage);
-      try {
-        frameWindow.postMessage({ type: 'flowlark:get-edit-html', id }, '*');
-      } catch (error) {
-        cleanup();
-        reject(error);
-      }
-    }),
-  }), []);
 
   const selectAnchor = (anchor: Anchor) => {
     const bounds = canvasRef.current?.getBoundingClientRect();
@@ -246,7 +189,7 @@ export const PrototypeStage = forwardRef<PrototypeStageHandle, PrototypeStagePro
           <Tooltip title={version?.hasOffline ? '使用已内联外部资源的离线版' : '尚未生成离线版'}>
             <Checkbox
               checked={useOffline}
-              disabled={!version?.hasOffline || prototypeEditMode}
+              disabled={!version?.hasOffline}
               onChange={(event) => onOfflineChange(event.target.checked)}
             >
               离线预览
@@ -255,12 +198,11 @@ export const PrototypeStage = forwardRef<PrototypeStageHandle, PrototypeStagePro
           <Tooltip title="原型由独立端口提供，脚本无法读取工作台数据">
             <Tag icon={<SafetyCertificateOutlined />}>沙箱隔离</Tag>
           </Tooltip>
-          <Tooltip title={prototypeEditMode ? '请先退出在线编辑' : '在原型上框选区域并创建反馈'}>
+          <Tooltip title="在原型上框选区域并创建反馈">
             <Button
               size="small"
               type={annotationMode ? 'primary' : 'default'}
               icon={<HighlightOutlined />}
-              disabled={prototypeEditMode}
               aria-pressed={annotationMode}
               onClick={onToggleAnnotation}
             >
@@ -270,31 +212,18 @@ export const PrototypeStage = forwardRef<PrototypeStageHandle, PrototypeStagePro
           <Tooltip title={editable ? '直接编辑当前原型中的文字和内容' : '只有编辑中版本可以在线编辑'}>
             <Button
               size="small"
-              type={prototypeEditMode ? 'primary' : 'default'}
               icon={<EditOutlined />}
-              disabled={!editable || htmlSaving}
-              aria-pressed={prototypeEditMode}
-              onClick={onTogglePrototypeEdit}
+              disabled={!editable}
+              onClick={onOpenPrototypeEditor}
             >
-              {prototypeEditMode ? '退出编辑' : '在线编辑'}
+              在线编辑
             </Button>
           </Tooltip>
-          {prototypeEditMode ? (
-            <Button
-              size="small"
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={htmlSaving}
-              onClick={onSavePrototypeEdit}
-            >
-              保存
-            </Button>
-          ) : null}
           <Tooltip title={editable ? '用源码、文件或 URL 替换原型 HTML' : '只有编辑中版本可以修改原型文件'}>
             <Button
               size="small"
               icon={<CodeOutlined />}
-              disabled={!editable || prototypeEditMode}
+              disabled={!editable}
               onClick={onOpenHtmlEditor}
             >
               修改原型
@@ -359,13 +288,13 @@ export const PrototypeStage = forwardRef<PrototypeStageHandle, PrototypeStagePro
         <iframe
           ref={frameRef}
           title="原型预览"
-          src={prototypeEditMode ? editPreviewSrc : previewSrc}
+          src={previewSrc}
           sandbox="allow-scripts allow-forms allow-popups allow-modals"
           referrerPolicy="no-referrer"
           style={layout.frame}
         />
         <AnnotationOverlay
-          active={annotationMode && !prototypeEditMode}
+          active={annotationMode}
           anchor={selectedAnchor}
           onSelect={selectAnchor}
           onCancel={onCancelAnnotation}
@@ -373,4 +302,4 @@ export const PrototypeStage = forwardRef<PrototypeStageHandle, PrototypeStagePro
       </div>
     </section>
   );
-});
+}
