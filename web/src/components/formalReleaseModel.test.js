@@ -31,4 +31,3 @@ test('tracks ambiguity selections and result states', () => {
   assert.equal(releaseOutcome({ status: 'mail_pending', mail: { lastError: '失败' } }).kind, 'mail-pending')
   assert.equal(releaseOutcome({ status: 'git_failed' }).kind, 'git-failed')
 })
-

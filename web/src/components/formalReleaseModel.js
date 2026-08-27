@@ -42,4 +42,3 @@ export function releaseOutcome(result = {}) {
   }
   return { kind: 'unknown', title: '正式发版状态未知', description: '请刷新页面后核对基线、Git 和邮件队列。' }
 }
-
