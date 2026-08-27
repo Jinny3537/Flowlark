@@ -4,6 +4,7 @@ import { parse, stringify } from './json.js'
 import { INTERNAL_DIR } from './repo.js'
 
 const TASKS = new Set(['all', 'pending', 'questions', 'baseline-history', 'void'])
+const STATUSES = new Set(['all', 'DRAFT', 'BASELINE', 'HISTORY', 'VOID'])
 
 function preferenceFile(root) {
   return path.join(root, INTERNAL_DIR, 'cache', 'project-preferences.json')
@@ -33,10 +34,12 @@ export function normalizePreference(input = {}) {
   return {
     query: String(input.query || '').slice(0, 200),
     task: TASKS.has(task) ? task : 'all',
+    status: STATUSES.has(String(input.status || 'all')) ? String(input.status || 'all') : 'all',
     order: input.order === 'oldest' ? 'oldest' : 'newest',
     author: String(input.author || '').slice(0, 120),
     requirement: String(input.requirement || '').slice(0, 120),
-    external: input.external === true
+    external: input.external === true,
+    includeVoid: input.includeVoid === true
   }
 }
 

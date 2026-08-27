@@ -165,11 +165,13 @@ describe('项目原型规划摘要', () => {
   test('保存个人项目筛选到 cache 并规范化字段', (t) => {
     const { root, hub, project } = fixture()
     const saved = hub.setProjectPreference(project.slug, {
-      query: 'REQ-1', task: 'pending', order: 'oldest', author: 'PM', requirement: 'REQ', external: true,
+      query: 'REQ-1', task: 'pending', status: 'HISTORY', order: 'oldest', author: 'PM', requirement: 'REQ',
+      external: true, includeVoid: true,
       ignored: 'value'
     })
     t.assert.deepStrictEqual(saved, {
-      query: 'REQ-1', task: 'pending', order: 'oldest', author: 'PM', requirement: 'REQ', external: true
+      query: 'REQ-1', task: 'pending', status: 'HISTORY', order: 'oldest', author: 'PM', requirement: 'REQ',
+      external: true, includeVoid: true
     })
     t.assert.deepStrictEqual(hub.getProjectPreference(project.slug), saved)
     t.assert.strictEqual(fs.existsSync(`${root}/.flowlark/cache/project-preferences.json`), true)
