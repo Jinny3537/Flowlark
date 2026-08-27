@@ -27,7 +27,6 @@ export function unavailableWecomMcp(reason) {
     close: async () => {}
   }
 }
-
 function toolError(value) {
   if (!value || value.ok !== false) return null
   return err.bad(
@@ -151,4 +150,3 @@ export async function startWecomMcpSidecar({
     }
   }
 }
-

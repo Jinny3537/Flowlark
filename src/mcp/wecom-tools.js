@@ -16,7 +16,6 @@ export class WecomToolError extends Error {
     this.instruction = instruction ? String(instruction) : null
   }
 }
-
 function parseJson(value, label) {
   const text = String(value || '').trim()
   if (!text) return {}
@@ -226,4 +225,3 @@ export function createWecomTools({
     }
   }
 }
-
