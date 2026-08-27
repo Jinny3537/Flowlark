@@ -1782,6 +1782,13 @@ export class Hub {
     }
   }
 
+  removeWatchItem(id) {
+    this.#assertWritable('清理草稿箱记录')
+    const item = watchbox.removeWatchItem(this.root, id)
+    this.#log(item.project, item.versionNo, 'WATCH_RECORD_REMOVE', `清理已归档 watch 记录 ${item.id}`)
+    return item
+  }
+
   // ==================== 内部 ====================
 
   #decorate(v, baselineNo) {

@@ -340,6 +340,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.get('/api/trash', async (req, res, p, url) =>
     sendJson(res, 200, hub.listTrash(url.searchParams.get('project') || null)))
 
+  r.post('/api/trash/:id/restore', async (req, res, p) =>
+    sendJson(res, 200, hub.restoreTrashEntry(p.id)))
+
   // ---- 搜索 ----
   r.get('/api/search', async (req, res, p, url) => {
     const q = url.searchParams.get('q') || ''
@@ -463,6 +466,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   r.post('/api/watch/inbox/:id/retry', async (req, res, p) =>
     sendJson(res, 200, hub.retryWatchItem(p.id)))
+
+  r.delete('/api/watch/inbox/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.removeWatchItem(p.id)))
 
   // ---- Git ----
   r.get('/api/git/status', async (req, res, p, url) =>

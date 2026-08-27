@@ -219,7 +219,9 @@ export const api = {
   importUrl: (url: string) => post('/api/import/url', { url }),
   watchInbox: () => get<any[]>('/api/watch/inbox'),
   retryWatchItem: (id: string) => post(`/api/watch/inbox/${enc(id)}/retry`, {}),
+  clearWatchItem: (id: string) => del<any>(`/api/watch/inbox/${enc(id)}`),
   trash: (project?: string) => get<any[]>(`/api/trash${project ? `?project=${enc(project)}` : ''}`),
+  restoreTrashItem: (id: string) => post<any>(`/api/trash/${enc(id)}/restore`, {}),
   gitStatus: ({ fast = false, cache = false } = {}) => {
     const query = new URLSearchParams();
     if (fast) query.set('fast', '1');
