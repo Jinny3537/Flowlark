@@ -28,8 +28,6 @@
 .versionIndex { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid var(--fl-line); background: color-mix(in srgb, var(--fl-surface) 94%, var(--fl-primary-bg)); }
 .indexToolbar { padding: var(--fl-s-3); border-bottom: 1px solid var(--fl-line); background: var(--fl-surface); }
 .indexFilters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--fl-s-2); margin-top: var(--fl-s-2); }
-.taskFilters { display: flex; gap: var(--fl-s-1); margin-top: var(--fl-s-2); overflow-x: auto; padding-bottom: 2px; }
-.taskFilters :global(.ant-btn) { flex: none; }
 .indexOptions { display: flex; align-items: center; justify-content: space-between; gap: var(--fl-s-2); margin-top: var(--fl-s-2); color: var(--fl-text-2); font-size: var(--fl-fs-2); }
 .advancedFilters { display: grid; gap: var(--fl-s-2); margin-top: var(--fl-s-2); padding: var(--fl-s-2); border: 1px solid var(--fl-line); border-radius: var(--fl-r-2); background: color-mix(in srgb, var(--fl-surface) 86%, var(--fl-primary-bg)); }
 .indexList { min-height: 0; overflow-y: auto; }

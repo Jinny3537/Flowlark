@@ -86,7 +86,6 @@ export default function ProjectVersions() {
   const [includeVoid, setIncludeVoid] = useState(initialFilters.current.includeVoid);
   const [query, setQuery] = useState(initialFilters.current.query);
   const [statusFilter, setStatusFilter] = useState(initialFilters.current.status);
-  const [taskFilter, setTaskFilter] = useState(initialFilters.current.task);
   const [sortOrder, setSortOrder] = useState(initialFilters.current.order);
   const [authorFilter, setAuthorFilter] = useState(initialFilters.current.author);
   const [requirementFilter, setRequirementFilter] = useState(initialFilters.current.requirement);
@@ -128,13 +127,12 @@ export default function ProjectVersions() {
     () => filterVersions(versions, {
       query,
       status: statusFilter,
-      task: taskFilter,
       order: sortOrder,
       author: authorFilter,
       requirement: requirementFilter,
       external: externalOnly,
     }),
-    [authorFilter, externalOnly, query, requirementFilter, sortOrder, statusFilter, taskFilter, versions],
+    [authorFilter, externalOnly, query, requirementFilter, sortOrder, statusFilter, versions],
   );
   const statusOptions = useMemo(() => {
     const values = new Map<string, string>();
@@ -264,13 +262,12 @@ export default function ProjectVersions() {
       if (cancelled) return;
       const next = projectFilterState(value);
       setQuery(next.query);
-      setTaskFilter(next.task);
       setStatusFilter(next.status);
       setSortOrder(next.order);
       setAuthorFilter(next.author);
       setRequirementFilter(next.requirement);
       setExternalOnly(next.external);
-      setIncludeVoid(next.includeVoid || next.task === 'void');
+      setIncludeVoid(next.includeVoid);
       setFiltersHydrated(true);
     };
     if (searchParams.toString()) {
@@ -287,7 +284,6 @@ export default function ProjectVersions() {
     if (!filtersHydrated || !slug) return undefined;
     const state = {
       query,
-      task: taskFilter,
       status: statusFilter,
       order: sortOrder,
       author: authorFilter,
@@ -303,7 +299,7 @@ export default function ProjectVersions() {
     return () => window.clearTimeout(timer);
   }, [
     authorFilter, externalOnly, filtersHydrated, includeVoid, query, requirementFilter,
-    searchParams, setSearchParams, slug, sortOrder, statusFilter, taskFilter,
+    searchParams, setSearchParams, slug, sortOrder, statusFilter,
   ]);
 
   useEffect(() => {
@@ -537,7 +533,6 @@ export default function ProjectVersions() {
 
   const clearFilters = () => {
     setQuery('');
-    setTaskFilter('all');
     setStatusFilter('all');
     setSortOrder('newest');
     setAuthorFilter('');
@@ -756,17 +751,16 @@ export default function ProjectVersions() {
             ) : baseline ? <span className={styles.baselineMeta}>首个基线，暂无上一基线</span> : null}
             {commandBadges.length ? (
               <Space wrap size={[6, 6]} className={styles.commandBadges}>
-                {commandBadges.map((badge) => (
+                {commandBadges.map((badge) => badge.key === 'watch' ? (
                   <Button
                     key={badge.key}
                     size="small"
-                    onClick={() => {
-                      if (badge.key === 'watch') navigate(`/watch?project=${encodeURIComponent(slug)}`);
-                      else setTaskFilter(badge.key);
-                    }}
+                    onClick={() => navigate(`/watch?project=${encodeURIComponent(slug)}`)}
                   >
                     <Tag color={badge.color}>{badge.label}</Tag>
                   </Button>
+                ) : (
+                  <Tag key={badge.key} color={badge.color}>{badge.label}</Tag>
                 ))}
               </Space>
             ) : null}
@@ -847,27 +841,6 @@ export default function ProjectVersions() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <div className={styles.taskFilters} aria-label="版本任务筛选">
-                {[
-                  ['all', '全部'],
-                  ['pending', '待评审'],
-                  ['questions', '有疑问'],
-                  ['baseline-history', '基线历史'],
-                  ['void', '已废弃'],
-                ].map(([value, label]) => (
-                  <Button
-                    key={value}
-                    size="small"
-                    type={taskFilter === value ? 'primary' : 'default'}
-                    onClick={() => {
-                      setTaskFilter(value);
-                      if (value === 'void') setIncludeVoid(true);
-                    }}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
               <div className={styles.indexFilters}>
                 <Select aria-label="筛选版本状态" options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
                 <Select
@@ -881,10 +854,7 @@ export default function ProjectVersions() {
                 />
               </div>
               <div className={styles.indexOptions}>
-                <Checkbox checked={includeVoid} onChange={(event) => {
-                  setIncludeVoid(event.target.checked);
-                  if (!event.target.checked && taskFilter === 'void') setTaskFilter('all');
-                }}>
+                <Checkbox checked={includeVoid} onChange={(event) => setIncludeVoid(event.target.checked)}>
                   显示已废弃版本
                 </Checkbox>
                 <Button
