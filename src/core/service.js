@@ -949,15 +949,6 @@ export class Hub {
     }
   }
 
-  async preflightFormalRelease(slug, versionNo, input = {}) {
-    return publicFormalReleasePreflight(await this.#prepareFormalRelease(slug, versionNo, input))
-  }
-
-  async formalRelease(slug, versionNo, input = {}) {
-    this.#assertWritable('正式发版')
-    return this.#formalRelease(slug, versionNo, input)
-  }
-
   async #formalRelease(slug, versionNo, input = {}) {
     const earlyBaseline = store.readBaseline(this.root, slug)
     const earlyVersion = store.readVersion(this.root, slug, versionNo)

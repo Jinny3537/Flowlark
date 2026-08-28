@@ -80,4 +80,7 @@ test('正式发版 API 完成预检、发布和队列查询且不暴露内部 ID
   assert.equal(queue.length, 1)
   assert.equal(queue[0].status, 'sent')
   assert.doesNotMatch(JSON.stringify(queue), /wo-secret|userid|email/)
+
+  const legacy = await request(`/api/versions/${project.slug}/v2/formal-release/preflight`)
+  assert.equal(legacy.status, 404)
 })

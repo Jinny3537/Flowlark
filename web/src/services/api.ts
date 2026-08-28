@@ -118,10 +118,6 @@ export const api = {
   getHtml: (slug: string, no: string) => requestText(`/api/versions/${enc(slug)}/${enc(no)}/download`),
   downloadUrl: (slug: string, no: string) => `/api/versions/${enc(slug)}/${enc(no)}/download`,
   setBaseline: (slug: string, no: string) => post(`/api/versions/${enc(slug)}/${enc(no)}/baseline`),
-  preflightFormalRelease: (slug: string, no: string, body: unknown) =>
-    post<any>(`/api/versions/${enc(slug)}/${enc(no)}/formal-release/preflight`, body),
-  formalRelease: (slug: string, no: string, body: unknown) =>
-    post<any>(`/api/versions/${enc(slug)}/${enc(no)}/formal-release`, body),
   listReleaseMails: () => get<any[]>('/api/release-mails'),
   retryReleaseMail: (id: string) => post<any>(`/api/release-mails/${enc(id)}/retry`, {}),
   cumulative: (slug: string, from: string, to: string) =>

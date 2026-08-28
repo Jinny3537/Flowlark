@@ -29,6 +29,7 @@ import {
 
 type FormalReleaseDialogProps = {
   open: boolean;
+  milestone: string;
   slug: string;
   project: any;
   version: any;
@@ -54,6 +55,7 @@ function blockerSummary(blocker: any) {
 
 export function FormalReleaseDialog({
   open,
+  milestone,
   slug,
   project,
   version,
@@ -79,24 +81,29 @@ export function FormalReleaseDialog({
     nextSelections = selections,
     releasedAt = preflight?.releasedAt,
   }: RunOptions = {}) => {
-    if (!slug || !versionNo) return;
+    if (!milestone || !slug || !versionNo) return;
     const requestId = ++requestIdRef.current;
     setChecking(true);
     setError('');
     try {
-      const next = await api.preflightFormalRelease(slug, versionNo, preflightPayload({
-        to: nextTo,
-        cc: nextCc,
-        selections: nextSelections,
-        releasedAt,
-      }));
+      const next = await api.preflightMilestoneFormalRelease(
+        milestone,
+        slug,
+        versionNo,
+        preflightPayload({
+          to: nextTo,
+          cc: nextCc,
+          selections: nextSelections,
+          releasedAt,
+        }),
+      );
       if (requestId === requestIdRef.current) setPreflight(next);
     } catch (nextError) {
       if (requestId === requestIdRef.current) setError(errorText(nextError, '正式发版预检失败'));
     } finally {
       if (requestId === requestIdRef.current) setChecking(false);
     }
-  }, [cc, preflight?.releasedAt, selections, slug, to, versionNo]);
+  }, [cc, milestone, preflight?.releasedAt, selections, slug, to, versionNo]);
 
   useEffect(() => {
     if (!open) {
@@ -116,7 +123,7 @@ export function FormalReleaseDialog({
       nextSelections: {},
       releasedAt: '',
     });
-  }, [open, projectDefaultsKey, slug, versionNo]);
+  }, [milestone, open, projectDefaultsKey, slug, versionNo]);
 
   const changeRecipients = (kind: 'to' | 'cc', values: string[]) => {
     if (kind === 'to') setTo(values);
@@ -137,12 +144,17 @@ export function FormalReleaseDialog({
     setExecuting(true);
     setError('');
     try {
-      const next = await api.formalRelease(slug, versionNo, preflightPayload({
-        to,
-        cc,
-        selections,
-        releasedAt: preflight.releasedAt,
-      }));
+      const next = await api.formalReleaseMilestoneVersion(
+        milestone,
+        slug,
+        versionNo,
+        preflightPayload({
+          to,
+          cc,
+          selections,
+          releasedAt: preflight.releasedAt,
+        }),
+      );
       setResult(next);
       await onChanged();
       if (next.status === 'complete') message.success('正式发版和企业微信邮件均已完成');

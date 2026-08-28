@@ -1,14 +1,20 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, App, Button, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
-import { DeleteOutlined, EditOutlined, ExportOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, ExportOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FormalReleaseDialog } from '@/components/FormalReleaseDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { fmtTime, textOf } from '@/utils/format';
-import { milestoneItems, withoutMilestoneItem } from './milestoneModel.js';
+import {
+  milestoneItemAction,
+  milestoneItems,
+  milestoneReleaseState,
+  withoutMilestoneItem,
+} from './milestoneModel.js';
 import { MilestoneSyncPanel } from './MilestoneSyncPanel';
 import { ActiveScopeChangeDialog } from './ActiveScopeChangeDialog';
 
@@ -26,6 +32,9 @@ export default function MilestoneDetail() {
   const [journal, setJournal] = useState<any>(null);
   const [execution, setExecution] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [releaseMails, setReleaseMails] = useState<any[]>([]);
+  const [releaseTarget, setReleaseTarget] = useState<any>(null);
+  const [releaseLoading, setReleaseLoading] = useState('');
   const [error, setError] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -45,13 +54,22 @@ export default function MilestoneDetail() {
     setLoading(true);
     setError('');
     try {
-      const [nextItem, nextRequirements, nextProjects, nextPreflight, nextJournal, nextExecution] = await Promise.all([
+      const [
+        nextItem,
+        nextRequirements,
+        nextProjects,
+        nextPreflight,
+        nextJournal,
+        nextExecution,
+        nextReleaseMails,
+      ] = await Promise.all([
         api.getMilestone(name),
         api.listRequirements(),
         api.listProjects(),
         api.milestonePreflight(name),
         api.milestoneSyncJournal(name),
         api.milestoneExecutionSummary(name).catch(() => null),
+        api.listReleaseMails(),
       ]);
       setItem(nextItem);
       setRequirements(nextRequirements);
@@ -59,6 +77,7 @@ export default function MilestoneDetail() {
       setPreflight(nextPreflight);
       setJournal(nextJournal);
       setExecution(nextExecution);
+      setReleaseMails(nextReleaseMails);
     } catch (nextError) {
       setError(errorText(nextError, '无法读取迭代详情'));
     } finally {
@@ -118,6 +137,22 @@ export default function MilestoneDetail() {
       setRemoving('');
     }
   }, [item, load, message, name]);
+
+  const openFormalRelease = useCallback(async (entry: any) => {
+    const key = `${entry.project}:${entry.version}`;
+    setReleaseLoading(key);
+    try {
+      const [project, version] = await Promise.all([
+        api.getProject(entry.project),
+        api.getVersion(entry.project, entry.version),
+      ]);
+      setReleaseTarget({ slug: entry.project, project, version });
+    } catch (nextError) {
+      message.error(errorText(nextError, '无法读取发版项目或版本'));
+    } finally {
+      setReleaseLoading('');
+    }
+  }, [message]);
 
   const exportPackage = useCallback(async () => {
     setExporting(true);
@@ -240,23 +275,73 @@ export default function MilestoneDetail() {
                   render: (_, entry: any) => <Tag color={entry.currentBaseline === entry.version ? 'success' : 'warning'}>{entry.currentBaseline === entry.version ? '当前基线' : '基线已变化'}</Tag>,
                 },
                 {
-                  title: '操作',
-                  width: 100,
+                  title: '发版状态',
+                  width: 130,
                   render: (_, entry: any) => {
-                    const key = `${entry.requirement}:${entry.project}:${entry.version}`;
-                    return (
-                      <Popconfirm title="从迭代范围移除该版本？" okText="移除" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => removeItem(entry)}>
-                        <Button type="text" danger icon={<DeleteOutlined />} loading={removing === key} disabled={!editable || Boolean(removing)}>移除</Button>
-                      </Popconfirm>
-                    );
+                    const state = milestoneReleaseState(entry, releaseMails);
+                    return <Tag color={state.color}>{state.label}</Tag>;
+                  },
+                },
+                {
+                  title: '操作',
+                  width: 140,
+                  render: (_, entry: any) => {
+                    const action = milestoneItemAction(item?.status);
+                    if (action === 'release') {
+                      const key = `${entry.project}:${entry.version}`;
+                      return (
+                        <Button
+                          type="link"
+                          icon={<SendOutlined />}
+                          loading={releaseLoading === key}
+                          disabled={!writable || Boolean(releaseLoading)}
+                          onClick={() => void openFormalRelease(entry)}
+                        >
+                          正式发版
+                        </Button>
+                      );
+                    }
+                    if (action === 'remove') {
+                      const key = `${entry.requirement}:${entry.project}:${entry.version}`;
+                      return (
+                        <Popconfirm
+                          title="从迭代范围移除该版本？"
+                          okText="移除"
+                          cancelText="取消"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={() => removeItem(entry)}
+                        >
+                          <Button
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            loading={removing === key}
+                            disabled={!editable || Boolean(removing)}
+                          >
+                            移除
+                          </Button>
+                        </Popconfirm>
+                      );
+                    }
+                    return <span aria-label="无可用操作">—</span>;
                   },
                 },
               ]}
-              scroll={{ x: 760 }}
+              scroll={{ x: 900 }}
             />
           </section>
         </div>
       </State>
+
+      <FormalReleaseDialog
+        open={Boolean(releaseTarget)}
+        milestone={name}
+        slug={releaseTarget?.slug || ''}
+        project={releaseTarget?.project}
+        version={releaseTarget?.version}
+        onClose={() => setReleaseTarget(null)}
+        onChanged={load}
+      />
 
       <Modal
         title="编辑迭代计划"

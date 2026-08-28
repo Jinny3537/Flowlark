@@ -30,7 +30,6 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
-  SendOutlined,
   SwapOutlined,
   ThunderboltOutlined,
   UndoOutlined,
@@ -39,7 +38,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { NewVersionDialog } from '@/components/NewVersionDialog';
-import { FormalReleaseDialog } from '@/components/FormalReleaseDialog';
 import { api, type HealthInfo } from '@/services/api';
 import { fmtTime, textOf } from '@/utils/format';
 import {
@@ -98,7 +96,6 @@ export default function ProjectVersions() {
   const [detailError, setDetailError] = useState('');
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [newVersionOpen, setNewVersionOpen] = useState(false);
-  const [formalReleaseVersion, setFormalReleaseVersion] = useState<any>(null);
   const [planning, setPlanning] = useState<any>(null);
   const [planningError, setPlanningError] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -613,15 +610,6 @@ export default function ProjectVersions() {
             </div>
           </div>
           <Space wrap className={styles.summaryActions}>
-            {display.key !== 'VOID' ? (
-              <Button
-                icon={<SendOutlined />}
-                disabled={!canWrite}
-                onClick={() => setFormalReleaseVersion(selectedVersion)}
-              >
-                正式发版
-              </Button>
-            ) : null}
             {!isBaselineVersion(selectedVersion) && display.key !== 'VOID' ? (
               <Button disabled={!canWrite} onClick={() => void setBaseline(selectedVersion)}>
                 {display.key === 'HISTORY' ? '回滚为基线' : '设为基线'}
@@ -1017,17 +1005,6 @@ export default function ProjectVersions() {
           selectedVersionNoRef.current = versionNo;
           setSelectedVersionNo(versionNo);
           void reloadAll();
-        }}
-      />
-      <FormalReleaseDialog
-        open={Boolean(formalReleaseVersion)}
-        slug={slug}
-        project={project}
-        version={formalReleaseVersion}
-        onClose={() => setFormalReleaseVersion(null)}
-        onChanged={async () => {
-          detailCacheRef.current.clear();
-          await reloadAll();
         }}
       />
     </main>
