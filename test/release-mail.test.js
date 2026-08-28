@@ -144,62 +144,113 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
   })
   hub.addVersion(project.slug, { versionNo: 'v1', title: '首版', html: '<html>v1</html>' })
   hub.setBaseline(project.slug, 'v1')
+  hub.createRequirement({ code: 'REQ-2', title: '筛选优化' })
   hub.addVersion(project.slug, {
     versionNo: 'v2', title: '筛选升级', html: '<html>v2</html>',
     changes: [{ type: 'MODIFY', location: '列表', content: '保留筛选条件' }],
     requirements: ['REQ-2']
+  })
+  const milestone = hub.createMilestone({
+    name: 'S1',
+    title: '迭代一',
+    status: 'active',
+    items: [{ requirement: 'REQ-2', project: project.slug, version: 'v2' }]
   })
   const originalSetBaseline = hub.setBaseline.bind(hub)
   hub.setBaseline = (...args) => {
     calls.push('baseline')
     return originalSetBaseline(...args)
   }
-  return { root, hub, project, calls, wecomMcp }
+  return { root, hub, project, milestone, calls, wecomMcp }
 }
 
+test('迭代发版要求进行中状态且版本在范围内', async (t) => {
+  const { hub, project, milestone } = releaseFixture(t)
+  const blockedStatuses = ['planning', 'reviewing', 'frozen', 'delivered', 'archived', 'canceled']
+
+  for (const status of blockedStatuses) {
+    const blocked = hub.createMilestone({
+      name: `S-${status}`,
+      title: status,
+      status,
+      items: [{ requirement: 'REQ-2', project: project.slug, version: 'v2' }]
+    })
+    await assert.rejects(
+      () => hub.preflightMilestoneFormalRelease(blocked.name, project.slug, 'v2'),
+      (error) => error.code === 'MILESTONE_FORMAL_RELEASE_STATUS_INVALID' && error.status === 409
+    )
+  }
+
+  await assert.rejects(
+    () => hub.preflightMilestoneFormalRelease(milestone.name, project.slug, 'v1'),
+    (error) => error.code === 'MILESTONE_FORMAL_RELEASE_OUT_OF_SCOPE' && error.status === 409
+  )
+  await assert.rejects(
+    () => hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v1'),
+    (error) => error.code === 'MILESTONE_FORMAL_RELEASE_OUT_OF_SCOPE' && error.status === 409
+  )
+})
+
+test('正式执行会重新校验迭代状态', async (t) => {
+  const { hub, project, milestone } = releaseFixture(t)
+  const preflight = await hub.preflightMilestoneFormalRelease(milestone.name, project.slug, 'v2')
+  assert.equal(preflight.ready, true)
+
+  hub.transitionMilestone(milestone.name, { target: 'delivered' })
+
+  await assert.rejects(
+    () => hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2', {
+      releasedAt: preflight.releasedAt
+    }),
+    (error) => error.code === 'MILESTONE_FORMAL_RELEASE_STATUS_INVALID'
+  )
+  assert.equal(hub.getBaseline(project.slug).versionNo, 'v1')
+  assert.equal(hub.listReleaseMails().length, 0)
+})
+
 test('正式发版严格按基线、Git、邮件顺序且重复请求不重复发送', async (t) => {
-  const { hub, project, calls, wecomMcp } = releaseFixture(t)
-  const preflight = await hub.preflightFormalRelease(project.slug, 'v2', { releasedAt: '2026-08-28T10:00:00Z' })
+  const { hub, project, milestone, calls, wecomMcp } = releaseFixture(t)
+  const preflight = await hub.preflightMilestoneFormalRelease(milestone.name, project.slug, 'v2', { releasedAt: '2026-08-28T10:00:00Z' })
   assert.equal(preflight.ready, true)
   assert.equal(preflight.previousBaseline, 'v1')
   assert.doesNotMatch(JSON.stringify(preflight), /wo-0|wo-1|userid|email/)
   assert.equal(hub.getBaseline(project.slug).versionNo, 'v1', '预检不能切换基线')
   assert.equal(hub.listReleaseMails().length, 0, '预检不能写邮件队列')
 
-  const result = await hub.formalRelease(project.slug, 'v2', { releasedAt: preflight.releasedAt })
+  const result = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2', { releasedAt: preflight.releasedAt })
   assert.equal(result.status, 'complete')
   assert.deepEqual(calls, ['baseline', 'git', 'mail'])
   assert.equal(hub.getBaseline(project.slug).versionNo, 'v2')
   assert.equal(result.mail.status, 'sent')
 
   wecomMcp.authStatus = async () => { throw new Error('授权已过期') }
-  const duplicate = await hub.formalRelease(project.slug, 'v2', { releasedAt: preflight.releasedAt })
+  const duplicate = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2', { releasedAt: preflight.releasedAt })
   assert.equal(duplicate.duplicate, true)
   assert.deepEqual(calls, ['baseline', 'git', 'mail'])
 })
 
 test('Git 失败不发送邮件，续跑不重复设置基线', async (t) => {
   let shouldFail = true
-  const { hub, project, calls } = releaseFixture(t, {
+  const { hub, project, milestone, calls } = releaseFixture(t, {
     gitSync: () => {
       calls.push('git')
       if (shouldFail) throw new Error('push failed')
       return { ok: true }
     }
   })
-  const first = await hub.formalRelease(project.slug, 'v2')
+  const first = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2')
   assert.equal(first.status, 'git_failed')
   assert.deepEqual(calls, ['baseline', 'git'])
   assert.equal(hub.listReleaseMails().length, 0)
   shouldFail = false
-  const second = await hub.formalRelease(project.slug, 'v2')
+  const second = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2')
   assert.equal(second.status, 'complete')
   assert.deepEqual(calls, ['baseline', 'git', 'git', 'mail'])
 })
 
 test('邮件失败保留 pending，重试只调用邮件', async (t) => {
   let attempts = 0
-  const { hub, project, calls } = releaseFixture(t, {
+  const { hub, project, milestone, calls } = releaseFixture(t, {
     sendReleaseMail: async () => {
       calls.push('mail')
       attempts++
@@ -207,7 +258,7 @@ test('邮件失败保留 pending，重试只调用邮件', async (t) => {
       return { ok: true }
     }
   })
-  const first = await hub.formalRelease(project.slug, 'v2')
+  const first = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2')
   assert.equal(first.status, 'mail_pending')
   assert.equal(first.released, true)
   assert.equal(first.mail.lastInstruction, '稍后重试')
@@ -217,7 +268,7 @@ test('邮件失败保留 pending，重试只调用邮件', async (t) => {
 })
 
 test('同名收件人必须明确选择且公共预检不暴露 userid', async (t) => {
-  const { hub, project } = releaseFixture(t, {
+  const { hub, project, milestone } = releaseFixture(t, {
     resolveContacts: async ({ names }) => ({
       results: names.map((name) => {
         const candidates = name === '张三'
@@ -232,11 +283,11 @@ test('同名收件人必须明确选择且公共预检不暴露 userid', async (
       })
     })
   })
-  const blocked = await hub.preflightFormalRelease(project.slug, 'v2')
+  const blocked = await hub.preflightMilestoneFormalRelease(milestone.name, project.slug, 'v2')
   assert.equal(blocked.ready, false)
   assert.equal(blocked.blockers.find((item) => item.query === '张三').candidates.length, 2)
   assert.doesNotMatch(JSON.stringify(blocked), /wo-secret|userid/)
-  const ready = await hub.preflightFormalRelease(project.slug, 'v2', { selections: { 张三: 'p2' } })
+  const ready = await hub.preflightMilestoneFormalRelease(milestone.name, project.slug, 'v2', { selections: { 张三: 'p2' } })
   assert.equal(ready.ready, true)
   assert.equal(ready.to[0].departments[0], '研发部')
 })

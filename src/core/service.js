@@ -501,6 +501,37 @@ export class Hub {
     return milestones.inspectMilestone(this.root, name)
   }
 
+  #assertMilestoneFormalReleaseTarget(name, slug, versionNo) {
+    const item = milestones.readMilestone(this.root, name)
+    if (item.status !== 'active') {
+      throw err.conflict(
+        'MILESTONE_FORMAL_RELEASE_STATUS_INVALID',
+        `迭代「${item.name}」只有在进行中状态才能正式发版`
+      )
+    }
+    const included = item.items.some((entry) =>
+      entry.project === slug && entry.version === versionNo)
+    if (!included) {
+      throw err.conflict(
+        'MILESTONE_FORMAL_RELEASE_OUT_OF_SCOPE',
+        `${slug}/${versionNo} 不在迭代「${item.name}」的版本范围内`,
+        '先核对迭代版本范围'
+      )
+    }
+    return item
+  }
+
+  async preflightMilestoneFormalRelease(name, slug, versionNo, input = {}) {
+    this.#assertMilestoneFormalReleaseTarget(name, slug, versionNo)
+    return publicFormalReleasePreflight(await this.#prepareFormalRelease(slug, versionNo, input))
+  }
+
+  async formalReleaseMilestoneVersion(name, slug, versionNo, input = {}) {
+    this.#assertWritable('正式发版')
+    this.#assertMilestoneFormalReleaseTarget(name, slug, versionNo)
+    return this.#formalRelease(slug, versionNo, input)
+  }
+
   createMilestone(input) {
     this.#assertWritable('创建迭代')
     const item = milestones.createMilestone(this.root, input)
@@ -924,6 +955,10 @@ export class Hub {
 
   async formalRelease(slug, versionNo, input = {}) {
     this.#assertWritable('正式发版')
+    return this.#formalRelease(slug, versionNo, input)
+  }
+
+  async #formalRelease(slug, versionNo, input = {}) {
     const earlyBaseline = store.readBaseline(this.root, slug)
     const earlyVersion = store.readVersion(this.root, slug, versionNo)
     if (earlyBaseline === versionNo && earlyVersion.baselineAt) {
