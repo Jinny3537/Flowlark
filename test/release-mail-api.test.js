@@ -20,6 +20,13 @@ test('正式发版 API 完成预检、发布和队列查询且不暴露内部 ID
     versionNo: 'v2', title: '筛选升级', html: html('v2'),
     changes: [{ type: 'MODIFY', location: '列表', content: '保留筛选条件' }]
   })
+  hub.createRequirement({ code: 'REQ-2', title: '筛选优化' })
+  const milestone = hub.createMilestone({
+    name: 'S1',
+    title: '迭代一',
+    status: 'active',
+    items: [{ requirement: 'REQ-2', project: project.slug, version: 'v2' }]
+  })
 
   let sendCount = 0
   const fakeWecom = {
@@ -52,12 +59,15 @@ test('正式发版 API 完成预检、发布和队列查询且不暴露内部 ID
     return { status: response.status, body: await response.json() }
   }
 
-  const preflight = await request(`/api/versions/${project.slug}/v2/formal-release/preflight`)
+  const milestonePath = `/api/milestones/${encodeURIComponent(milestone.name)}`
+    + `/versions/${encodeURIComponent(project.slug)}/${encodeURIComponent('v2')}`
+
+  const preflight = await request(`${milestonePath}/formal-release/preflight`)
   assert.equal(preflight.status, 200)
   assert.equal(preflight.body.ready, true)
   assert.doesNotMatch(JSON.stringify(preflight.body), /wo-secret|userid|email/)
 
-  const released = await request(`/api/versions/${project.slug}/v2/formal-release`, {
+  const released = await request(`${milestonePath}/formal-release`, {
     releasedAt: preflight.body.releasedAt
   })
   assert.equal(released.status, 200)

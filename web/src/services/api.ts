@@ -161,6 +161,10 @@ export const api = {
   listMilestones: () => get<any[]>('/api/milestones'),
   getMilestone: (name: string) => get<any>(`/api/milestones/${enc(name)}`),
   createMilestone: (body: unknown) => post<any>('/api/milestones', body),
+  preflightMilestoneFormalRelease: (name: string, slug: string, no: string, body: unknown) =>
+    post<any>(`/api/milestones/${enc(name)}/versions/${enc(slug)}/${enc(no)}/formal-release/preflight`, body),
+  formalReleaseMilestoneVersion: (name: string, slug: string, no: string, body: unknown) =>
+    post<any>(`/api/milestones/${enc(name)}/versions/${enc(slug)}/${enc(no)}/formal-release`, body),
   updateMilestone: (name: string, body: unknown) => put<any>(`/api/milestones/${enc(name)}`, body),
   removeMilestone: (name: string) => del(`/api/milestones/${enc(name)}`),
   syncMilestones: (provider = 'mcp', config = {}) => post('/api/milestones/sync', { provider, config }),
