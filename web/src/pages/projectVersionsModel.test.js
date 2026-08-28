@@ -46,15 +46,6 @@ test('filters against display.key and supports all', () => {
   assert.deepEqual(filterVersions(versions, { status: 'all' }).map(versionNo), ['v3', 'v2', 'v1'])
 })
 
-test('filters review tasks independently from lifecycle', () => {
-  assert.deepEqual(filterVersions(versions, { task: 'pending' }).map(versionNo), ['v3'])
-  assert.deepEqual(filterVersions(versions, { task: 'questions' }).map(versionNo), ['v2'])
-  assert.deepEqual(filterVersions(versions, { task: 'baseline-history' }).map(versionNo), ['v2', 'v1'])
-  assert.deepEqual(filterVersions([...versions, {
-    versionNo: 'v0', status: 'VOID', display: { key: 'VOID' }, reviewStatus: 'obsolete', createdAt: '2026-08-20T00:00:00Z'
-  }], { task: 'void' }).map(versionNo), ['v0'])
-})
-
 test('filters author, requirement, and external-resource fields', () => {
   assert.deepEqual(filterVersions(versions, { author: 'jin' }).map(versionNo), ['v3'])
   assert.deepEqual(filterVersions(versions, { requirement: '日志' }).map(versionNo), ['v2'])
@@ -126,14 +117,14 @@ test('chooses only valid distinct common comparison targets', () => {
   })
 })
 
-test('serializes filters to stable shareable query state', () => {
+test('serializes supported filters and ignores the removed task dimension', () => {
   const query = projectFilterQuery({
     query: 'REQ-3', task: 'pending', status: 'DRAFT', order: 'oldest',
     author: 'Jinny', requirement: 'REQ', external: true, includeVoid: true,
   })
-  assert.equal(query, 'q=REQ-3&task=pending&status=DRAFT&order=oldest&author=Jinny&requirement=REQ&external=1&void=1')
-  assert.deepEqual(projectFilterState(new URLSearchParams(query)), {
-    query: 'REQ-3', task: 'pending', status: 'DRAFT', order: 'oldest',
+  assert.equal(query, 'q=REQ-3&status=DRAFT&order=oldest&author=Jinny&requirement=REQ&external=1&void=1')
+  assert.deepEqual(projectFilterState(new URLSearchParams(`${query}&task=pending`)), {
+    query: 'REQ-3', status: 'DRAFT', order: 'oldest',
     author: 'Jinny', requirement: 'REQ', external: true, includeVoid: true,
   })
   assert.equal(projectFilterQuery(projectFilterState(new URLSearchParams(''))), '')

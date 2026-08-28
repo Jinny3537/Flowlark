@@ -39,15 +39,6 @@ function requirementText(version) {
   }).filter(Boolean).map(String).join(' ').toLocaleLowerCase()
 }
 
-function matchesTask(version, task) {
-  if (!task || task === 'all') return true
-  if (task === 'pending') return version.reviewStatus === 'pending' && version.display?.key !== 'VOID'
-  if (task === 'questions') return version.reviewStatus === 'questions' && version.display?.key !== 'VOID'
-  if (task === 'baseline-history') return ['BASELINE', 'HISTORY'].includes(version.display?.key) || Boolean(version.baselineAt)
-  if (task === 'void') return version.display?.key === 'VOID' || version.status === 'VOID'
-  return true
-}
-
 function compareNewest(a, b) {
   const timestampComparison = compareText(timestampOf(b), timestampOf(a))
   if (timestampComparison !== 0) return timestampComparison
@@ -55,7 +46,7 @@ function compareNewest(a, b) {
 }
 
 export function filterVersions(versions, {
-  query = '', status = 'all', task = 'all', order = 'newest', author = '', requirement = '', external = false,
+  query = '', status = 'all', order = 'newest', author = '', requirement = '', external = false,
 } = {}) {
   const normalizedQuery = String(query).trim().toLocaleLowerCase()
   const normalizedAuthor = String(author).trim().toLocaleLowerCase()
@@ -67,8 +58,7 @@ export function filterVersions(versions, {
     const matchesAuthor = !normalizedAuthor || authors.includes(normalizedAuthor)
     const matchesRequirement = !normalizedRequirement || requirementText(version).includes(normalizedRequirement)
     const matchesExternal = !external || (version.externalRefs || []).length > 0
-    return matchesQuery && matchesStatus && matchesTask(version, task)
-      && matchesAuthor && matchesRequirement && matchesExternal
+    return matchesQuery && matchesStatus && matchesAuthor && matchesRequirement && matchesExternal
   })
 
   const direction = order === 'oldest' ? -1 : 1
@@ -98,8 +88,6 @@ export function comparisonTargets(versions = [], baselineNo = '', selectedVersio
   }
 }
 
-const TASKS = new Set(['all', 'pending', 'questions', 'baseline-history', 'void'])
-
 export function projectFilterState(params, fallback = {}) {
   const get = (key) => {
     if (typeof params?.get === 'function') return params.get(key)
@@ -107,12 +95,10 @@ export function projectFilterState(params, fallback = {}) {
     if (key === 'void') return params?.void ?? params?.includeVoid
     return params?.[key]
   }
-  const task = String(get('task') || fallback.task || 'all')
   const rawExternal = get('external') ?? fallback.external
   const rawVoid = get('void') ?? fallback.includeVoid
   return {
     query: String(get('q') || fallback.query || ''),
-    task: TASKS.has(task) ? task : 'all',
     status: String(get('status') || fallback.status || 'all'),
     order: String(get('order') || fallback.order || 'newest') === 'oldest' ? 'oldest' : 'newest',
     author: String(get('author') || fallback.author || ''),
@@ -126,7 +112,6 @@ export function projectFilterQuery(input = {}) {
   const state = projectFilterState(input)
   const params = new URLSearchParams()
   if (state.query) params.set('q', state.query)
-  if (state.task !== 'all') params.set('task', state.task)
   if (state.status !== 'all') params.set('status', state.status)
   if (state.order !== 'newest') params.set('order', state.order)
   if (state.author) params.set('author', state.author)
