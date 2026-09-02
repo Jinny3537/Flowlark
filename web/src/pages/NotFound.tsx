@@ -9,7 +9,7 @@ export default function NotFound() {
         status="404"
         title="页面不存在"
         subTitle="当前路径没有匹配的 Flowlark 工作台页面。"
-        extra={<Button type="primary" onClick={() => navigate('/actions')}>返回个人工作台</Button>}
+        extra={<Button type="primary" onClick={() => navigate('/actions')}>返回工作台</Button>}
       />
     </main>
   );

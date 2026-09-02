@@ -31,7 +31,7 @@ const { Header, Sider, Content } = Layout;
 const SIDER_COLLAPSED_KEY = 'flowlark:sider-collapsed';
 
 const navigation: MenuProps['items'] = [
-  { key: 'actions', icon: <AppstoreOutlined />, label: '个人工作台' },
+  { key: 'actions', icon: <AppstoreOutlined />, label: '工作台' },
   { key: 'projects', icon: <FolderOutlined />, label: '项目' },
   { key: 'requirements', icon: <FileTextOutlined />, label: '需求' },
   { key: 'milestones', icon: <CalendarOutlined />, label: '迭代' },
@@ -43,7 +43,7 @@ const navigation: MenuProps['items'] = [
 ];
 
 const pageNames: Record<string, string> = {
-  actions: '个人工作台',
+  actions: '工作台',
   projects: '项目',
   requirements: '需求',
   milestones: '迭代',
@@ -184,7 +184,7 @@ export function AppShell({ children }: AppShellProps) {
       className="fl-brand"
       type="button"
       onClick={() => navigate('/actions')}
-      aria-label="回到个人工作台"
+      aria-label="回到工作台"
     >
       <span className="fl-brand-mark" aria-hidden="true">
         <img src="/logo.svg" alt="" />
