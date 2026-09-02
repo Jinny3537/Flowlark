@@ -11,6 +11,7 @@ import { fmtTime, textOf } from '@/utils/format';
 import {
   filterProjects, initialProjectValues, isProjectCodeAllowed, projectPayload, PROJECT_PRIORITIES,
 } from './projectsModel.js';
+import { projectContinueRoute, sortProjectsByRecent } from './recentWorkModel.js';
 
 export default function Projects() {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ export default function Projects() {
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const filtered = useMemo(
-    () => filterProjects(items, { query, archived: archiveFilter }),
+    () => sortProjectsByRecent(filterProjects(items, { query, archived: archiveFilter })),
     [archiveFilter, items, query],
   );
 
@@ -137,12 +138,7 @@ export default function Projects() {
                 const latest = item.latestVersion;
                 return (
                   <article className="fl-project-entry-card" key={item.slug}>
-                    <button
-                      className="fl-project-entry-main"
-                      type="button"
-                      aria-label={`进入 ${item.name} 的原型管理`}
-                      onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}
-                    >
+                    <div className="fl-project-entry-main">
                       <span className="fl-project-entry-head">
                         <span className="fl-project-entry-identity">
                           <strong className="fl-project-entry-title">{item.name}</strong>
@@ -165,11 +161,20 @@ export default function Projects() {
                           <span>进入项目后创建首个版本</span>
                         </span>
                       )}
-                      <span className="fl-project-entry-footer">
-                        <span>{item.versionCount || 0} 个版本 · 基线 {textOf(item.baselineVersionNo, '未设置')}</span>
-                        <strong>进入原型管理 <ArrowRightOutlined /></strong>
+                      <span className="fl-project-baseline-note">
+                        {item.versionCount || 0} 个版本 · 当前基线{' '}
+                        <strong className="fl-mono">{textOf(item.baselineVersionNo, '未设置')}</strong>
+                        {latest && item.baselineVersionNo === latest.versionNo
+                          ? ' · 最新版本即基线'
+                          : latest ? ' · 最新版本尚未设为基线' : ''}
                       </span>
-                    </button>
+                    </div>
+                    <div className="fl-project-entry-actions">
+                      <Button onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}>全部版本</Button>
+                      <Button type="primary" onClick={() => navigate(projectContinueRoute(item))}>
+                        {latest ? '继续处理' : '进入项目'} <ArrowRightOutlined />
+                      </Button>
+                    </div>
                     <Dropdown
                       trigger={['click']}
                       menu={{
