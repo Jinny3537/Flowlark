@@ -2,13 +2,11 @@ import {
   App,
   Alert,
   Button,
-  Checkbox,
   Divider,
   Drawer,
   Dropdown,
   Empty,
   Input,
-  Select,
   Skeleton,
   Space,
   Tag,
@@ -23,7 +21,6 @@ import {
   DownOutlined,
   FileAddOutlined,
   FileTextOutlined,
-  FilterOutlined,
   HistoryOutlined,
   InboxOutlined,
   LinkOutlined,
@@ -82,15 +79,7 @@ export default function ProjectVersions() {
   const [versions, setVersions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState('');
-  const initialFilters = useRef(projectFilterState(searchParams));
-  const [includeVoid, setIncludeVoid] = useState(initialFilters.current.includeVoid);
-  const [query, setQuery] = useState(initialFilters.current.query);
-  const [statusFilter, setStatusFilter] = useState(initialFilters.current.status);
-  const [sortOrder, setSortOrder] = useState(initialFilters.current.order);
-  const [authorFilter, setAuthorFilter] = useState(initialFilters.current.author);
-  const [requirementFilter, setRequirementFilter] = useState(initialFilters.current.requirement);
-  const [externalOnly, setExternalOnly] = useState(initialFilters.current.external);
-  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [query, setQuery] = useState(() => projectFilterState(searchParams).query);
   const [filtersHydrated, setFiltersHydrated] = useState(false);
   const [selectedVersionNo, setSelectedVersionNo] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<any>(null);
@@ -125,27 +114,9 @@ export default function ProjectVersions() {
     [versions],
   );
   const filteredVersions = useMemo(
-    () => filterVersions(versions, {
-      query,
-      status: statusFilter,
-      order: sortOrder,
-      author: authorFilter,
-      requirement: requirementFilter,
-      external: externalOnly,
-    }),
-    [authorFilter, externalOnly, query, requirementFilter, sortOrder, statusFilter, versions],
+    () => filterVersions(versions, { query }),
+    [query, versions],
   );
-  const statusOptions = useMemo(() => {
-    const values = new Map<string, string>();
-    versions.forEach((version) => {
-      const display = displayOf(version);
-      values.set(display.key, display.label);
-    });
-    return [
-      { value: 'all', label: '全部状态' },
-      ...Array.from(values, ([value, label]) => ({ value, label })),
-    ];
-  }, [versions]);
   const compareTargets = useMemo(() => comparisonTargets(
     versions,
     versionNoOf(planning?.baseline || baseline),
@@ -211,7 +182,7 @@ export default function ProjectVersions() {
     try {
       const [nextProject, list, nextHealth] = await Promise.all([
         api.getProject(slug),
-        api.listVersions(slug, { includeDraft: true, includeVoid }),
+        api.listVersions(slug, { includeDraft: true }),
         api.health(),
       ]);
       if (requestId !== pageRequestIdRef.current) return;
@@ -239,7 +210,7 @@ export default function ProjectVersions() {
     } finally {
       if (requestId === pageRequestIdRef.current) setLoading(false);
     }
-  }, [includeVoid, selectVersion, slug]);
+  }, [selectVersion, slug]);
 
   useEffect(() => {
     detailRequestIdRef.current += 1;
@@ -261,14 +232,7 @@ export default function ProjectVersions() {
     setFiltersHydrated(false);
     const apply = (value: any) => {
       if (cancelled) return;
-      const next = projectFilterState(value);
-      setQuery(next.query);
-      setStatusFilter(next.status);
-      setSortOrder(next.order);
-      setAuthorFilter(next.author);
-      setRequirementFilter(next.requirement);
-      setExternalOnly(next.external);
-      setIncludeVoid(next.includeVoid);
+      setQuery(projectFilterState(value).query);
       setFiltersHydrated(true);
     };
     if (searchParams.toString()) {
@@ -283,25 +247,14 @@ export default function ProjectVersions() {
 
   useEffect(() => {
     if (!filtersHydrated || !slug) return undefined;
-    const state = {
-      query,
-      status: statusFilter,
-      order: sortOrder,
-      author: authorFilter,
-      requirement: requirementFilter,
-      external: externalOnly,
-      includeVoid,
-    };
+    const state = { query };
     const nextQuery = projectFilterQuery(state);
     if (nextQuery !== searchParams.toString()) setSearchParams(nextQuery, { replace: true });
     const timer = window.setTimeout(() => {
       void api.setProjectPreference(slug, state).catch(() => undefined);
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [
-    authorFilter, externalOnly, filtersHydrated, includeVoid, query, requirementFilter,
-    searchParams, setSearchParams, slug, sortOrder, statusFilter,
-  ]);
+  }, [filtersHydrated, query, searchParams, setSearchParams, slug]);
 
   useEffect(() => {
     if (!filteredVersions.length) return;
@@ -847,9 +800,6 @@ export default function ProjectVersions() {
           >
             创建首个版本
           </Button>
-          <Checkbox checked={includeVoid} onChange={(event) => setIncludeVoid(event.target.checked)}>
-            显示已废弃版本
-          </Checkbox>
         </section>
       ) : null}
       {loading && !versions.length ? (
@@ -868,53 +818,6 @@ export default function ProjectVersions() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <div className={styles.indexFilters}>
-                <Select aria-label="筛选版本状态" options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
-                <Select
-                  aria-label="版本排序"
-                  options={[
-                    { value: 'newest', label: '最新优先' },
-                    { value: 'oldest', label: '最早优先' },
-                  ]}
-                  value={sortOrder}
-                  onChange={setSortOrder}
-                />
-              </div>
-              <div className={styles.indexOptions}>
-                <Checkbox checked={includeVoid} onChange={(event) => setIncludeVoid(event.target.checked)}>
-                  显示已废弃版本
-                </Checkbox>
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<FilterOutlined />}
-                  aria-expanded={advancedFiltersOpen}
-                  onClick={() => setAdvancedFiltersOpen((value) => !value)}
-                >
-                  {advancedFiltersOpen ? '收起高级筛选' : '高级筛选'}
-                </Button>
-              </div>
-              {advancedFiltersOpen ? (
-                <div className={styles.advancedFilters}>
-                  <Input
-                    allowClear
-                    aria-label="按创建人筛选"
-                    placeholder="创建人"
-                    value={authorFilter}
-                    onChange={(event) => setAuthorFilter(event.target.value)}
-                  />
-                  <Input
-                    allowClear
-                    aria-label="按关联需求筛选"
-                    placeholder="需求编号或标题"
-                    value={requirementFilter}
-                    onChange={(event) => setRequirementFilter(event.target.value)}
-                  />
-                  <Checkbox checked={externalOnly} onChange={(event) => setExternalOnly(event.target.checked)}>
-                    仅看有外部依赖
-                  </Checkbox>
-                </div>
-              ) : null}
             </div>
 
             {filteredVersions.length ? (
