@@ -5,6 +5,7 @@
 .projectMeta span { display: grid; min-width: 0; gap: var(--fl-s-1); }
 .projectMeta small { color: var(--fl-text-2); font-size: var(--fl-fs-2); }
 .projectMeta strong { min-width: 0; overflow: hidden; color: var(--fl-text); font-size: var(--fl-fs-3); text-overflow: ellipsis; white-space: nowrap; }
+.projectMeta :global(.ant-tag) { width: fit-content; margin: 0; white-space: normal; }
 .pageAlert { margin-bottom: var(--fl-s-4); }
 .baselineStrip { min-width: 0; margin-bottom: var(--fl-s-4); border-left: 3px solid var(--fl-primary); border-radius: var(--fl-r-2); background: var(--fl-primary-bg); }
 .baselineToggle { display: flex; width: 100%; min-height: 44px; align-items: center; gap: var(--fl-s-2); padding: 0 var(--fl-s-3); border: 0; border-radius: inherit; background: transparent; color: var(--fl-text); font: inherit; text-align: left; cursor: pointer; }

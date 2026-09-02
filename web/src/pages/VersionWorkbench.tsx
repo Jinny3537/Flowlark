@@ -10,7 +10,7 @@ import { Alert, App, Button, Segmented, Select, Spin, Tag, Tooltip } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type HealthInfo } from '@/services/api';
-import { textOf } from '@/utils/format';
+import { fmtTime, textOf } from '@/utils/format';
 import { FeedbackDrawer } from './workbench/FeedbackDrawer';
 import { PrototypeEditorDrawer } from './workbench/PrototypeEditorDrawer';
 import { PrototypeStage } from './workbench/PrototypeStage';
@@ -337,11 +337,21 @@ export default function VersionWorkbench() {
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
+            aria-label={`返回 ${textOf(project?.name, slug)} 的版本列表`}
             onClick={() => navigate(`/projects/${encodeURIComponent(slug)}`)}
           >
-            返回
+            返回版本列表
           </Button>
-          <strong>{textOf(project?.name, slug)}</strong>
+          <div className={styles.contextCopy}>
+            <div className={styles.contextPath}>
+              <span>{textOf(project?.name, slug)}</span>
+              <span aria-hidden>/</span>
+              <strong className="fl-mono">{versionNo}</strong>
+            </div>
+            <span className={styles.contextMeta}>
+              {textOf(version?.title, '未命名版本')} · 更新于 {fmtTime(version?.updatedAt || version?.createdAt)}
+            </span>
+          </div>
         </div>
         <Select
           className={styles.versionSelect}

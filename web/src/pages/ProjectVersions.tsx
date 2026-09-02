@@ -46,6 +46,7 @@ import {
   comparisonTargets,
   filterVersions,
   planningBadges,
+  projectContinuation,
   projectFilterQuery,
   projectFilterState,
   reviewStateOf,
@@ -113,6 +114,7 @@ export default function ProjectVersions() {
     () => versions.find((version) => isBaselineVersion(version)) || null,
     [versions],
   );
+  const continuation = useMemo(() => projectContinuation(versions), [versions]);
   const canRollback = useMemo(
     () => versions.some((version) =>
       !isBaselineVersion(version) && version.baselineAt && displayOf(version).key !== 'VOID'),
@@ -674,9 +676,10 @@ export default function ProjectVersions() {
       <PageHeader
         eyebrow="项目版本"
         title={project?.name || slug}
+        description={project?.description || '查看最新版本、当前基线和完整版本记录。'}
         backTo="/projects"
         actions={(
-          <Space wrap>
+          <Space wrap className={styles.summaryActions}>
             <Button
               icon={<InboxOutlined />}
               onClick={() => navigate(`/watch?project=${encodeURIComponent(slug)}`)}
@@ -684,23 +687,31 @@ export default function ProjectVersions() {
               草稿箱{planning?.watchCount ? ` ${planning.watchCount}` : ''}
             </Button>
             <Button
-              type="primary"
               icon={<PlusOutlined />}
               disabled={!canWrite}
               onClick={() => setNewVersionOpen(true)}
             >
               新建版本
             </Button>
+            {continuation.latest ? (
+              <Button
+                type="primary"
+                icon={<ArrowRightOutlined />}
+                onClick={() => openWorkbench(versionNoOf(continuation.latest))}
+              >
+                继续处理最新版本
+              </Button>
+            ) : null}
           </Space>
         )}
       />
 
       <section className={styles.projectMeta} aria-label="项目摘要">
         <span><small>项目代码</small><strong className="fl-mono">{textOf(project?.code, slug)}</strong></span>
-        <span><small>优先级</small><strong>{textOf(project?.priority, '未设置')}</strong></span>
-        <span><small>版本总数</small><strong>{project?.versionCount ?? versions.length}</strong></span>
-        <span><small>当前基线</small><strong className="fl-mono">{baseline ? versionNoOf(baseline) : '未设置'}</strong></span>
-        <span><small>最近更新</small><strong>{fmtTime(project?.updatedAt)}</strong></span>
+        <span><small>最新版本</small><strong className="fl-mono">{continuation.latest ? versionNoOf(continuation.latest) : '暂无版本'}</strong></span>
+        <span><small>当前基线</small><strong className="fl-mono">{continuation.baseline ? versionNoOf(continuation.baseline) : '未设置'}</strong></span>
+        <span><small>基线关系</small><Tag color={continuation.relation.color}>{continuation.relation.label}</Tag></span>
+        <span><small>最近更新</small><strong>{fmtTime(continuation.latest?.updatedAt || continuation.latest?.createdAt || project?.updatedAt)}</strong></span>
       </section>
 
       {!canWrite ? (
