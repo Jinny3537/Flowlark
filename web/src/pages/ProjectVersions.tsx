@@ -15,6 +15,7 @@ import {
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
+  ArrowLeftOutlined,
   ArrowRightOutlined,
   CopyOutlined,
   DownloadOutlined,
@@ -626,11 +627,21 @@ export default function ProjectVersions() {
 
   return (
     <main className={`fl-page ${styles.page}`}>
+      <nav className={styles.projectContext} aria-label="页面路径">
+        <Button
+          className={styles.projectBack}
+          type="link"
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate('/projects')}
+        >
+          项目列表
+        </Button>
+        <span className={styles.contextSeparator} aria-hidden="true">/</span>
+        <span className={styles.contextCurrent} aria-current="page">项目版本</span>
+      </nav>
+
       <PageHeader
-        eyebrow="项目版本"
         title={project?.name || slug}
-        description={project?.description || '查看最新版本、当前基线和完整版本记录。'}
-        backTo="/projects"
         actions={(
           <Space wrap className={styles.summaryActions}>
             <Button
@@ -658,14 +669,6 @@ export default function ProjectVersions() {
           </Space>
         )}
       />
-
-      <section className={styles.projectMeta} aria-label="项目摘要">
-        <span><small>项目代码</small><strong className="fl-mono">{textOf(project?.code, slug)}</strong></span>
-        <span><small>最新版本</small><strong className="fl-mono">{continuation.latest ? versionNoOf(continuation.latest) : '暂无版本'}</strong></span>
-        <span><small>当前基线</small><strong className="fl-mono">{continuation.baseline ? versionNoOf(continuation.baseline) : '未设置'}</strong></span>
-        <span><small>基线关系</small><Tag color={continuation.relation.color}>{continuation.relation.label}</Tag></span>
-        <span><small>最近更新</small><strong>{fmtTime(continuation.latest?.updatedAt || continuation.latest?.createdAt || project?.updatedAt)}</strong></span>
-      </section>
 
       {!canWrite ? (
         <Alert
