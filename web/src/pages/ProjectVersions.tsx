@@ -20,6 +20,7 @@ import {
   ArrowRightOutlined,
   CopyOutlined,
   DownloadOutlined,
+  DownOutlined,
   FileAddOutlined,
   FileTextOutlined,
   FilterOutlined,
@@ -99,6 +100,7 @@ export default function ProjectVersions() {
   const [planning, setPlanning] = useState<any>(null);
   const [planningError, setPlanningError] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [baselineExpanded, setBaselineExpanded] = useState(false);
   const [rollbackLoading, setRollbackLoading] = useState(false);
 
   const selectedVersionNoRef = useRef<string | null>(null);
@@ -713,63 +715,89 @@ export default function ProjectVersions() {
 
       {versions.length ? (
         <section className={styles.baselineStrip} aria-label="版本状态摘要">
-          <div className={styles.baselineContent}>
-            <div className={styles.baselineMain}>
+          <button
+            type="button"
+            className={styles.baselineToggle}
+            aria-expanded={baselineExpanded}
+            aria-controls="development-baseline-details"
+            onClick={() => setBaselineExpanded((expanded) => !expanded)}
+          >
+            <span className={styles.baselineSummary}>
               <span className={styles.baselineKicker}>{baseline ? '当前开发基线' : '基线状态'}</span>
               <strong className="fl-mono">{baseline ? versionNoOf(baseline) : '未设置'}</strong>
               <span className={styles.baselineTitle}>
                 {baseline ? textOf(baseline.title, '未命名版本') : '尚未设置开发基线，请从已记录变更的版本中选择'}
               </span>
               {newCount > 0 ? <span className={styles.readMarker}>{newCount} 个新版本</span> : null}
-            </div>
-            {baseline ? (
-              <span className={styles.baselineMeta}>
-                {createdByOf(baseline)} · {fmtTime(baseline.baselineAt || createdAtOf(baseline))}
-                {' · '}{baseline.requirementCount || baseline.requirements?.length || 0} 条需求
-              </span>
-            ) : null}
-            {planning?.previousBaseline ? (
-              <div className={styles.changeDigest} aria-label="相对上一基线的累计变更">
-                <span>相对 {versionNoOf(planning.previousBaseline)}</span>
-                <strong>新增 {planning.changeCounts?.ADD || 0}</strong>
-                <strong>修改 {planning.changeCounts?.MODIFY || 0}</strong>
-                <strong>删除 {planning.changeCounts?.REMOVE || 0}</strong>
-                {planning.previousBaselineSource === 'local' ? <small>根据本地记录推断</small> : null}
-              </div>
-            ) : baseline ? <span className={styles.baselineMeta}>首个基线，暂无上一基线</span> : null}
-            {commandBadges.length ? (
-              <Space wrap size={[6, 6]} className={styles.commandBadges}>
-                {commandBadges.map((badge) => badge.key === 'watch' ? (
-                  <Button
-                    key={badge.key}
-                    size="small"
-                    onClick={() => navigate(`/watch?project=${encodeURIComponent(slug)}`)}
-                  >
-                    <Tag color={badge.color}>{badge.label}</Tag>
-                  </Button>
-                ) : (
+            </span>
+            {!baselineExpanded && commandBadges.length ? (
+              <span className={styles.collapsedBadges}>
+                {commandBadges.map((badge) => (
                   <Tag key={badge.key} color={badge.color}>{badge.label}</Tag>
                 ))}
-              </Space>
+              </span>
             ) : null}
+            <DownOutlined
+              className={`${styles.baselineChevron} ${baselineExpanded ? styles.baselineChevronExpanded : ''}`}
+              aria-hidden
+            />
+          </button>
+
+          <div
+            id="development-baseline-details"
+            className={styles.baselineDetails}
+            hidden={!baselineExpanded}
+          >
+            <div className={styles.baselineContent}>
+              {baseline ? (
+                <span className={styles.baselineMeta}>
+                  {createdByOf(baseline)} · {fmtTime(baseline.baselineAt || createdAtOf(baseline))}
+                  {' · '}{baseline.requirementCount || baseline.requirements?.length || 0} 条需求
+                </span>
+              ) : null}
+              {planning?.previousBaseline ? (
+                <div className={styles.changeDigest} aria-label="相对上一基线的累计变更">
+                  <span>相对 {versionNoOf(planning.previousBaseline)}</span>
+                  <strong>新增 {planning.changeCounts?.ADD || 0}</strong>
+                  <strong>修改 {planning.changeCounts?.MODIFY || 0}</strong>
+                  <strong>删除 {planning.changeCounts?.REMOVE || 0}</strong>
+                  {planning.previousBaselineSource === 'local' ? <small>根据本地记录推断</small> : null}
+                </div>
+              ) : baseline ? <span className={styles.baselineMeta}>首个基线，暂无上一基线</span> : null}
+              {commandBadges.length ? (
+                <Space wrap size={[6, 6]} className={styles.commandBadges}>
+                  {commandBadges.map((badge) => badge.key === 'watch' ? (
+                    <Button
+                      key={badge.key}
+                      size="small"
+                      onClick={() => navigate(`/watch?project=${encodeURIComponent(slug)}`)}
+                    >
+                      <Tag color={badge.color}>{badge.label}</Tag>
+                    </Button>
+                  ) : (
+                    <Tag key={badge.key} color={badge.color}>{badge.label}</Tag>
+                  ))}
+                </Space>
+              ) : null}
+            </div>
+            <Space wrap className={styles.commandActions}>
+              {baseline ? <Button type="primary" onClick={() => openWorkbench(versionNoOf(baseline))}>打开当前基线</Button> : null}
+              {compareTargets.baselineVsPrevious ? (
+                <Button icon={<SwapOutlined />} onClick={() => openComparison(compareTargets.baselineVsPrevious)}>
+                  与上一基线比较
+                </Button>
+              ) : null}
+              <Button icon={<HistoryOutlined />} onClick={() => setHistoryOpen(true)}>基线历史</Button>
+              {newCount > 0 ? (
+                <Button size="small" onClick={() => void markRead(versionNoOf(versions[0]))}>标记最新为已读</Button>
+              ) : null}
+              {baseline && canRollback ? (
+                <Button icon={<UndoOutlined />} loading={rollbackLoading} disabled={!canWrite} onClick={() => void rollbackBaseline()}>
+                  回滚上一版
+                </Button>
+              ) : null}
+            </Space>
           </div>
-          <Space wrap className={styles.commandActions}>
-            {baseline ? <Button type="primary" onClick={() => openWorkbench(versionNoOf(baseline))}>打开当前基线</Button> : null}
-            {compareTargets.baselineVsPrevious ? (
-              <Button icon={<SwapOutlined />} onClick={() => openComparison(compareTargets.baselineVsPrevious)}>
-                与上一基线比较
-              </Button>
-            ) : null}
-            <Button icon={<HistoryOutlined />} onClick={() => setHistoryOpen(true)}>基线历史</Button>
-            {newCount > 0 ? (
-              <Button size="small" onClick={() => void markRead(versionNoOf(versions[0]))}>标记最新为已读</Button>
-            ) : null}
-            {baseline && canRollback ? (
-              <Button icon={<UndoOutlined />} loading={rollbackLoading} disabled={!canWrite} onClick={() => void rollbackBaseline()}>
-                回滚上一版
-              </Button>
-            ) : null}
-          </Space>
         </section>
       ) : null}
 
