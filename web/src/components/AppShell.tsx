@@ -4,6 +4,8 @@ import {
   AppstoreOutlined,
   CalendarOutlined,
   DeleteOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
   FileTextOutlined,
   FolderOutlined,
   InboxOutlined,
@@ -21,13 +23,15 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { useAppRuntime } from '@/runtime/AppRuntime';
+import { parseSiderCollapsed } from './appShellModel.js';
 import { GitDrawer } from './GitDrawer';
 import { NewVersionDialog } from './NewVersionDialog';
 
 const { Header, Sider, Content } = Layout;
+const SIDER_COLLAPSED_KEY = 'flowlark:sider-collapsed';
 
 const navigation: MenuProps['items'] = [
-  { key: 'actions', icon: <AppstoreOutlined />, label: '个人工作台' },
+  { key: 'actions', icon: <AppstoreOutlined />, label: '工作台' },
   { key: 'projects', icon: <FolderOutlined />, label: '项目' },
   { key: 'requirements', icon: <FileTextOutlined />, label: '需求' },
   { key: 'milestones', icon: <CalendarOutlined />, label: '迭代' },
@@ -39,7 +43,7 @@ const navigation: MenuProps['items'] = [
 ];
 
 const pageNames: Record<string, string> = {
-  actions: '个人工作台',
+  actions: '工作台',
   projects: '项目',
   requirements: '需求',
   milestones: '迭代',
@@ -60,6 +64,13 @@ export function AppShell({ children }: AppShellProps) {
   const { health, git, notifications, reload } = useAppRuntime();
   const screens = Grid.useBreakpoint();
   const mobile = !screens.md;
+  const [siderCollapsed, setSiderCollapsed] = useState(() => {
+    try {
+      return parseSiderCollapsed(window.localStorage.getItem(SIDER_COLLAPSED_KEY));
+    } catch {
+      return false;
+    }
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
@@ -108,15 +119,26 @@ export function AppShell({ children }: AppShellProps) {
     return () => { cancelled = true; };
   }, [health?.updateManifestUrl, health?.version]);
 
+  const toggleSider = () => {
+    const nextCollapsed = !siderCollapsed;
+    setSiderCollapsed(nextCollapsed);
+    try {
+      window.localStorage.setItem(SIDER_COLLAPSED_KEY, String(nextCollapsed));
+    } catch {
+      // The current-session UI state still works when storage is unavailable.
+    }
+  };
+
   const menu = useMemo(() => (
     <Menu
       className="fl-app-menu"
       mode="inline"
+      inlineCollapsed={!mobile && siderCollapsed}
       selectedKeys={[selected]}
       items={navigation}
       onClick={({ key }) => navigate(`/${key}`)}
     />
-  ), [navigate, selected]);
+  ), [mobile, navigate, selected, siderCollapsed]);
 
   const quickItems: MenuProps['items'] = [
     { key: 'version', icon: <FileTextOutlined />, label: '导入原型' },
@@ -162,7 +184,7 @@ export function AppShell({ children }: AppShellProps) {
       className="fl-brand"
       type="button"
       onClick={() => navigate('/actions')}
-      aria-label="回到个人工作台"
+      aria-label="回到工作台"
     >
       <span className="fl-brand-mark" aria-hidden="true">
         <img src="/logo.svg" alt="" />
@@ -208,14 +230,25 @@ export function AppShell({ children }: AppShellProps) {
     <Layout className="fl-app-shell">
       <a className="fl-skip-link" href="#main-content">跳到主要内容</a>
       {!mobile ? (
-        <Sider width={240} theme="light" className="fl-app-sider">
+        <Sider
+          width={240}
+          collapsedWidth={72}
+          collapsed={siderCollapsed}
+          trigger={null}
+          theme="light"
+          className={`fl-app-sider ${siderCollapsed ? 'is-collapsed' : ''}`}
+        >
           <div className="fl-sider-inner">
-            {brand}
-            <nav className="fl-primary-nav" aria-label="主要导航">{menu}</nav>
-            <div className="fl-sider-status">
-              <Badge status={health ? 'success' : 'default'} />
-              <span>{health ? '本地服务运行中' : '本地服务未连接'}</span>
-            </div>
+            <Tooltip title={siderCollapsed ? 'Flowlark · 回到工作台' : undefined} placement="right">
+              {brand}
+            </Tooltip>
+            <nav id="fl-primary-navigation" className="fl-primary-nav" aria-label="主要导航">{menu}</nav>
+            <Tooltip title={siderCollapsed ? (health ? '本地服务运行中' : '本地服务未连接') : undefined} placement="right">
+              <div className="fl-sider-status">
+                <Badge status={health ? 'success' : 'default'} />
+                {!siderCollapsed ? <span>{health ? '本地服务运行中' : '本地服务未连接'}</span> : null}
+              </div>
+            </Tooltip>
           </div>
         </Sider>
       ) : null}
@@ -231,6 +264,19 @@ export function AppShell({ children }: AppShellProps) {
                   icon={<MenuOutlined />}
                   aria-label="打开导航"
                   onClick={() => setDrawerOpen(true)}
+                />
+              </Tooltip>
+            ) : null}
+            {!mobile ? (
+              <Tooltip title={siderCollapsed ? '展开菜单' : '折叠菜单'}>
+                <Button
+                  className="fl-header-icon fl-sider-toggle"
+                  type="text"
+                  icon={siderCollapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />}
+                  aria-label={siderCollapsed ? '展开菜单' : '折叠菜单'}
+                  aria-controls="fl-primary-navigation"
+                  aria-expanded={!siderCollapsed}
+                  onClick={toggleSider}
                 />
               </Tooltip>
             ) : null}

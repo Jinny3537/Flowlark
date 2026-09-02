@@ -122,9 +122,39 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 201, hub.createMilestone(body))
   })
   r.get('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.getMilestone(p.name)))
+  r.get('/api/milestones/:name/preflight', async (req, res, p) =>
+    sendJson(res, 200, hub.inspectMilestonePreflight(p.name)))
+  r.get('/api/milestones/:name/sync-journal', async (req, res, p) =>
+    sendJson(res, 200, hub.milestoneSyncJournal(p.name)))
+  r.get('/api/milestones/:name/execution', async (req, res, p) =>
+    sendJson(res, 200, await hub.milestoneExecutionSummary(p.name)))
+  r.post('/api/milestones/:name/sync-plan', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.planMilestoneSync(p.name, body))
+  })
+  r.post('/api/milestones/:name/sync-execute', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.executeMilestoneSync(p.name, body))
+  })
+  r.post('/api/milestones/:name/sync-resume', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.resumeMilestoneSync(p.name, body))
+  })
+  r.post('/api/milestones/:name/transition', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.transitionMilestone(p.name, body))
+  })
   r.post('/api/milestones/:name/sync', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, await hub.syncMilestoneToExternal(p.name, body.provider || null, body.config || body))
+  })
+  r.post('/api/milestones/:name/versions/:slug/:no/formal-release/preflight', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.preflightMilestoneFormalRelease(p.name, p.slug, p.no, body))
+  })
+  r.post('/api/milestones/:name/versions/:slug/:no/formal-release', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.formalReleaseMilestoneVersion(p.name, p.slug, p.no, body))
   })
   r.put('/api/milestones/:name', async (req, res, p) => {
     const body = await readJson(req, maxBody)
@@ -189,6 +219,13 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.delete('/api/notifications/:provider/webhook', async (req, res, p) =>
     sendJson(res, 200, hub.deleteNotificationWebhook(p.provider)))
 
+  // ---- 正式发版邮件 ----
+  r.get('/api/release-mails', async (req, res) =>
+    sendJson(res, 200, hub.listReleaseMails()))
+
+  r.post('/api/release-mails/:id/retry', async (req, res, p) =>
+    sendJson(res, 200, await hub.retryReleaseMail(p.id)))
+
   // ---- 工作区、更新与镜像 ----
   r.get('/api/workspaces', async (req, res) => sendJson(res, 200, hub.listWorkspaces()))
   r.post('/api/workspaces/register', async (req, res) => { const body=await readJson(req,maxBody);sendJson(res,201,hub.registerWorkspace(body.path,body)) })
@@ -207,6 +244,25 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.updateProject(p.slug, body))
   })
+
+  r.post('/api/projects/:slug/version-preflight', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.preflightVersion(p.slug, body))
+  })
+
+  r.get('/api/projects/:slug/planning', async (req, res, p) =>
+    sendJson(res, 200, hub.projectPlanning(p.slug)))
+
+  r.get('/api/projects/:slug/preferences', async (req, res, p) =>
+    sendJson(res, 200, hub.getProjectPreference(p.slug)))
+
+  r.put('/api/projects/:slug/preferences', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.setProjectPreference(p.slug, body))
+  })
+
+  r.get('/api/projects/:slug/rollback-preview', async (req, res, p) =>
+    sendJson(res, 200, hub.rollbackPreview(p.slug)))
 
   r.post('/api/projects/:slug/rollback', async (req, res, p) =>
     sendJson(res, 200, hub.rollback(p.slug)))
@@ -303,6 +359,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   r.get('/api/trash', async (req, res, p, url) =>
     sendJson(res, 200, hub.listTrash(url.searchParams.get('project') || null)))
+
+  r.post('/api/trash/:id/restore', async (req, res, p) =>
+    sendJson(res, 200, hub.restoreTrashEntry(p.id)))
 
   // ---- 搜索 ----
   r.get('/api/search', async (req, res, p, url) => {
@@ -427,6 +486,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   r.post('/api/watch/inbox/:id/retry', async (req, res, p) =>
     sendJson(res, 200, hub.retryWatchItem(p.id)))
+
+  r.delete('/api/watch/inbox/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.removeWatchItem(p.id)))
 
   // ---- Git ----
   r.get('/api/git/status', async (req, res, p, url) =>
@@ -576,6 +638,31 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   r.delete('/api/mcp/servers/:id', async (req, res, p) =>
     sendJson(res, 200, hub.removeMcpServer(p.id)))
+
+  r.post('/api/mcp/servers/:id/discover', async (req, res, p) =>
+    sendJson(res, 200, await hub.discoverMcpServerTools(p.id)))
+
+  r.get('/api/mcp/runtime/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.mcpRuntimeProfile(p.id)))
+
+  r.put('/api/mcp/runtime/:id', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.saveMcpRuntimeProfile(p.id, body))
+  })
+
+  r.delete('/api/mcp/runtime/:id', async (req, res, p) =>
+    sendJson(res, 200, hub.removeMcpRuntimeProfile(p.id)))
+
+  r.post('/api/mcp/runtime/:id/diagnose', async (req, res, p) =>
+    sendJson(res, 200, hub.diagnoseMcpRuntime(p.id)))
+
+  r.put('/api/mcp/runtime/:id/password', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.setMcpRuntimePassword(p.id, body.value || body.password))
+  })
+
+  r.delete('/api/mcp/runtime/:id/password', async (req, res, p) =>
+    sendJson(res, 200, hub.deleteMcpRuntimePassword(p.id)))
 
   r.put('/api/mcp/servers/:id/secret', async (req, res, p) => {
     const body = await readJson(req, maxBody)

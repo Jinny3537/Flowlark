@@ -31,6 +31,7 @@ const OPERATION_STATUS = {
   VERSION_REOPEN: { label: '重新打开', color: 'green' },
   VERSION_REMOVE: { label: '删除', color: 'red' },
   VERSION_RESTORE: { label: '恢复', color: 'green' },
+  WATCH_RECORD_REMOVE: { label: '清理草稿记录', color: 'default' },
   BASELINE_SET: { label: '设为基线', color: 'green' },
   BASELINE_ROLLBACK: { label: '回滚基线', color: 'orange' },
   SPEC_UPDATE: { label: '更新规格书', color: 'blue' },

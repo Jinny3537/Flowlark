@@ -15,6 +15,7 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 | Requirement detail | edit, export, linked-version navigation | requirement + export | RequirementDetail | verified |
 | Milestones | create, optional sync, bulk sync | milestones + sync | Milestones | verified |
 | Milestone detail | add/remove scope item, export, external sync | milestone + export | MilestoneDetail | verified |
+| Milestone lifecycle | preflight, plan, confirm, execute, resume, transition | milestone sync/* | MilestoneDetail + MilestoneSyncPanel | gap |
 | Deliveries | create snapshot, notification retry, webhook test/save | snapshots + notifications | Deliveries | verified |
 | Delivery detail | frozen snapshot detail | snapshots | DeliveryDetail | verified |
 | Watch inbox | show errors, open archived version, retry failed item | watch/inbox | WatchInbox | verified |
@@ -24,7 +25,18 @@ Status values: `verified`, `gap`, `delete-unreachable`.
 | Software update | status, fetch, dirty guard, pull, restart notice | update/software | Settings/SoftwareUpdateSection | verified |
 | Operation log | paginated semantic actions | oplog | Settings/OperationLog | verified |
 | MCP | service CRUD, secret set/delete, capability CRUD/test | mcp/* | Settings/McpSection | verified |
+| MCP stdio runtime | binary/account/keychain/diagnostics and Assess Task mapping | mcp/runtime/* | Settings/McpRuntimeFields | gap |
 | Setup wizard | no route or production entry | drafts/version | none | delete-unreachable |
+
+## Assess Task MCP Iteration Verification Evidence
+
+2026-08-28:
+
+- `npm test`: 423 tests passed with 0 failures.
+- `node --test web/src/**/*.test.js`: 74 frontend model tests passed with 0 failures.
+- `cd web && npm run build`: production build passed; only the existing chunk-size warning remains.
+- Browser smoke test on a disposable workspace passed for the milestone list, milestone detail, lifecycle transition, freeze blockers, active-scope dialog, MCP settings, stdio transport selection, and local runtime fields; browser console reported no errors.
+- Target-platform live writes remain unverified because no writable test environment is available. Milestone lifecycle and MCP stdio runtime remain `gap` until the P4 checklist in `docs/ASSESS-TASK-MCP.md` passes.
 
 ## Task 5 Verification Evidence
 

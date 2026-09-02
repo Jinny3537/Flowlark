@@ -5,6 +5,15 @@ const dirs = []
 after(() => dirs.forEach(cleanup))
 
 describe('迭代', () => {
+  test('新迭代保存目标、负责人和计划中状态', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    const item = hub.createMilestone({ name: 'S0', title: '启动', goal: '完成联调', owner: 'zhangsan' })
+    t.assert.strictEqual(item.goal, '完成联调')
+    t.assert.strictEqual(item.owner, 'zhangsan')
+    t.assert.strictEqual(item.status, 'planning')
+  })
+
   test('显式固定需求、项目和版本，并报告草稿与基线漂移', (t) => {
     const { root, hub } = newHub()
     dirs.push(root)

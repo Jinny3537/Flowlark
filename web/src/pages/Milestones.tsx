@@ -8,6 +8,7 @@ import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { fmtTime, textOf } from '@/utils/format';
+import { milestoneStatusMeta, syncHealth } from './milestoneSyncModel.js';
 
 export default function Milestones() {
   const navigate = useNavigate();
@@ -107,6 +108,13 @@ export default function Milestones() {
             { title: '周期', render: (_, record: any) => `${textOf(record.startAt)} 至 ${textOf(record.endAt)}` },
             { title: '版本数', render: (_, record: any) => record.items?.length || 0 },
             {
+              title: '阶段',
+              render: (_, record: any) => {
+                const status = milestoneStatusMeta(record.status);
+                return <Tag color={status.color}>{status.label}</Tag>;
+              },
+            },
+            {
               title: '任务平台',
               render: (_, record: any) => (
                 <div className="fl-milestone-sync-state">
@@ -116,6 +124,13 @@ export default function Milestones() {
               ),
             },
             { title: '状态', render: (_, record: any) => <Tag color={record.ready ? 'success' : 'warning'}>{record.ready ? '可交付' : `${record.warnings?.length || 0} 项风险`}</Tag> },
+            {
+              title: '同步',
+              render: (_, record: any) => {
+                const health = syncHealth({ external: record.external });
+                return <Tag color={health.tone}>{health.label}</Tag>;
+              },
+            },
           ]}
           scroll={{ x: 920 }}
         />

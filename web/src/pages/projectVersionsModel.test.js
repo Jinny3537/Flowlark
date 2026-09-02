@@ -1,21 +1,31 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { adjacentVersionNo, filterVersions } from './projectVersionsModel.js'
+import {
+  adjacentVersionNo,
+  comparisonTargets,
+  filterVersions,
+  planningBadges,
+  projectFilterQuery,
+  projectFilterState,
+  reviewStateOf,
+} from './projectVersionsModel.js'
 
 const versions = [
   {
     versionNo: 'v3', title: '批量关闭校验', createdBy: 'Jinny', updatedBy: 'Ming',
     createdAt: '2026-08-24T08:00:00Z', display: { key: 'DRAFT' }, tags: ['批量操作'],
+    reviewStatus: 'pending', externalRefs: ['https://cdn.example/app.js'],
     requirements: [{ code: 'REQ-3', title: '订单关闭' }],
   },
   {
     no: 'v2', title: '操作日志优化', createdBy: 'protohub', updatedAt: '2026-08-23T08:00:00Z',
-    display: { key: 'CONFIRMED' }, tags: ['审计'],
+    display: { key: 'BASELINE' }, reviewStatus: 'questions', tags: ['审计'],
     requirements: [{ code: 'REQ-2', title: '日志筛选' }],
   },
   {
     versionNo: 'v1', title: '首版原型', createdBy: 'protohub', updatedBy: 'Kai',
-    createdAt: '2026-08-22T08:00:00Z', display: { key: 'HISTORY' }, tags: [], requirements: [],
+    createdAt: '2026-08-22T08:00:00Z', display: { key: 'HISTORY' }, reviewStatus: 'confirmed',
+    baselineAt: '2026-08-22T09:00:00Z', tags: [], requirements: [],
   },
 ]
 
@@ -32,8 +42,14 @@ test('filters by every supported search field', () => {
 })
 
 test('filters against display.key and supports all', () => {
-  assert.deepEqual(filterVersions(versions, { status: 'CONFIRMED' }).map(versionNo), ['v2'])
+  assert.deepEqual(filterVersions(versions, { status: 'BASELINE' }).map(versionNo), ['v2'])
   assert.deepEqual(filterVersions(versions, { status: 'all' }).map(versionNo), ['v3', 'v2', 'v1'])
+})
+
+test('filters author, requirement, and external-resource fields', () => {
+  assert.deepEqual(filterVersions(versions, { author: 'jin' }).map(versionNo), ['v3'])
+  assert.deepEqual(filterVersions(versions, { requirement: '日志' }).map(versionNo), ['v2'])
+  assert.deepEqual(filterVersions(versions, { external: true }).map(versionNo), ['v3'])
 })
 
 test('sorts shuffled versions newest and oldest without mutating input', () => {
@@ -81,4 +97,45 @@ test('handles a 60-version project without dropping a valid match', () => {
     filterVersions(manyVersions, { query: '唯一命中', status: 'HISTORY' }).map(versionNo),
     ['v48'],
   )
+})
+
+test('chooses only valid distinct common comparison targets', () => {
+  assert.deepEqual(comparisonTargets(versions, 'v2', 'v3', 'v1'), {
+    selectedVsBaseline: { a: 'v2', b: 'v3' },
+    latestVsBaseline: { a: 'v2', b: 'v3' },
+    baselineVsPrevious: { a: 'v1', b: 'v2' },
+  })
+  assert.deepEqual(comparisonTargets(versions, 'v2', 'v2', ''), {
+    selectedVsBaseline: null,
+    latestVsBaseline: { a: 'v2', b: 'v3' },
+    baselineVsPrevious: null,
+  })
+  assert.deepEqual(comparisonTargets([], '', '', ''), {
+    selectedVsBaseline: null,
+    latestVsBaseline: null,
+    baselineVsPrevious: null,
+  })
+})
+
+test('serializes supported filters and ignores the removed task dimension', () => {
+  const query = projectFilterQuery({
+    query: 'REQ-3', task: 'pending', status: 'DRAFT', order: 'oldest',
+    author: 'Jinny', requirement: 'REQ', external: true, includeVoid: true,
+  })
+  assert.equal(query, 'q=REQ-3&status=DRAFT&order=oldest&author=Jinny&requirement=REQ&external=1&void=1')
+  assert.deepEqual(projectFilterState(new URLSearchParams(`${query}&task=pending`)), {
+    query: 'REQ-3', status: 'DRAFT', order: 'oldest',
+    author: 'Jinny', requirement: 'REQ', external: true, includeVoid: true,
+  })
+  assert.equal(projectFilterQuery(projectFilterState(new URLSearchParams(''))), '')
+})
+
+test('maps review states and planning badges to readable labels', () => {
+  assert.deepEqual(reviewStateOf({ reviewStatus: 'pending' }), { key: 'pending', label: '待评审', color: 'orange' })
+  assert.deepEqual(reviewStateOf({ reviewStatus: 'questions' }), { key: 'questions', label: '有疑问', color: 'red' })
+  assert.deepEqual(planningBadges({ review: { pending: 2, questions: 1 }, watchCount: 3 }), [
+    { key: 'pending', label: '2 个待评审', color: 'orange' },
+    { key: 'questions', label: '1 个有疑问', color: 'red' },
+    { key: 'watch', label: '3 个待归档', color: 'blue' },
+  ])
 })

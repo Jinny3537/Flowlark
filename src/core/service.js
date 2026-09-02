@@ -19,6 +19,8 @@ import * as drafts from './drafts.js'
 import * as watchbox from './watch-inbox.js'
 import * as reqx from './requirements.js'
 import * as projectx from './projects.js'
+import * as projectPreferences from './project-preferences.js'
+import * as versionPlanning from './version-planning.js'
 import * as migrate from './migrate.js'
 import * as milestones from './milestones.js'
 import * as savedViews from './views.js'
@@ -26,24 +28,51 @@ import * as exporter from './exporter.js'
 import * as snapshots from './snapshots.js'
 import { suggestImpact as runImpact } from './impact.js'
 import * as notifications from './notifications.js'
+import * as releaseMail from './release-mail.js'
 import * as workspaces from './workspaces.js'
 import * as setupx from './setup.js'
 import * as updater from './updater.js'
 import * as mirror from './mirror.js'
 import * as workspaceIndex from './workspace-index.js'
 import * as mcpConfig from './mcp-config.js'
+import * as mcpRuntime from './mcp-runtime.js'
+import { createMcpClientManager } from './integrations/mcp-client.js'
+import { createAssessTaskAdapter } from './integrations/assess-task/adapter.js'
+import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycle.js'
+import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
+import { executeMilestoneSync as executeSync, resumeMilestoneSync as resumeSync } from './milestone-sync.js'
+import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
 import { readConfig, writeConfig, currentUser } from './repo.js'
+
+function trashRestoreState(root, entry) {
+  if (!store.projectExists(root, entry.project)) {
+    return { canRestore: false, blockedReason: 'PROJECT_NOT_FOUND' }
+  }
+  if (store.versionExists(root, entry.project, entry.versionNo)) {
+    return { canRestore: false, blockedReason: 'VERSION_EXISTS' }
+  }
+  const required = [`${entry.versionNo}.json`, `${entry.versionNo}.html`]
+  if (required.some((name) => !fs.existsSync(path.join(entry.dir, name)))) {
+    return { canRestore: false, blockedReason: 'TRASH_INCOMPLETE' }
+  }
+  return { canRestore: true, blockedReason: null }
+}
 
 /**
  * 业务门面。CLI 与 HTTP API 都只调这一层 —— 保证「命令行能做的事，网页也能做，
  * 且行为完全一致」。任何一边绕过它直接读写文件，两边就会开始漂移。
  */
 export class Hub {
-  constructor(root) {
+  constructor(root, { wecomMcp = null, gitSync = null, assessAdapter = null, assessConfig = null, mcpClientManager = null } = {}) {
     this.root = root
+    this.wecomMcp = wecomMcp
+    this.gitSyncOverride = gitSync
+    this.assessAdapter = assessAdapter
+    this.assessConfig = assessConfig
+    this.mcpClientManager = mcpClientManager || createMcpClientManager()
     const initial = readConfig(root)
     if (initial.schemaVersion < 2) migrate.migrateToSchema2(root)
     this.config = readConfig(root)
@@ -51,6 +80,11 @@ export class Hub {
 
   get settings() {
     return this.config.settings
+  }
+
+  attachWecomMcp(adapter) {
+    this.wecomMcp = adapter
+    return this
   }
 
   // ==================== 项目 ====================
@@ -62,6 +96,53 @@ export class Hub {
 
   getProject(slug) {
     return this.#projectDetail(slug, reqx.listRequirements(this.root))
+  }
+
+  projectPlanning(slug) {
+    const project = this.getProject(slug)
+    const versions = this.listVersions(slug, { includeDraft: true, includeVoid: true, markNew: false })
+    const baseline = versions.find((item) => item.isBaseline) || null
+    let history = []
+    let historyError = null
+    try {
+      history = this.gitBaselineHistory(slug, 50)
+    } catch (error) {
+      historyError = error instanceof Error ? error.message : String(error)
+    }
+    const previous = baseline
+      ? versionPlanning.previousBaseline(versions, baseline.versionNo, history)
+      : null
+    const changes = baseline && previous
+      ? this.cumulative(slug, previous.version.versionNo, baseline.versionNo)
+      : { fromVersionNo: null, toVersionNo: baseline?.versionNo || null, versionCount: baseline ? 1 : 0, itemCount: 0, items: [], locationCounts: {} }
+    const review = versionPlanning.reviewSummary(versions, baseline?.versionNo || '')
+    const watchCount = this.listWatchInbox()
+      .filter((item) => item.project === slug && item.status !== 'archived').length
+    return {
+      project: { slug: project.slug, name: project.name, code: project.code },
+      baseline,
+      previousBaseline: previous?.version || null,
+      previousBaselineSource: previous?.source || null,
+      previousBaselineHistory: previous?.history || null,
+      history,
+      historyError,
+      latest: versions.find((item) => item.status !== 'VOID') || null,
+      review,
+      changes,
+      changeCounts: versionPlanning.changeCounts(changes.items),
+      watchCount,
+      notificationProvider: this.settings.integrations.notificationProvider || 'none'
+    }
+  }
+
+  getProjectPreference(slug) {
+    store.readProject(this.root, slug)
+    return projectPreferences.getProjectPreference(this.root, slug)
+  }
+
+  setProjectPreference(slug, input) {
+    store.readProject(this.root, slug)
+    return projectPreferences.setProjectPreference(this.root, slug, input)
   }
 
   #projectDetail(slug, requirements) {
@@ -88,7 +169,7 @@ export class Hub {
     }
   }
 
-  createProject({ name, code, description = '', priority = '', archived = false }) {
+  createProject({ name, code, description = '', priority = '', archived = false, releaseMail: releaseMailInput = {} }) {
     this.#assertWritable('创建项目')
     const trimmedName = String(name || '').trim()
     if (!trimmedName) throw err.bad('NAME_REQUIRED', '请填写项目名称')
@@ -111,6 +192,7 @@ export class Hub {
       description: String(description || ''),
       priority: projectx.normalizeProjectPriority(priority),
       archived: projectx.normalizeArchived(archived),
+      releaseMail: releaseMail.normalizeReleaseMail(releaseMailInput),
       createdAt: now,
       createdBy: who,
       updatedAt: now,
@@ -140,8 +222,10 @@ export class Hub {
     if (patch.description !== undefined) next.description = String(patch.description || '')
     if (patch.priority !== undefined) next.priority = projectx.normalizeProjectPriority(patch.priority)
     if (patch.archived !== undefined) next.archived = projectx.normalizeArchived(patch.archived)
+    if (patch.releaseMail !== undefined) next.releaseMail = releaseMail.normalizeReleaseMail(patch.releaseMail)
     if (next.priority === undefined) next.priority = ''
     if (next.archived === undefined) next.archived = false
+    if (next.releaseMail === undefined) next.releaseMail = releaseMail.normalizeReleaseMail()
 
     next.updatedAt = new Date().toISOString()
     next.updatedBy = currentUser()
@@ -242,6 +326,19 @@ export class Hub {
     store.writeVersion(this.root, slug, version)
     this.#log(slug, versionNo, 'VERSION_ADD', `新增版本 ${versionNo}（${t}）`)
     return this.getVersion(slug, versionNo)
+  }
+
+  preflightVersion(slug, input = {}) {
+    store.readProject(this.root, slug)
+    const permission = this.writePermission()
+    return versionPlanning.preflightVersion({
+      ...input,
+      existingVersionNos: store.listVersionNos(this.root, slug),
+      maxFileBytes: this.settings.server.maxFileBytes,
+      impacts: runImpact(this.root, input.changes || []),
+      canWrite: input.canWrite !== false && permission.canWrite,
+      gitKnown: input.gitKnown !== false && permission.mode !== 'unknown'
+    })
   }
 
   updateVersion(slug, versionNo, { title, note }) {
@@ -404,6 +501,37 @@ export class Hub {
     return milestones.inspectMilestone(this.root, name)
   }
 
+  #assertMilestoneFormalReleaseTarget(name, slug, versionNo) {
+    const item = milestones.readMilestone(this.root, name)
+    if (item.status !== 'active') {
+      throw err.conflict(
+        'MILESTONE_FORMAL_RELEASE_STATUS_INVALID',
+        `迭代「${item.name}」只有在进行中状态才能正式发版`
+      )
+    }
+    const included = item.items.some((entry) =>
+      entry.project === slug && entry.version === versionNo)
+    if (!included) {
+      throw err.conflict(
+        'MILESTONE_FORMAL_RELEASE_OUT_OF_SCOPE',
+        `${slug}/${versionNo} 不在迭代「${item.name}」的版本范围内`,
+        '先核对迭代版本范围'
+      )
+    }
+    return item
+  }
+
+  async preflightMilestoneFormalRelease(name, slug, versionNo, input = {}) {
+    this.#assertMilestoneFormalReleaseTarget(name, slug, versionNo)
+    return publicFormalReleasePreflight(await this.#prepareFormalRelease(slug, versionNo, input))
+  }
+
+  async formalReleaseMilestoneVersion(name, slug, versionNo, input = {}) {
+    this.#assertWritable('正式发版')
+    this.#assertMilestoneFormalReleaseTarget(name, slug, versionNo)
+    return this.#formalRelease(slug, versionNo, input)
+  }
+
   createMilestone(input) {
     this.#assertWritable('创建迭代')
     const item = milestones.createMilestone(this.root, input)
@@ -472,6 +600,126 @@ export class Hub {
     const item = milestones.updateMilestone(this.root, local.name, this.#externalMilestoneInput(selected, remote, local.external))
     this.#log(null, null, 'MILESTONE_PUSH_SYNC', `同步迭代 ${item.name} 到任务平台`)
     return item
+  }
+
+  inspectMilestonePreflight(name) {
+    const item = milestones.inspectMilestone(this.root, name)
+    const info = mcpConfig.inspect(this.root)
+    const integrationProblems = [...info.problems]
+    const capability = info.config.capabilities.milestones
+    const server = info.config.servers.find((entry) => entry.id === capability?.server)
+    if (capability?.enabled && server?.type === 'stdio' && server.adapter === 'assess-task') {
+      const options = capability.options || {}
+      if (!Number(capability.project)) integrationProblems.push({ code: 'ASSESS_PROJECT_REQUIRED', message: '尚未配置平台项目 ID' })
+      if (!Number(options.ownerId)) integrationProblems.push({ code: 'SPRINT_OWNER_REQUIRED', message: '尚未配置平台冲刺负责人' })
+      if (!Number(options.taskType)) integrationProblems.push({ code: 'TASK_TYPE_REQUIRED', message: '尚未配置平台默认任务类型' })
+      for (const code of new Set(item.items.map((entry) => entry.requirement))) {
+        const requirement = reqx.readRequirement(this.root, code)
+        if (requirement.priority && options.priorities?.[requirement.priority] === undefined) {
+          integrationProblems.push({ code: 'TASK_PRIORITY_UNMAPPED', message: `${code} 的优先级 ${requirement.priority} 尚未映射` })
+        }
+      }
+      if (this.milestoneSyncJournal(name).status !== 'completed') {
+        integrationProblems.push({ code: 'MILESTONE_SYNC_REQUIRED', message: '冻结前需要完成一次已验证的平台同步' })
+      }
+    }
+    return freezePreflight(this.root, item, { integrationProblems })
+  }
+
+  async planMilestoneSync(name, input = {}) {
+    return this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, input, adapter, config))
+  }
+
+  async milestoneExecutionSummary(name) {
+    const item = milestones.readMilestone(this.root, name)
+    const sprintId = Number(item.external?.sprintId || 0)
+    if (!sprintId) return null
+    return this.#withAssessAdapter(false, async (adapter) => {
+      const [sprint, tasks] = await Promise.all([
+        adapter.getSprint(sprintId),
+        adapter.listTasks({ sprintId })
+      ])
+      const byStatus = {}
+      for (const task of tasks) {
+        const key = String(task.status ?? 'unknown')
+        byStatus[key] = (byStatus[key] || 0) + 1
+      }
+      return {
+        sprint: {
+          id: sprint.id,
+          status: sprint.status,
+          revision: sprint.revision,
+          startAt: sprint.startAt,
+          endAt: sprint.endAt
+        },
+        tasks: {
+          total: tasks.length,
+          unassigned: tasks.filter((task) => !task.assigneeId).length,
+          byStatus
+        }
+      }
+    })
+  }
+
+  async executeMilestoneSync(name, input = {}) {
+    this.#assertWritable('执行迭代同步')
+    return this.#withAssessAdapter(true, async (adapter, config) => {
+      const plan = await this.#buildMilestoneSyncPlan(name, input, adapter, config)
+      if (input.confirmed && !input.planHash) throw err.bad('MCP_SYNC_PLAN_HASH_REQUIRED', '确认同步时必须提供计划哈希')
+      if (input.planHash && input.planHash !== plan.hash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+      const result = await executeSync({
+        root: this.root,
+        milestoneName: name,
+        plan,
+        confirmed: input.confirmed === true,
+        reason: input.reason || '',
+        confirmUnfinished: input.confirmUnfinished === true,
+        adapter
+      })
+      this.#log(null, null, 'MILESTONE_SYNC_EXECUTE', `执行迭代 ${name} 同步计划 ${plan.hash}`)
+      return result
+    })
+  }
+
+  async resumeMilestoneSync(name, input = {}) {
+    this.#assertWritable('恢复迭代同步')
+    return this.#withAssessAdapter(true, async (adapter) => {
+      const result = await resumeSync({
+        root: this.root,
+        milestoneName: name,
+        reason: input.reason || '',
+        confirmUnfinished: input.confirmUnfinished === true,
+        adapter
+      })
+      this.#log(null, null, 'MILESTONE_SYNC_RESUME', `恢复迭代 ${name} 同步`)
+      return result
+    })
+  }
+
+  milestoneSyncJournal(name) {
+    return readMilestoneSyncJournal(this.root, name) || { milestone: name, status: 'not-started', operations: [] }
+  }
+
+  transitionMilestone(name, input = {}) {
+    this.#assertWritable('流转迭代状态')
+    const item = milestones.readMilestone(this.root, name)
+    const target = String(input.target || '')
+    const reason = String(input.reason || '').trim()
+    if (target === 'canceled' && !reason) throw err.bad('MILESTONE_REASON_REQUIRED', '取消迭代必须填写原因')
+    if (item.status === 'frozen' && target === 'reviewing' && !reason) throw err.bad('MILESTONE_REASON_REQUIRED', '解除冻结必须填写原因')
+    const transition = transitionMilestoneStatus(item.status, target, { remoteExists: Boolean(item.external?.sprintId) })
+    if (transition.requiresRemote) {
+      throw err.conflict('MILESTONE_REMOTE_TRANSITION_REQUIRES_SYNC', '该状态流转需要生成并执行平台同步计划')
+    }
+    if (target === 'frozen') {
+      const check = this.inspectMilestonePreflight(name)
+      if (!check.ready) throw err.conflict('MILESTONE_FREEZE_BLOCKED', `迭代仍有 ${check.blockers.length} 个冻结阻塞项`)
+    }
+    const updated = transition.changed
+      ? milestones.updateMilestone(this.root, name, { status: target }, { system: true })
+      : milestones.inspectMilestone(this.root, name)
+    this.#log(null, null, 'MILESTONE_TRANSITION', `迭代 ${name} 从 ${transition.from} 流转到 ${transition.to}${reason ? `：${reason}` : ''}`)
+    return updated
   }
 
   listSavedViews() {
@@ -550,6 +798,280 @@ export class Hub {
   }
   setNotificationWebhook(provider, value) { return secrets.setSecret(`webhook-${provider}`, value) }
   deleteNotificationWebhook(provider) { return secrets.deleteSecret(`webhook-${provider}`) }
+
+  // ==================== 正式发版邮件 ====================
+
+  async #prepareFormalRelease(slug, versionNo, input = {}) {
+    const blockers = []
+    const warnings = []
+    const pushBlocker = (code, message, hint = null, extra = {}) => blockers.push({ code, message, hint, ...extra })
+    const project = store.readProject(this.root, slug)
+    const version = store.readVersion(this.root, slug, versionNo)
+    const baselineNo = store.readBaseline(this.root, slug)
+    const releasedAt = validReleaseTime(input.releasedAt)
+    const gitIdentity = this.gitSyncOverride
+      ? { name: 'Test User', email: 'test@example.com', complete: true }
+      : this.gitIdentity()
+
+    if (version.status === 'VOID') pushBlocker('VERSION_VOID', `${versionNo} 已废弃，不能正式发版`)
+    if (!version.baselineAt && version.reviewStatus === 'questions') {
+      pushBlocker('REVIEW_QUESTIONS_BLOCKED', `${versionNo} 仍有评审疑问，不能正式发版`)
+    }
+    if (!store.readHtml(this.root, slug, versionNo)) {
+      pushBlocker('FILE_MISSING', `${versionNo} 的原型文件丢失，不能正式发版`)
+    }
+    try {
+      rules.assertChangelogReady(version, store.listVersionNos(this.root, slug).length, {
+        enabled: this.settings.rules.requireChangelog
+      })
+    } catch (error) {
+      pushBlocker(error.code || 'CHANGELOG_REQUIRED', error.message, error.hint)
+    }
+
+    if (!gitIdentity.complete) {
+      pushBlocker('GIT_IDENTITY_REQUIRED', '正式发版前需要配置 Git 提交身份', '在 Git 面板中设置姓名和邮箱')
+    }
+    if (!this.gitSyncOverride) {
+      const conflicts = this.gitConflicts()
+      if (conflicts.length) pushBlocker('GIT_CONFLICTS', 'Git 仍有未解决冲突，不能正式发版', '先在 Git 面板完成冲突处理')
+      if (this.gitInProgress()) pushBlocker('GIT_IN_PROGRESS', 'Git 同步流程尚未结束，不能正式发版', '先继续或放弃当前同步')
+      if (!this.gitRemote()) pushBlocker('GIT_REMOTE_REQUIRED', '正式发版前需要配置 Git 远端')
+    }
+
+    let config = releaseMail.normalizeReleaseMail(project.releaseMail)
+    try {
+      config = releaseMail.assertReleaseMailConfig({
+        ...config,
+        to: input.to !== undefined ? input.to : config.to,
+        cc: input.cc !== undefined ? input.cc : config.cc
+      })
+    } catch (error) {
+      pushBlocker(error.code || 'RELEASE_MAIL_CONFIG_INVALID', error.message, error.hint)
+    }
+    const toNames = config.to
+    const toSet = new Set(toNames)
+    const ccNames = config.cc.filter((name) => !toSet.has(name))
+    const allNames = [...new Set([...toNames, ...ccNames])]
+
+    let authStatus = null
+    let resolution = []
+    if (!this.wecomMcp) {
+      pushBlocker('WECOM_MCP_UNAVAILABLE', '企业微信 MCP Sidecar 尚未连接')
+    } else {
+      try {
+        authStatus = await this.wecomMcp.authStatus()
+        if (!authStatus.installed || !authStatus.versionOk || !authStatus.authorized) {
+          pushBlocker(
+            'WECOM_AUTH_REQUIRED',
+            authStatus.message || '企业微信 CLI 尚未就绪',
+            authStatus.instruction || null
+          )
+        } else if (allNames.length) {
+          resolution = (await this.wecomMcp.resolveContacts({ names: allNames })).results || []
+        }
+      } catch (error) {
+        pushBlocker(error.code || 'WECOM_MCP_REJECTED', error.message, error.hint)
+      }
+    }
+
+    const selections = input.selections && typeof input.selections === 'object' ? input.selections : {}
+    const selected = new Map()
+    for (const result of resolution) {
+      const candidates = Array.isArray(result.candidates) ? result.candidates : []
+      const requestedKey = String(selections[result.query] || '')
+      const chosen = result.status === 'unique'
+        ? (result.candidate || candidates[0])
+        : candidates.find((candidate) => candidate.key === requestedKey)
+      if (chosen) {
+        selected.set(result.query, chosen)
+        continue
+      }
+      if (result.status === 'missing') {
+        pushBlocker('RELEASE_RECIPIENT_MISSING', `企业微信通讯录中没有找到「${result.query}」`, result.hint || null, {
+          query: result.query,
+          candidates: []
+        })
+      } else {
+        pushBlocker('RELEASE_RECIPIENT_AMBIGUOUS', `企业微信通讯录中「${result.query}」存在多个候选人`, result.hint || '请选择明确的成员', {
+          query: result.query,
+          candidates: candidates.map(releaseMail.publicReleaseRecipient)
+        })
+      }
+    }
+
+    const unresolved = allNames.filter((name) => !selected.has(name) && !blockers.some((item) => item.query === name))
+    for (const name of unresolved) {
+      pushBlocker('RELEASE_RECIPIENT_UNRESOLVED', `尚未解析企业微信成员「${name}」`, null, { query: name, candidates: [] })
+    }
+
+    const otherBaselines = this.listVersions(slug, { includeDraft: true, includeVoid: true, markNew: false })
+      .filter((item) => item.versionNo !== versionNo && item.baselineAt)
+      .sort((a, b) => String(b.baselineAt).localeCompare(String(a.baselineAt)))
+    const previousBaseline = baselineNo && baselineNo !== versionNo ? baselineNo : (otherBaselines[0]?.versionNo || '')
+    let rendered = { subject: '', markdown: '' }
+    try {
+      rendered = releaseMail.renderReleaseMail(config, releaseMail.releaseTemplateContext({
+        project,
+        version,
+        previousBaseline,
+        releasedAt,
+        releasedBy: gitIdentity.name || currentUser()
+      }))
+    } catch (error) {
+      pushBlocker(error.code || 'RELEASE_MAIL_TEMPLATE_INVALID', error.message, error.hint)
+    }
+
+    const internalTo = toNames.map((name) => selected.get(name)).filter(Boolean)
+    const internalCc = ccNames.map((name) => selected.get(name)).filter(Boolean)
+    return {
+      ready: blockers.length === 0,
+      blockers,
+      warnings,
+      project: { slug, name: project.name, code: project.code },
+      version: { versionNo, title: version.title },
+      previousBaseline,
+      releasedAt,
+      releasedBy: gitIdentity.name || currentUser(),
+      authStatus,
+      to: internalTo.map(releaseMail.publicReleaseRecipient),
+      cc: internalCc.map(releaseMail.publicReleaseRecipient),
+      resolution: resolution.map((item) => ({
+        query: item.query,
+        status: item.status,
+        candidate: item.candidate ? releaseMail.publicReleaseRecipient(item.candidate) : null,
+        candidates: (item.candidates || []).map(releaseMail.publicReleaseRecipient),
+        hint: item.hint || null
+      })),
+      subject: rendered.subject,
+      markdown: rendered.markdown,
+      internalTo,
+      internalCc
+    }
+  }
+
+  async #formalRelease(slug, versionNo, input = {}) {
+    const earlyBaseline = store.readBaseline(this.root, slug)
+    const earlyVersion = store.readVersion(this.root, slug, versionNo)
+    if (earlyBaseline === versionNo && earlyVersion.baselineAt) {
+      const existing = releaseMail.listReleaseMails(this.root)
+        .find((item) => item.project === slug && item.version === versionNo && item.baselineAt === earlyVersion.baselineAt)
+      if (existing?.status === 'sent') {
+        return {
+          status: 'complete',
+          released: true,
+          duplicate: true,
+          baseline: { project: slug, version: versionNo, baselineAt: earlyVersion.baselineAt },
+          git: { ok: true, skipped: true },
+          mail: releaseMail.publicReleaseMail(existing)
+        }
+      }
+      if (existing) return this.#sendReleaseMailTask(existing, { git: { ok: true, skipped: true } })
+    }
+    const prepared = await this.#prepareFormalRelease(slug, versionNo, input)
+    if (!prepared.ready) {
+      throw err.bad(
+        'FORMAL_RELEASE_BLOCKED',
+        prepared.blockers[0]?.message || '正式发版预检未通过',
+        prepared.blockers.map((item) => item.message).join('；')
+      )
+    }
+
+    const currentBaseline = store.readBaseline(this.root, slug)
+    const baseline = currentBaseline !== versionNo
+      ? this.setBaseline(slug, versionNo)
+      : this.getVersion(slug, versionNo)
+    const baselineAt = baseline.baselineAt
+    const existing = releaseMail.listReleaseMails(this.root)
+      .find((item) => item.project === slug && item.version === versionNo && item.baselineAt === baselineAt)
+    if (existing?.status === 'sent') {
+      return {
+        status: 'complete',
+        released: true,
+        duplicate: true,
+        baseline: { project: slug, version: versionNo, baselineAt },
+        git: { ok: true, skipped: true },
+        mail: releaseMail.publicReleaseMail(existing)
+      }
+    }
+    if (existing) return this.#sendReleaseMailTask(existing, { git: { ok: true, skipped: true } })
+
+    let gitResult
+    try {
+      gitResult = await Promise.resolve(this.gitSyncOverride
+        ? this.gitSyncOverride({ message: `release: ${slug}/${versionNo}`, push: true })
+        : this.gitSync({ message: `release: ${slug}/${versionNo}`, push: true }))
+    } catch (error) {
+      return {
+        status: 'git_failed',
+        released: false,
+        baseline: { project: slug, version: versionNo, baselineAt },
+        git: { ok: false, error: error.message, hint: error.hint || null },
+        mail: null
+      }
+    }
+
+    const task = releaseMail.enqueueReleaseMail(this.root, {
+      project: slug,
+      version: versionNo,
+      baselineAt,
+      subject: prepared.subject,
+      markdown: prepared.markdown,
+      to: prepared.internalTo,
+      cc: prepared.internalCc
+    })
+    return this.#sendReleaseMailTask(task, { git: { ok: true, result: gitResult } })
+  }
+
+  async #sendReleaseMailTask(task, { git = { ok: true, skipped: true } } = {}) {
+    if (task.status === 'sent') {
+      return {
+        status: 'complete', released: true, duplicate: true,
+        baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+        git,
+        mail: releaseMail.publicReleaseMail(task)
+      }
+    }
+    try {
+      await this.wecomMcp.sendReleaseMail({
+        to: task.to,
+        cc: task.cc,
+        subject: task.subject,
+        markdown: task.markdown,
+        idempotencyKey: task.idempotencyKey
+      })
+      const sent = releaseMail.markReleaseMailSent(this.root, task.id)
+      return {
+        status: 'complete', released: true, duplicate: false,
+        baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+        git,
+        mail: releaseMail.publicReleaseMail(sent)
+      }
+    } catch (error) {
+      const pending = releaseMail.markReleaseMailFailed(this.root, task.id, error)
+      return {
+        status: 'mail_pending', released: true, duplicate: false,
+        baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+        git,
+        mail: releaseMail.publicReleaseMail(pending)
+      }
+    }
+  }
+
+  listReleaseMails() {
+    return releaseMail.listReleaseMails(this.root).map(releaseMail.publicReleaseMail)
+  }
+
+  async retryReleaseMail(id) {
+    this.#assertWritable('重试发版邮件')
+    const task = releaseMail.readReleaseMail(this.root, id)
+    const baselineNo = store.readBaseline(this.root, task.project)
+    const version = store.readVersion(this.root, task.project, task.version)
+    if (baselineNo !== task.version || version.baselineAt !== task.baselineAt) {
+      throw err.conflict('RELEASE_BASELINE_CHANGED', '当前基线已变化，不能自动重试这封发版邮件', '请人工核对版本后重新正式发版')
+    }
+    return this.#sendReleaseMailTask(task)
+  }
+
   listWorkspaces() { return workspaces.listWorkspaces() }
   addWorkspace(input) { return workspaces.addWorkspace(input) }
   removeWorkspace(pathname) { return workspaces.removeWorkspace(pathname) }
@@ -565,6 +1087,56 @@ export class Hub {
   buildWorkspaceIndex() { return workspaceIndex.buildWorkspaceIndex() }
   searchWorkspaces(query, options) { return workspaceIndex.searchWorkspaces(query, options) }
   mcpConfig() { return mcpConfig.inspect(this.root) }
+  async discoverMcpServerTools(id) {
+    const config = mcpConfig.readMcpConfig(this.root)
+    const server = config.servers.find((item) => item.id === id)
+    if (!server) throw err.notFound(`MCP 服务「${id}」`)
+    if (server.type !== 'stdio') throw err.bad('MCP_DISCOVERY_TRANSPORT_UNSUPPORTED', '当前只对本机 stdio 服务提供工具发现')
+    const profile = mcpRuntime.getRuntimeProfile(this.root, server.runtimeProfile)
+    if (!profile) throw err.notFound(`MCP 本机配置「${server.runtimeProfile}」`)
+    const diagnostic = mcpRuntime.diagnoseExecutable(profile)
+    if (!diagnostic.ready) throw err.conflict('MCP_RUNTIME_BLOCKED', diagnostic.blockers[0]?.message || 'MCP 可执行文件检查未通过')
+    const session = await this.mcpClientManager.connect({
+      type: 'stdio', command: profile.command, args: profile.args,
+      env: mcpRuntime.runtimeEnvironment(this.root, server.runtimeProfile),
+      cwd: this.root, timeoutMs: server.timeoutMs
+    })
+    try {
+      const tools = await session.listTools()
+      return {
+        server: id,
+        tools: tools.map((tool) => ({
+          name: String(tool.name || ''),
+          description: String(tool.description || ''),
+          inputSchema: tool.inputSchema || { type: 'object', properties: {} }
+        }))
+      }
+    } finally {
+      await session.close()
+    }
+  }
+  mcpRuntimeProfile(id) { return mcpRuntime.inspectRuntimeProfile(this.root, id) }
+  saveMcpRuntimeProfile(id, input) {
+    this.#assertWritable('保存 MCP 本机运行配置')
+    return mcpRuntime.saveRuntimeProfile(this.root, id, input)
+  }
+  removeMcpRuntimeProfile(id) {
+    this.#assertWritable('删除 MCP 本机运行配置')
+    return mcpRuntime.removeRuntimeProfile(this.root, id)
+  }
+  diagnoseMcpRuntime(id) {
+    const profile = mcpRuntime.getRuntimeProfile(this.root, id)
+    if (!profile) throw err.notFound(`MCP 本机配置「${id}」`)
+    return mcpRuntime.diagnoseExecutable(profile)
+  }
+  setMcpRuntimePassword(id, value) {
+    this.#assertWritable('保存 MCP 平台密码')
+    return mcpRuntime.setRuntimePassword(this.root, id, value)
+  }
+  deleteMcpRuntimePassword(id) {
+    this.#assertWritable('删除 MCP 平台密码')
+    return mcpRuntime.deleteRuntimePassword(this.root, id)
+  }
   saveMcpServer(input) {
     this.#assertWritable('保存 MCP 服务')
     return mcpConfig.saveServer(this.root, input)
@@ -583,7 +1155,16 @@ export class Hub {
   }
   async testMcpCapability(name) {
     if (name === 'requirements') return this.testRequirementConnection('mcp')
-    if (name === 'milestones') return this.testMilestoneConnection('mcp')
+    if (name === 'milestones') {
+      const config = mcpConfig.resolveCapability(this.root, 'milestones')
+      if (config.transport === 'stdio' && config.adapter === 'assess-task') {
+        return this.#withAssessAdapter(false, async (adapter) => {
+          const identity = await adapter.probe()
+          return { provider: 'assess-task', ok: true, identity: identity.name || identity.account, account: identity.account }
+        })
+      }
+      return this.testMilestoneConnection('mcp')
+    }
     const config = mcpConfig.resolveCapability(this.root, name)
     const testTool = config.tools.test || config.mePath
     if (!testTool) throw err.bad('MCP_CAPABILITY_TEST_MISSING', `${config.capability.label || name} MCP 能力没有配置连接测试工具`)
@@ -611,6 +1192,9 @@ export class Hub {
     }
     if (v.status === 'VOID') {
       throw err.bad('VERSION_VOID', `${versionNo} 已废弃，不能设为基线`, '先 reopen 恢复')
+    }
+    if (!v.baselineAt && v.reviewStatus === 'questions') {
+      throw err.bad('REVIEW_QUESTIONS_BLOCKED', `${versionNo} 仍有评审疑问，不能设为基线`, '先处理问题并更新评审状态')
     }
     if (!store.readHtml(this.root, slug, versionNo)) {
       throw err.bad('FILE_MISSING', `${versionNo} 的原型文件丢失，不能设为基线`)
@@ -659,6 +1243,31 @@ export class Hub {
     return this.setBaseline(slug, candidates[0].versionNo)
   }
 
+  rollbackPreview(slug) {
+    const baselineNo = store.readBaseline(this.root, slug)
+    if (!baselineNo) throw err.bad('NO_BASELINE', `项目 ${slug} 当前没有基线`, '先设置一个基线')
+    const candidates = store
+      .listVersionNos(this.root, slug)
+      .map((no) => store.readVersion(this.root, slug, no))
+      .filter((version) => version.versionNo !== baselineNo && version.baselineAt && version.status !== 'VOID')
+      .sort((a, b) => String(b.baselineAt).localeCompare(String(a.baselineAt)))
+    if (!candidates.length) {
+      throw err.bad('NO_PREVIOUS_BASELINE', `项目 ${slug} 没有可回滚的历史基线`, `${baselineNo} 是唯一当过基线的版本`)
+    }
+    const current = this.getVersion(slug, baselineNo)
+    const target = this.getVersion(slug, candidates[0].versionNo)
+    const changes = this.cumulative(slug, target.versionNo, current.versionNo)
+    const requirements = [...new Set(changes.items.map((item) => String(item.requirement || '').trim()).filter(Boolean))]
+    return {
+      current,
+      target,
+      changes,
+      changeCounts: versionPlanning.changeCounts(changes.items),
+      requirements,
+      notificationProvider: this.settings.integrations.notificationProvider || 'none'
+    }
+  }
+
   // ==================== 生命周期 ====================
 
   voidVersion(slug, versionNo) {
@@ -697,7 +1306,28 @@ export class Hub {
   }
 
   listTrash(slug = null) {
-    return store.listTrash(this.root, slug)
+    return store.listTrash(this.root, slug).map((entry) => ({
+      ...entry,
+      ...trashRestoreState(this.root, entry)
+    }))
+  }
+
+  restoreTrashEntry(id) {
+    this.#assertWritable('恢复版本')
+    const entry = store.readTrashEntry(this.root, id)
+    const state = trashRestoreState(this.root, entry)
+    if (!state.canRestore) {
+      if (state.blockedReason === 'VERSION_EXISTS') {
+        throw err.conflict('VERSION_EXISTS', `版本号「${entry.versionNo}」已被重新占用，无法恢复`, '先处理现有同号版本')
+      }
+      if (state.blockedReason === 'PROJECT_NOT_FOUND') {
+        throw err.conflict('PROJECT_NOT_FOUND', `项目「${entry.project}」已不存在，无法恢复`, '先恢复或重建项目')
+      }
+      throw err.conflict('TRASH_INCOMPLETE', '回收站记录数据不完整，无法恢复', '检查回收站中的版本 JSON 和 HTML 文件')
+    }
+    store.restoreFromTrash(this.root, entry.dir, entry.project)
+    this.#log(entry.project, entry.versionNo, 'VERSION_RESTORE', `从回收站恢复版本 ${entry.versionNo}`)
+    return this.getVersion(entry.project, entry.versionNo)
   }
 
   restoreVersion(slug, versionNo) {
@@ -1384,7 +2014,106 @@ export class Hub {
     }
   }
 
+  removeWatchItem(id) {
+    this.#assertWritable('清理草稿箱记录')
+    const item = watchbox.removeWatchItem(this.root, id)
+    this.#log(item.project, item.versionNo, 'WATCH_RECORD_REMOVE', `清理已归档 watch 记录 ${item.id}`)
+    return item
+  }
+
   // ==================== 内部 ====================
+
+  async #withAssessAdapter(write, fn) {
+    if (this.assessAdapter) {
+      const config = this.assessConfig || { server: { id: 'assess-task-test' }, project: '', capability: { options: {} } }
+      return fn(this.assessAdapter, config)
+    }
+    const config = mcpConfig.resolveCapability(this.root, 'milestones')
+    if (config.transport !== 'stdio' || config.adapter !== 'assess-task') {
+      throw err.bad('ASSESS_MCP_NOT_CONFIGURED', '迭代能力尚未绑定 Assess Task stdio MCP')
+    }
+    const profile = mcpRuntime.getRuntimeProfile(this.root, config.runtimeProfile)
+    if (!profile) throw err.notFound(`MCP 本机配置「${config.runtimeProfile}」`)
+    const diagnostic = mcpRuntime.diagnoseExecutable(profile)
+    if (!diagnostic.ready) {
+      throw err.conflict('MCP_RUNTIME_BLOCKED', diagnostic.blockers[0]?.message || 'MCP 可执行文件检查未通过')
+    }
+    const session = await this.mcpClientManager.connect({
+      type: 'stdio',
+      command: profile.command,
+      args: profile.args,
+      env: mcpRuntime.runtimeEnvironment(this.root, config.runtimeProfile),
+      cwd: this.root,
+      timeoutMs: config.timeoutMs
+    })
+    try {
+      const tools = await session.listTools()
+      const adapter = createAssessTaskAdapter({
+        session,
+        tools,
+        mapping: config.tools,
+        projectId: config.project,
+        write
+      })
+      return await fn(adapter, config)
+    } finally {
+      await session.close()
+    }
+  }
+
+  async #buildMilestoneSyncPlan(name, input, adapter, config) {
+    const storedMilestone = milestones.inspectMilestone(this.root, name)
+    const scopeItems = input.scopeItems === undefined
+      ? null
+      : milestones.normalizeMilestoneItems(this.root, input.scopeItems)
+    if (scopeItems && storedMilestone.status !== 'active') throw err.conflict('MILESTONE_SCOPE_CHANGE_INVALID', '只有进行中的迭代使用范围变更流程')
+    if (scopeItems && !String(input.reason || '').trim()) throw err.bad('MILESTONE_REASON_REQUIRED', '进行中范围变更必须填写原因')
+    const milestone = scopeItems ? { ...storedMilestone, items: scopeItems } : storedMilestone
+    const codes = [...new Set(milestone.items.map((item) => item.requirement))]
+    const requirementItems = codes.map((code) => {
+      const item = reqx.requirementDetail(this.root, code)
+      const specFile = store.paths.requirementSpec(this.root, code)
+      return { ...item, spec: fs.existsSync(specFile) ? fs.readFileSync(specFile, 'utf8') : '' }
+    })
+    const options = config.capability?.options || {}
+    const mapping = {
+      ...options,
+      ...(input.mapping || {}),
+      server: config.server?.id || input.mapping?.server || '',
+      projectId: Number(config.project || input.mapping?.projectId || options.projectId)
+    }
+    const sprintId = Number(milestone.external?.sprintId || 0)
+    const remoteSprint = sprintId ? await adapter.getSprint(sprintId) : null
+    const remoteTasks = sprintId ? await adapter.listTasks({ sprintId }) : []
+    const known = new Set(remoteTasks.map((item) => Number(item.id)))
+    for (const requirement of requirementItems) {
+      const binding = (requirement.externalTasks || []).find((item) =>
+        item.provider === 'assess-task' && item.server === mapping.server && Number(item.projectId) === mapping.projectId)
+      if (binding?.taskId && !known.has(Number(binding.taskId))) {
+        const remote = await adapter.getTask(binding.taskId)
+        if (remote) {
+          remoteTasks.push(remote)
+          known.add(Number(remote.id))
+        }
+      }
+    }
+    const managedTaskBindings = reqx.listRequirements(this.root).flatMap((requirement) =>
+      (requirement.externalTasks || [])
+        .filter((item) => item.provider === 'assess-task' && item.server === mapping.server && Number(item.projectId) === mapping.projectId)
+        .map((item) => ({ requirement: requirement.code, taskId: item.taskId })))
+    return buildMilestoneSyncPlan({
+      milestone,
+      requirements: requirementItems,
+      remoteSprint,
+      remoteTasks,
+      managedTaskBindings,
+      mapping,
+      action: input.action || null,
+      scopeItems,
+      scopeChangeReason: scopeItems ? String(input.reason).trim() : '',
+      resolutions: input.resolutions || {}
+    })
+  }
 
   #decorate(v, baselineNo) {
     const links = reqx.resolveRequirementLinks(this.root, v.requirements)
@@ -1509,4 +2238,16 @@ function guessContentType(name) {
 function identityFromMcpTest(body) {
   if (!body || typeof body !== 'object') return null
   return body.identity || body.name || body.login || body.email || body.text || null
+}
+
+function validReleaseTime(value) {
+  if (value === undefined || value === null || value === '') return new Date().toISOString()
+  const time = new Date(value)
+  if (!Number.isFinite(time.getTime())) throw err.bad('RELEASE_TIME_INVALID', '发版时间不合法')
+  return time.toISOString()
+}
+
+function publicFormalReleasePreflight(value) {
+  const { internalTo, internalCc, ...publicValue } = value
+  return publicValue
 }

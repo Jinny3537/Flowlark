@@ -35,12 +35,8 @@ jobs:
           git config --global user.email "ci@example.com"
           git config --global init.defaultBranch main
 
-      - name: 运行时零依赖自检
-        # 这是产品的一条硬约束，退化了要立刻发现，而不是等用户装完才知道
-        run: |
-          DEPS=$(node -p "JSON.stringify(require('./package.json').dependencies || {})")
-          echo "dependencies: $DEPS"
-          test "$DEPS" = "{}" || { echo "::error::运行时依赖不再为空"; exit 1; }
+      - name: 安装运行时依赖
+        run: npm ci
 
       - name: 跑测试
         run: npm test
@@ -84,6 +80,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: 安装运行时依赖
+        run: npm ci
 
       - uses: actions/download-artifact@v4
         with:

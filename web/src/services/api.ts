@@ -95,6 +95,11 @@ export const api = {
   getProject: (slug: string) => get<any>(`/api/projects/${enc(slug)}`),
   createProject: (body: unknown) => post<any>('/api/projects', body),
   updateProject: (slug: string, body: unknown) => put<any>(`/api/projects/${enc(slug)}`, body),
+  preflightVersion: (slug: string, body: unknown) => post<any>(`/api/projects/${enc(slug)}/version-preflight`, body),
+  projectPlanning: (slug: string) => get<any>(`/api/projects/${enc(slug)}/planning`),
+  projectPreference: (slug: string) => get<any>(`/api/projects/${enc(slug)}/preferences`),
+  setProjectPreference: (slug: string, body: unknown) => put<any>(`/api/projects/${enc(slug)}/preferences`, body),
+  rollbackPreview: (slug: string) => get<any>(`/api/projects/${enc(slug)}/rollback-preview`),
   rollbackProject: (slug: string) => post(`/api/projects/${enc(slug)}/rollback`),
   listVersions: (slug: string, { includeDraft = true, includeVoid = false } = {}) =>
     get<any[]>(`/api/projects/${enc(slug)}/versions?includeDraft=${includeDraft}&includeVoid=${includeVoid}`),
@@ -113,6 +118,8 @@ export const api = {
   getHtml: (slug: string, no: string) => requestText(`/api/versions/${enc(slug)}/${enc(no)}/download`),
   downloadUrl: (slug: string, no: string) => `/api/versions/${enc(slug)}/${enc(no)}/download`,
   setBaseline: (slug: string, no: string) => post(`/api/versions/${enc(slug)}/${enc(no)}/baseline`),
+  listReleaseMails: () => get<any[]>('/api/release-mails'),
+  retryReleaseMail: (id: string) => post<any>(`/api/release-mails/${enc(id)}/retry`, {}),
   cumulative: (slug: string, from: string, to: string) =>
     get(`/api/projects/${enc(slug)}/cumulative?${from ? `from=${enc(from)}&` : ''}to=${enc(to)}`),
   oplog: (project?: string, limit = 100) =>
@@ -150,11 +157,22 @@ export const api = {
   listMilestones: () => get<any[]>('/api/milestones'),
   getMilestone: (name: string) => get<any>(`/api/milestones/${enc(name)}`),
   createMilestone: (body: unknown) => post<any>('/api/milestones', body),
+  preflightMilestoneFormalRelease: (name: string, slug: string, no: string, body: unknown) =>
+    post<any>(`/api/milestones/${enc(name)}/versions/${enc(slug)}/${enc(no)}/formal-release/preflight`, body),
+  formalReleaseMilestoneVersion: (name: string, slug: string, no: string, body: unknown) =>
+    post<any>(`/api/milestones/${enc(name)}/versions/${enc(slug)}/${enc(no)}/formal-release`, body),
   updateMilestone: (name: string, body: unknown) => put<any>(`/api/milestones/${enc(name)}`, body),
   removeMilestone: (name: string) => del(`/api/milestones/${enc(name)}`),
   syncMilestones: (provider = 'mcp', config = {}) => post('/api/milestones/sync', { provider, config }),
   syncMilestone: (name: string, provider = 'mcp', config = {}) =>
     post(`/api/milestones/${enc(name)}/sync`, { provider, config }),
+  milestonePreflight: (name: string) => get<any>(`/api/milestones/${enc(name)}/preflight`),
+  milestoneSyncJournal: (name: string) => get<any>(`/api/milestones/${enc(name)}/sync-journal`),
+  milestoneExecutionSummary: (name: string) => get<any>(`/api/milestones/${enc(name)}/execution`),
+  planMilestoneSync: (name: string, body: unknown = {}) => post<any>(`/api/milestones/${enc(name)}/sync-plan`, body),
+  executeMilestoneSync: (name: string, body: unknown) => post<any>(`/api/milestones/${enc(name)}/sync-execute`, body),
+  resumeMilestoneSync: (name: string, body: unknown = {}) => post<any>(`/api/milestones/${enc(name)}/sync-resume`, body),
+  transitionMilestone: (name: string, body: unknown) => post<any>(`/api/milestones/${enc(name)}/transition`, body),
   listViews: () => get<any[]>('/api/views'),
   saveView: (id: string, body: unknown) => put(`/api/views/${enc(id)}`, body),
   removeView: (id: string) => del(`/api/views/${enc(id)}`),
@@ -214,7 +232,9 @@ export const api = {
   importUrl: (url: string) => post('/api/import/url', { url }),
   watchInbox: () => get<any[]>('/api/watch/inbox'),
   retryWatchItem: (id: string) => post(`/api/watch/inbox/${enc(id)}/retry`, {}),
+  clearWatchItem: (id: string) => del<any>(`/api/watch/inbox/${enc(id)}`),
   trash: (project?: string) => get<any[]>(`/api/trash${project ? `?project=${enc(project)}` : ''}`),
+  restoreTrashItem: (id: string) => post<any>(`/api/trash/${enc(id)}/restore`, {}),
   gitStatus: ({ fast = false, cache = false } = {}) => {
     const query = new URLSearchParams();
     if (fast) query.set('fast', '1');
@@ -257,6 +277,13 @@ export const api = {
   getMcpConfig: () => get('/api/mcp'),
   saveMcpServer: (id: string, body: unknown) => put(`/api/mcp/servers/${enc(id)}`, body),
   removeMcpServer: (id: string) => del(`/api/mcp/servers/${enc(id)}`),
+  discoverMcpServerTools: (id: string) => post<any>(`/api/mcp/servers/${enc(id)}/discover`, {}),
+  getMcpRuntime: (id: string) => get<any>(`/api/mcp/runtime/${enc(id)}`),
+  saveMcpRuntime: (id: string, body: unknown) => put<any>(`/api/mcp/runtime/${enc(id)}`, body),
+  removeMcpRuntime: (id: string) => del(`/api/mcp/runtime/${enc(id)}`),
+  diagnoseMcpRuntime: (id: string) => post<any>(`/api/mcp/runtime/${enc(id)}/diagnose`, {}),
+  setMcpRuntimePassword: (id: string, password: string) => put(`/api/mcp/runtime/${enc(id)}/password`, { password }),
+  deleteMcpRuntimePassword: (id: string) => del(`/api/mcp/runtime/${enc(id)}/password`),
   setMcpServerSecret: (id: string, value: string) => put(`/api/mcp/servers/${enc(id)}/secret`, { value }),
   deleteMcpServerSecret: (id: string) => del(`/api/mcp/servers/${enc(id)}/secret`),
   saveMcpCapability: (name: string, body: unknown) => put(`/api/mcp/capabilities/${enc(name)}`, body),

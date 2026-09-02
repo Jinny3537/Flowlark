@@ -9,6 +9,7 @@ import {
   groupChanges,
   olderSiblings,
   previewUrl,
+  prototypeEditorRoute,
   requirementUrl
 } from './workbenchModel.js'
 
@@ -23,6 +24,13 @@ test('builds encoded preview URLs and mutually exclusive modes', () => {
   assert.equal(previewUrl(base), 'http://127.0.0.1:7789/p/%E8%AE%A2%E5%8D%95%20%E5%8E%9F%E5%9E%8B/v1.0')
   assert.equal(previewUrl({ ...base, offline: true }), `${previewUrl(base)}?offline=1`)
   assert.equal(previewUrl({ ...base, edit: true }), `${previewUrl(base)}?edit=1`)
+})
+
+test('builds an encoded full-screen prototype editor route', () => {
+  assert.equal(
+    prototypeEditorRoute('订单 原型', 'v1.0 beta'),
+    '/projects/%E8%AE%A2%E5%8D%95%20%E5%8E%9F%E5%9E%8B/versions/v1.0%20beta/edit'
+  )
 })
 
 test('enforces draft structural editing and baseline rules', () => {

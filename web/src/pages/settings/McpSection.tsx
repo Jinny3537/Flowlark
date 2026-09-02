@@ -20,13 +20,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { capabilityPayload, parseHeaders, serverForm, serverPayload } from './mcpModel.js';
+import { McpRuntimeFields } from './McpRuntimeFields';
 
 type McpServer = {
   id: string;
   name: string;
   type?: string;
+  adapter?: string;
+  runtimeProfile?: string;
   enabled?: boolean;
-  url: string;
+  url?: string;
   timeoutMs?: number;
   headers?: Record<string, string>;
 };
@@ -38,6 +41,7 @@ type McpCapability = {
   category?: string;
   description?: string;
   project?: string;
+  options?: Record<string, unknown>;
   tools?: Record<string, string>;
 };
 
@@ -55,6 +59,8 @@ type ServerValues = {
   id: string;
   name: string;
   type: string;
+  adapter: string;
+  runtimeProfile: string;
   enabled: boolean;
   url: string;
   timeoutMs: number;
@@ -68,6 +74,7 @@ type CapabilityValues = {
   category: string;
   description: string;
   project: string;
+  optionsText: string;
   toolsText: string;
 };
 
@@ -82,6 +89,7 @@ const REQUIREMENT_DEFAULTS = {
   category: 'product',
   description: '搜索、导入和回写外部需求',
   project: '',
+  options: {},
   tools: {
     test: 'requirements.test',
     search: 'requirements.search',
@@ -97,6 +105,7 @@ const MILESTONE_DEFAULTS = {
   category: 'delivery',
   description: '拉取和回写任务平台迭代计划',
   project: '',
+  options: {},
   tools: {
     test: 'milestones.test',
     list: 'milestones.list',
@@ -113,6 +122,7 @@ const EMPTY_EXTENSION = {
   category: 'extension',
   description: '',
   project: '',
+  optionsText: '{}',
   toolsText: '{\n  "test": ""\n}',
 };
 
@@ -125,6 +135,7 @@ function capabilityForm(capability: McpCapability | undefined, defaults: typeof 
     category: value.category || defaults.category,
     description: value.description || defaults.description,
     project: value.project || '',
+    optionsText: JSON.stringify(capability?.options || defaults.options || {}, null, 2),
     toolsText: JSON.stringify({ ...defaults.tools, ...(capability?.tools || {}) }, null, 2),
   };
 }
@@ -138,6 +149,7 @@ function extensionForm(name: string, capability: McpCapability): ExtensionValues
     category: capability.category || 'extension',
     description: capability.description || '',
     project: capability.project || '',
+    optionsText: JSON.stringify(capability.options || {}, null, 2),
     toolsText: JSON.stringify(capability.tools || { test: '' }, null, 2),
   };
 }
@@ -250,6 +262,9 @@ function CapabilityEditor({
         <Form.Item name="toolsText" label="工具映射 JSON" rules={[{ validator: validateTools }]}>
           <Input.TextArea rows={5} className="fl-mono" spellCheck={false} />
         </Form.Item>
+        <Form.Item name="optionsText" label="能力选项 JSON" extra={name === 'milestones' ? '配置 ownerId、taskType、priorities、members 和 timezoneOffset。' : undefined}>
+          <Input.TextArea rows={4} className="fl-mono" spellCheck={false} />
+        </Form.Item>
         <Space wrap>
           <Button type="primary" loading={saving === name} disabled={!canWrite || Boolean(saving)} onClick={() => void onSave(name, form, `${noun} MCP 映射已保存`)}>
             保存{noun}能力
@@ -279,7 +294,10 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
   const [editingExtension, setEditingExtension] = useState(false);
   const [secret, setSecret] = useState('');
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
+  const [discoveredTools, setDiscoveredTools] = useState<any[]>([]);
   const serverId = Form.useWatch('id', serverAntForm) || '';
+  const serverType = Form.useWatch('type', serverAntForm) || 'http';
+  const runtimeProfile = Form.useWatch('runtimeProfile', serverAntForm) || '';
   const extensionName = Form.useWatch('name', extensionAntForm) || '';
   const extensionLabel = Form.useWatch('label', extensionAntForm) || extensionName || '扩展能力';
 
@@ -298,6 +316,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       setEditingServer(false);
       setEditingExtension(false);
       setSecret('');
+      setDiscoveredTools([]);
       serverAntForm.resetFields();
       extensionAntForm.resetFields();
     } catch (error) {
@@ -358,6 +377,21 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       message.error(errorText(error, 'MCP 服务保存失败'));
     } finally {
       setSaving('');
+    }
+  };
+
+  const discoverTools = async () => {
+    const id = String(serverAntForm.getFieldValue('id') || '').trim();
+    if (!id) return;
+    setTesting('discover');
+    try {
+      const result: any = await api.discoverMcpServerTools(id);
+      setDiscoveredTools(result.tools || []);
+      message.success(`已发现 ${result.tools?.length || 0} 个工具`);
+    } catch (error) {
+      message.error(errorText(error, 'MCP 工具发现失败'));
+    } finally {
+      setTesting('');
     }
   };
 
@@ -555,7 +589,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                   >
                     <List.Item.Meta
                       title={<Space wrap size={6}><span>{server.name || server.id}</span><code>{server.id}</code><Tag color={server.enabled === false ? 'default' : 'green'}>{server.enabled === false ? '停用' : '启用'}</Tag></Space>}
-                      description={<span className="fl-mcp-url">{server.url}</span>}
+                      description={<span className="fl-mcp-url">{server.type === 'stdio' ? `本机 stdio · ${server.runtimeProfile || '未配置运行环境'}` : server.url}</span>}
                     />
                   </List.Item>
                 )}
@@ -575,32 +609,72 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                       <Input placeholder="需求系统 MCP" />
                     </Form.Item>
                   </div>
-                  <Form.Item name="url" label="MCP URL" rules={[
-                    { required: true, whitespace: true, message: '请填写 MCP URL' },
-                    { validator: validateMcpUrl },
-                  ]}>
-                    <Input placeholder="http://127.0.0.1:9000/mcp" />
-                  </Form.Item>
-                  <Form.Item label="本机密钥" extra="已保存的密钥不会回显；留空保存服务时不会覆盖原值。">
-                    <Input.Password value={secret} autoComplete="new-password" placeholder="只保存在本机，不写入仓库" onChange={(event) => setSecret(event.target.value)} />
-                  </Form.Item>
                   <div className="fl-mcp-form-grid">
-                    <Form.Item name="type" label="传输类型"><Select options={[{ value: 'http', label: 'HTTP' }, { value: 'sse', label: 'SSE' }]} /></Form.Item>
+                    <Form.Item name="type" label="传输类型"><Select options={[{ value: 'http', label: 'HTTP' }, { value: 'sse', label: 'SSE' }, { value: 'stdio', label: '本机 stdio' }]} /></Form.Item>
                     <Form.Item name="timeoutMs" label="超时（毫秒）" rules={[{ required: true, message: '请填写超时时间' }]}>
                       <InputNumber min={100} step={1000} className="fl-full-width" />
                     </Form.Item>
                   </div>
+                  {serverType === 'stdio' ? (
+                    <div className="fl-mcp-form-grid">
+                      <Form.Item name="adapter" label="平台适配器" rules={[{ required: true, whitespace: true, message: '请填写平台适配器' }]}>
+                        <Select options={[{ value: 'assess-task', label: 'Assess Task · 研发任务管理' }]} />
+                      </Form.Item>
+                      <Form.Item name="runtimeProfile" label="本机运行配置标识" rules={[
+                        { required: true, whitespace: true, message: '请填写本机运行配置标识' },
+                        { pattern: /^[a-z0-9._-]{1,64}$/, message: '只能包含小写字母、数字、点、下划线和连字符' },
+                      ]}>
+                        <Input className="fl-mono" placeholder="assess-task-local" />
+                      </Form.Item>
+                    </div>
+                  ) : (
+                    <>
+                      <Form.Item name="url" label="MCP URL" rules={[
+                        { required: true, whitespace: true, message: '请填写 MCP URL' },
+                        { validator: validateMcpUrl },
+                      ]}>
+                        <Input placeholder="http://127.0.0.1:9000/mcp" />
+                      </Form.Item>
+                      <Form.Item label="本机密钥" extra="已保存的密钥不会回显；留空保存服务时不会覆盖原值。">
+                        <Input.Password value={secret} autoComplete="new-password" placeholder="只保存在本机，不写入仓库" onChange={(event) => setSecret(event.target.value)} />
+                      </Form.Item>
+                    </>
+                  )}
                   <Form.Item name="enabled" label="服务状态" valuePropName="checked"><Checkbox>启用服务</Checkbox></Form.Item>
-                  <Form.Item name="headersText" label="请求头 JSON" rules={[{ validator: validateHeaders }]}>
-                    <Input.TextArea rows={5} className="fl-mono" spellCheck={false} />
-                  </Form.Item>
+                  {serverType !== 'stdio' ? (
+                    <Form.Item name="headersText" label="请求头 JSON" rules={[{ validator: validateHeaders }]}>
+                      <Input.TextArea rows={5} className="fl-mono" spellCheck={false} />
+                    </Form.Item>
+                  ) : null}
                   <Space wrap>
                     <Button type="primary" loading={saving === 'server'} disabled={!canWrite || Boolean(saving)} onClick={() => void saveServer()}>保存服务</Button>
-                    <Button loading={saving === 'secret'} disabled={!canWrite || Boolean(saving) || !secret || !String(serverId).trim()} onClick={() => void saveSecret()}>保存密钥</Button>
-                    <Button danger loading={saving === 'deleteSecret'} disabled={!canWrite || Boolean(saving) || !String(serverId).trim()} onClick={deleteSecret}>删除本机密钥</Button>
+                    {serverType !== 'stdio' ? <Button loading={saving === 'secret'} disabled={!canWrite || Boolean(saving) || !secret || !String(serverId).trim()} onClick={() => void saveSecret()}>保存密钥</Button> : null}
+                    {serverType !== 'stdio' ? <Button danger loading={saving === 'deleteSecret'} disabled={!canWrite || Boolean(saving) || !String(serverId).trim()} onClick={deleteSecret}>删除本机密钥</Button> : null}
                     <Button onClick={newServer}>清空</Button>
                   </Space>
                 </Form>
+                {serverType === 'stdio' ? <McpRuntimeFields runtimeProfile={runtimeProfile} canWrite={canWrite} /> : null}
+                {serverType === 'stdio' ? (
+                  <div className="fl-mcp-runtime">
+                    <Space wrap>
+                      <Button loading={testing === 'discover'} disabled={!String(serverId).trim() || Boolean(testing)} onClick={() => void discoverTools()}>发现并审阅工具</Button>
+                      <span className="fl-muted">只读取工具名、说明和输入 Schema，不执行业务写操作。</span>
+                    </Space>
+                    {discoveredTools.length ? (
+                      <List
+                        className="fl-mcp-result"
+                        size="small"
+                        bordered
+                        dataSource={discoveredTools}
+                        renderItem={(tool: any) => (
+                          <List.Item>
+                            <List.Item.Meta title={<code>{tool.name}</code>} description={tool.description || '未提供工具说明'} />
+                          </List.Item>
+                        )}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -689,6 +763,9 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                   <Form.Item name="description" label="扩展能力说明"><Input /></Form.Item>
                   <Form.Item name="toolsText" label="扩展工具映射 JSON" rules={[{ validator: validateTools }]}>
                     <Input.TextArea rows={5} className="fl-mono" spellCheck={false} />
+                  </Form.Item>
+                  <Form.Item name="optionsText" label="扩展能力选项 JSON">
+                    <Input.TextArea rows={3} className="fl-mono" spellCheck={false} />
                   </Form.Item>
                   <Space wrap>
                     <Button type="primary" loading={saving === 'extension'} disabled={!canWrite || Boolean(saving)} onClick={() => void saveExtension()}>保存扩展能力</Button>

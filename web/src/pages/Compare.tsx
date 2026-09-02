@@ -1,5 +1,6 @@
 import {
   ArrowLeftOutlined,
+  CopyOutlined,
   DownloadOutlined,
   ExportOutlined,
   FireOutlined,
@@ -17,6 +18,7 @@ import {
   Segmented,
   Select,
   Skeleton,
+  Space,
   Tag,
   Tooltip,
 } from 'antd';
@@ -30,6 +32,7 @@ import {
   comparisonQuery,
   normalizeSystemUrl,
   orderedRange,
+  traceMarkdown,
 } from './compareModel.js';
 import styles from './Compare.module.css';
 
@@ -427,6 +430,26 @@ export default function Compare() {
     }
   };
 
+  const copyTraceSummary = async () => {
+    if (mode !== 'versions' || !cumulative) return;
+    const markdown = traceMarkdown({
+      project: project?.name || slug,
+      from: range.older,
+      to: range.newer,
+      cumulative,
+      paths: {
+        from: `/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(range.older || '')}`,
+        to: `/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(range.newer || '')}`,
+      },
+    });
+    try {
+      await navigator.clipboard.writeText(markdown);
+      message.success('追溯摘要已复制');
+    } catch {
+      message.error('复制失败，请检查浏览器剪贴板权限');
+    }
+  };
+
   const syncOuterScroll = (source: 'a' | 'b') => {
     if (!syncScroll) return;
     if (programmaticScrollRef.current === source) {
@@ -497,6 +520,16 @@ export default function Compare() {
           >
             {showChanges ? '隐藏说明' : '显示说明'}
           </Button>
+          {mode === 'versions' ? (
+            <Button
+              size="small"
+              icon={<CopyOutlined />}
+              disabled={!cumulative || detailLoading}
+              onClick={() => void copyTraceSummary()}
+            >
+              复制追溯摘要
+            </Button>
+          ) : null}
           <Tooltip title="复制当前对比链接">
             <Button
               type="text"
@@ -783,15 +816,28 @@ export default function Compare() {
                   <strong>{mode === 'system' ? '对比说明' : '累计变更'}</strong>
                   <div className={styles.sideNote}>{sideNoteTitle}</div>
                 </div>
-                <Tooltip title="复制当前对比链接">
-                  <Button
-                    size="small"
-                    icon={<LinkOutlined />}
-                    aria-label="复制当前对比链接"
-                    disabled={!a}
-                    onClick={() => void copyCompareLink()}
-                  />
-                </Tooltip>
+                <Space size={4}>
+                  {mode === 'versions' ? (
+                    <Tooltip title="复制追溯摘要">
+                      <Button
+                        size="small"
+                        icon={<CopyOutlined />}
+                        aria-label="复制追溯摘要"
+                        disabled={!cumulative || detailLoading}
+                        onClick={() => void copyTraceSummary()}
+                      />
+                    </Tooltip>
+                  ) : null}
+                  <Tooltip title="复制当前对比链接">
+                    <Button
+                      size="small"
+                      icon={<LinkOutlined />}
+                      aria-label="复制当前对比链接"
+                      disabled={!a}
+                      onClick={() => void copyCompareLink()}
+                    />
+                  </Tooltip>
+                </Space>
               </div>
               {detailError ? <Alert className={styles.panelAlert} type="error" showIcon message={detailError} /> : null}
               {mode === 'system' ? (

@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Checkbox,
+  Divider,
   Drawer,
   Dropdown,
   Empty,
@@ -12,27 +13,43 @@ import {
   Space,
   Tag,
   Tooltip,
+  Typography,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   ArrowRightOutlined,
+  CopyOutlined,
   DownloadOutlined,
+  DownOutlined,
   FileAddOutlined,
   FileTextOutlined,
+  FilterOutlined,
+  HistoryOutlined,
+  InboxOutlined,
   LinkOutlined,
   MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  SwapOutlined,
   ThunderboltOutlined,
+  UndoOutlined,
 } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { NewVersionDialog } from '@/components/NewVersionDialog';
 import { api, type HealthInfo } from '@/services/api';
 import { fmtTime, textOf } from '@/utils/format';
-import { adjacentVersionNo, filterVersions } from './projectVersionsModel';
+import {
+  adjacentVersionNo,
+  comparisonTargets,
+  filterVersions,
+  planningBadges,
+  projectFilterQuery,
+  projectFilterState,
+  reviewStateOf,
+} from './projectVersionsModel';
 import styles from './ProjectVersions.module.css';
 
 type SelectVersionOptions = {
@@ -55,6 +72,7 @@ function displayOf(version: any) {
 export default function ProjectVersions() {
   const { slug = '' } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { message, modal } = App.useApp();
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const canWrite = health?.canWrite !== false;
@@ -63,16 +81,27 @@ export default function ProjectVersions() {
   const [versions, setVersions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState('');
-  const [includeVoid, setIncludeVoid] = useState(false);
-  const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [sortOrder, setSortOrder] = useState('newest');
+  const initialFilters = useRef(projectFilterState(searchParams));
+  const [includeVoid, setIncludeVoid] = useState(initialFilters.current.includeVoid);
+  const [query, setQuery] = useState(initialFilters.current.query);
+  const [statusFilter, setStatusFilter] = useState(initialFilters.current.status);
+  const [sortOrder, setSortOrder] = useState(initialFilters.current.order);
+  const [authorFilter, setAuthorFilter] = useState(initialFilters.current.author);
+  const [requirementFilter, setRequirementFilter] = useState(initialFilters.current.requirement);
+  const [externalOnly, setExternalOnly] = useState(initialFilters.current.external);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
   const [selectedVersionNo, setSelectedVersionNo] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [newVersionOpen, setNewVersionOpen] = useState(false);
+  const [planning, setPlanning] = useState<any>(null);
+  const [planningError, setPlanningError] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [baselineExpanded, setBaselineExpanded] = useState(false);
+  const [rollbackLoading, setRollbackLoading] = useState(false);
 
   const selectedVersionNoRef = useRef<string | null>(null);
   const detailCacheRef = useRef(new Map<string, any>());
@@ -94,8 +123,15 @@ export default function ProjectVersions() {
     [versions],
   );
   const filteredVersions = useMemo(
-    () => filterVersions(versions, { query, status: statusFilter, order: sortOrder }),
-    [query, sortOrder, statusFilter, versions],
+    () => filterVersions(versions, {
+      query,
+      status: statusFilter,
+      order: sortOrder,
+      author: authorFilter,
+      requirement: requirementFilter,
+      external: externalOnly,
+    }),
+    [authorFilter, externalOnly, query, requirementFilter, sortOrder, statusFilter, versions],
   );
   const statusOptions = useMemo(() => {
     const values = new Map<string, string>();
@@ -108,6 +144,24 @@ export default function ProjectVersions() {
       ...Array.from(values, ([value, label]) => ({ value, label })),
     ];
   }, [versions]);
+  const compareTargets = useMemo(() => comparisonTargets(
+    versions,
+    versionNoOf(planning?.baseline || baseline),
+    selectedVersionNo || '',
+    versionNoOf(planning?.previousBaseline),
+  ), [baseline, planning, selectedVersionNo, versions]);
+  const commandBadges = useMemo(() => planningBadges(planning || {}), [planning]);
+
+  const loadPlanning = useCallback(async () => {
+    if (!slug) return;
+    setPlanningError('');
+    try {
+      setPlanning(await api.projectPlanning(slug));
+    } catch (error) {
+      setPlanning(null);
+      setPlanningError(error instanceof Error ? error.message : '无法读取项目规划摘要');
+    }
+  }, [slug]);
 
   const selectVersion = useCallback(async (
     versionNo: string | null,
@@ -193,11 +247,59 @@ export default function ProjectVersions() {
     setSelectedVersion(null);
     setMobileDetailOpen(false);
     void loadPage();
+    void loadPlanning();
     return () => {
       pageRequestIdRef.current += 1;
       detailRequestIdRef.current += 1;
     };
-  }, [loadPage]);
+  }, [loadPage, loadPlanning]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFiltersHydrated(false);
+    const apply = (value: any) => {
+      if (cancelled) return;
+      const next = projectFilterState(value);
+      setQuery(next.query);
+      setStatusFilter(next.status);
+      setSortOrder(next.order);
+      setAuthorFilter(next.author);
+      setRequirementFilter(next.requirement);
+      setExternalOnly(next.external);
+      setIncludeVoid(next.includeVoid);
+      setFiltersHydrated(true);
+    };
+    if (searchParams.toString()) {
+      apply(searchParams);
+    } else {
+      api.projectPreference(slug).then(apply).catch(() => apply({}));
+    }
+    return () => { cancelled = true; };
+    // URL 只在项目切换时作为初始状态；后续由本地筛选状态驱动。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  useEffect(() => {
+    if (!filtersHydrated || !slug) return undefined;
+    const state = {
+      query,
+      status: statusFilter,
+      order: sortOrder,
+      author: authorFilter,
+      requirement: requirementFilter,
+      external: externalOnly,
+      includeVoid,
+    };
+    const nextQuery = projectFilterQuery(state);
+    if (nextQuery !== searchParams.toString()) setSearchParams(nextQuery, { replace: true });
+    const timer = window.setTimeout(() => {
+      void api.setProjectPreference(slug, state).catch(() => undefined);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [
+    authorFilter, externalOnly, filtersHydrated, includeVoid, query, requirementFilter,
+    searchParams, setSearchParams, slug, sortOrder, statusFilter,
+  ]);
 
   useEffect(() => {
     if (!filteredVersions.length) return;
@@ -210,12 +312,27 @@ export default function ProjectVersions() {
 
   const reloadAll = useCallback(async () => {
     detailCacheRef.current.clear();
-    await loadPage();
-  }, [loadPage]);
+    await Promise.all([loadPage(), loadPlanning()]);
+  }, [loadPage, loadPlanning]);
 
   const openWorkbench = useCallback((versionNo: string) => {
     navigate(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}`);
   }, [navigate, slug]);
+
+  const openComparison = useCallback((pair: { a: string; b: string } | null) => {
+    if (!pair) return;
+    const params = new URLSearchParams({ mode: 'versions', a: pair.a, b: pair.b });
+    navigate(`/projects/${encodeURIComponent(slug)}/compare?${params}`);
+  }, [navigate, slug]);
+
+  const copyText = useCallback(async (value: string, success: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      message.success(success);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '复制失败');
+    }
+  }, [message]);
 
   const ensureWritable = useCallback(() => {
     if (canWrite) return true;
@@ -223,38 +340,116 @@ export default function ProjectVersions() {
     return false;
   }, [canWrite, message]);
 
-  const setBaseline = useCallback((version: any) => {
+  const setBaseline = useCallback(async (version: any) => {
     if (!ensureWritable()) return;
     const versionNo = versionNoOf(version);
-    if (!version?.changes?.length && !version?.changeCount) {
+    if (version.reviewStatus === 'questions' && !version.baselineAt) {
+      message.warning('该版本仍有评审疑问，请先处理问题并更新评审状态');
+      return;
+    }
+    if (versions.length > 1 && !version?.baselineAt && !version?.changes?.length && !version?.changeCount) {
       message.warning('设为基线前至少需要 1 条变更说明');
       return;
     }
+    let cumulative: any = null;
+    if (baseline && versionNoOf(baseline) !== versionNo) {
+      try {
+        cumulative = await api.cumulative(slug, versionNoOf(baseline), versionNo);
+      } catch {
+        cumulative = null;
+      }
+    }
+    const counts = (cumulative?.items || []).reduce((value: any, item: any) => {
+      const type = ['ADD', 'REMOVE'].includes(item.type) ? item.type : 'MODIFY';
+      value[type] += 1;
+      return value;
+    }, { ADD: 0, MODIFY: 0, REMOVE: 0 });
     modal.confirm({
       title: `将 ${versionNo} 设为当前基线？`,
-      content: '研发默认将按这版原型和规格开发。',
+      content: (
+        <div className={styles.confirmSummary}>
+          <p>研发默认将按这版原型和规格开发。</p>
+          <dl>
+            <div><dt>替换基线</dt><dd>{baseline ? versionNoOf(baseline) : '未设置'} → {versionNo}</dd></div>
+            <div><dt>评审状态</dt><dd>{reviewStateOf(version).label}</dd></div>
+            <div><dt>累计变更</dt><dd>新增 {counts.ADD} · 修改 {counts.MODIFY} · 删除 {counts.REMOVE}</dd></div>
+            <div><dt>关联需求</dt><dd>{version.requirementCount || version.requirements?.length || 0} 条</dd></div>
+            <div><dt>外部依赖</dt><dd>{version.externalRefs?.length || 0} 个</dd></div>
+            <div><dt>通知渠道</dt><dd>{planning?.notificationProvider || '未配置'}</dd></div>
+          </dl>
+        </div>
+      ),
       okText: '设为基线',
       onOk: async () => {
-        await api.setBaseline(slug, versionNo);
-        message.success(`已将 ${versionNo} 设为当前基线`);
+        const result: any = await api.setBaseline(slug, versionNo);
+        const notificationFailed = (result.notificationResults || []).some((item: any) => item.ok === false);
         await reloadAll();
+        modal.success({
+          title: `${versionNo} 已成为当前基线`,
+          content: (
+            <div className={styles.resultSummary}>
+              <p>{notificationFailed ? '基线已更新，但部分通知发送失败，可在设置或通知中心重试。' : '基线和评审状态已更新。'}</p>
+              <Space wrap>
+                <Button onClick={() => openWorkbench(versionNo)}>打开基线</Button>
+                {baseline ? <Button icon={<SwapOutlined />} onClick={() => openComparison({ a: versionNoOf(baseline), b: versionNo })}>查看对比</Button> : null}
+                <Button icon={<CopyOutlined />} onClick={() => void copyText(
+                  `# ${project?.name || slug} 当前基线\n\n- 版本：${versionNo}\n- 标题：${version.title || ''}\n- 上一基线：${baseline ? versionNoOf(baseline) : '无'}\n`,
+                  '基线摘要已复制',
+                )}>复制摘要</Button>
+              </Space>
+            </div>
+          ),
+        });
       },
     });
-  }, [ensureWritable, message, modal, reloadAll, slug]);
+  }, [
+    baseline, copyText, ensureWritable, message, modal, openComparison, openWorkbench,
+    planning, project?.name, reloadAll, slug, versions.length,
+  ]);
 
-  const rollbackBaseline = useCallback(() => {
+  const rollbackBaseline = useCallback(async () => {
     if (!ensureWritable()) return;
-    modal.confirm({
-      title: '回滚到上一版基线？',
-      content: '当前基线会进入历史记录，上一版研发基线将重新生效。',
-      okText: '确认回滚',
-      onOk: async () => {
-        const version: any = await api.rollbackProject(slug);
-        message.success(`已回滚到 ${versionNoOf(version)}`);
-        await reloadAll();
-      },
-    });
-  }, [ensureWritable, message, modal, reloadAll, slug]);
+    setRollbackLoading(true);
+    try {
+      const preview: any = await api.rollbackPreview(slug);
+      modal.confirm({
+        title: `回滚到 ${versionNoOf(preview.target)}？`,
+        icon: <UndoOutlined />,
+        content: (
+          <div className={styles.confirmSummary}>
+            <p>当前基线会进入历史记录，上一版研发基线将重新生效。</p>
+            <dl>
+              <div><dt>基线变化</dt><dd>{versionNoOf(preview.current)} → {versionNoOf(preview.target)}</dd></div>
+              <div><dt>撤回变更</dt><dd>新增 {preview.changeCounts?.ADD || 0} · 修改 {preview.changeCounts?.MODIFY || 0} · 删除 {preview.changeCounts?.REMOVE || 0}</dd></div>
+              <div><dt>受影响需求</dt><dd>{preview.requirements?.join('、') || '无明确需求号'}</dd></div>
+              <div><dt>通知渠道</dt><dd>{preview.notificationProvider || '未配置'}</dd></div>
+            </dl>
+          </div>
+        ),
+        okText: '确认回滚',
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          const version: any = await api.rollbackProject(slug);
+          await reloadAll();
+          modal.success({
+            title: `已回滚到 ${versionNoOf(version)}`,
+            content: (
+              <Space wrap>
+                <Button onClick={() => openWorkbench(versionNoOf(version))}>打开当前基线</Button>
+                <Button icon={<SwapOutlined />} onClick={() => openComparison({
+                  a: versionNoOf(version), b: versionNoOf(preview.current),
+                })}>查看撤回内容</Button>
+              </Space>
+            ),
+          });
+        },
+      });
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '无法生成回滚预览');
+    } finally {
+      setRollbackLoading(false);
+    }
+  }, [ensureWritable, message, modal, openComparison, openWorkbench, reloadAll, slug]);
 
   const markRead = useCallback(async (versionNo: string) => {
     await api.markRead(slug, versionNo);
@@ -339,6 +534,9 @@ export default function ProjectVersions() {
     setQuery('');
     setStatusFilter('all');
     setSortOrder('newest');
+    setAuthorFilter('');
+    setRequirementFilter('');
+    setExternalOnly(false);
   };
 
   const renderVersionSummary = (testId: string) => {
@@ -378,6 +576,7 @@ export default function ProjectVersions() {
     }
 
     const display = displayOf(selectedVersion);
+    const review = reviewStateOf(selectedVersion);
     const versionNo = versionNoOf(selectedVersion);
     const detailMenuItems: MenuProps['items'] = [
       { key: 'read', label: '标记为已读' },
@@ -398,6 +597,7 @@ export default function ProjectVersions() {
           <div className={styles.summaryIdentity}>
             <div className={styles.summaryStatus}>
               <Tag color={display.color}>{display.label}</Tag>
+              <Tag color={review.color}>{review.label}</Tag>
               {isBaselineVersion(selectedVersion) ? (
                 <span className={styles.baselineLabel}>当前基线</span>
               ) : null}
@@ -413,8 +613,13 @@ export default function ProjectVersions() {
           </div>
           <Space wrap className={styles.summaryActions}>
             {!isBaselineVersion(selectedVersion) && display.key !== 'VOID' ? (
-              <Button disabled={!canWrite} onClick={() => setBaseline(selectedVersion)}>
+              <Button disabled={!canWrite} onClick={() => void setBaseline(selectedVersion)}>
                 {display.key === 'HISTORY' ? '回滚为基线' : '设为基线'}
+              </Button>
+            ) : null}
+            {compareTargets.selectedVsBaseline ? (
+              <Button icon={<SwapOutlined />} onClick={() => openComparison(compareTargets.selectedVsBaseline)}>
+                与当前基线比较
               </Button>
             ) : null}
             <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => openWorkbench(versionNo)}>
@@ -471,14 +676,22 @@ export default function ProjectVersions() {
         title={project?.name || slug}
         backTo="/projects"
         actions={(
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={!canWrite}
-            onClick={() => setNewVersionOpen(true)}
-          >
-            新建版本
-          </Button>
+          <Space wrap>
+            <Button
+              icon={<InboxOutlined />}
+              onClick={() => navigate(`/watch?project=${encodeURIComponent(slug)}`)}
+            >
+              草稿箱{planning?.watchCount ? ` ${planning.watchCount}` : ''}
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              disabled={!canWrite}
+              onClick={() => setNewVersionOpen(true)}
+            >
+              新建版本
+            </Button>
+          </Space>
         )}
       />
 
@@ -502,32 +715,101 @@ export default function ProjectVersions() {
 
       {versions.length ? (
         <section className={styles.baselineStrip} aria-label="版本状态摘要">
-          <div className={styles.baselineMain}>
-            <span className={styles.baselineKicker}>{baseline ? '当前基线' : '基线状态'}</span>
-            <strong className="fl-mono">{baseline ? versionNoOf(baseline) : '未设置'}</strong>
-            <span className={styles.baselineTitle}>
-              {baseline ? textOf(baseline.title, '未命名版本') : '选择一个有变更日志的版本设为基线'}
+          <button
+            type="button"
+            className={styles.baselineToggle}
+            aria-expanded={baselineExpanded}
+            aria-controls="development-baseline-details"
+            onClick={() => setBaselineExpanded((expanded) => !expanded)}
+          >
+            <span className={styles.baselineSummary}>
+              <span className={styles.baselineKicker}>{baseline ? '当前开发基线' : '基线状态'}</span>
+              <strong className="fl-mono">{baseline ? versionNoOf(baseline) : '未设置'}</strong>
+              <span className={styles.baselineTitle}>
+                {baseline ? textOf(baseline.title, '未命名版本') : '尚未设置开发基线，请从已记录变更的版本中选择'}
+              </span>
+              {newCount > 0 ? <span className={styles.readMarker}>{newCount} 个新版本</span> : null}
             </span>
-            {newCount > 0 ? <span className={styles.readMarker}>{newCount} 个新版本</span> : null}
+            {!baselineExpanded && commandBadges.length ? (
+              <span className={styles.collapsedBadges}>
+                {commandBadges.map((badge) => (
+                  <Tag key={badge.key} color={badge.color}>{badge.label}</Tag>
+                ))}
+              </span>
+            ) : null}
+            <DownOutlined
+              className={`${styles.baselineChevron} ${baselineExpanded ? styles.baselineChevronExpanded : ''}`}
+              aria-hidden
+            />
+          </button>
+
+          <div
+            id="development-baseline-details"
+            className={styles.baselineDetails}
+            hidden={!baselineExpanded}
+          >
+            <div className={styles.baselineContent}>
+              {baseline ? (
+                <span className={styles.baselineMeta}>
+                  {createdByOf(baseline)} · {fmtTime(baseline.baselineAt || createdAtOf(baseline))}
+                  {' · '}{baseline.requirementCount || baseline.requirements?.length || 0} 条需求
+                </span>
+              ) : null}
+              {planning?.previousBaseline ? (
+                <div className={styles.changeDigest} aria-label="相对上一基线的累计变更">
+                  <span>相对 {versionNoOf(planning.previousBaseline)}</span>
+                  <strong>新增 {planning.changeCounts?.ADD || 0}</strong>
+                  <strong>修改 {planning.changeCounts?.MODIFY || 0}</strong>
+                  <strong>删除 {planning.changeCounts?.REMOVE || 0}</strong>
+                  {planning.previousBaselineSource === 'local' ? <small>根据本地记录推断</small> : null}
+                </div>
+              ) : baseline ? <span className={styles.baselineMeta}>首个基线，暂无上一基线</span> : null}
+              {commandBadges.length ? (
+                <Space wrap size={[6, 6]} className={styles.commandBadges}>
+                  {commandBadges.map((badge) => badge.key === 'watch' ? (
+                    <Button
+                      key={badge.key}
+                      size="small"
+                      onClick={() => navigate(`/watch?project=${encodeURIComponent(slug)}`)}
+                    >
+                      <Tag color={badge.color}>{badge.label}</Tag>
+                    </Button>
+                  ) : (
+                    <Tag key={badge.key} color={badge.color}>{badge.label}</Tag>
+                  ))}
+                </Space>
+              ) : null}
+            </div>
+            <Space wrap className={styles.commandActions}>
+              {baseline ? <Button type="primary" onClick={() => openWorkbench(versionNoOf(baseline))}>打开当前基线</Button> : null}
+              {compareTargets.baselineVsPrevious ? (
+                <Button icon={<SwapOutlined />} onClick={() => openComparison(compareTargets.baselineVsPrevious)}>
+                  与上一基线比较
+                </Button>
+              ) : null}
+              <Button icon={<HistoryOutlined />} onClick={() => setHistoryOpen(true)}>基线历史</Button>
+              {newCount > 0 ? (
+                <Button size="small" onClick={() => void markRead(versionNoOf(versions[0]))}>标记最新为已读</Button>
+              ) : null}
+              {baseline && canRollback ? (
+                <Button icon={<UndoOutlined />} loading={rollbackLoading} disabled={!canWrite} onClick={() => void rollbackBaseline()}>
+                  回滚上一版
+                </Button>
+              ) : null}
+            </Space>
           </div>
-          {baseline ? (
-            <span className={styles.baselineMeta}>
-              {createdByOf(baseline)} · {fmtTime(baseline.baselineAt || createdAtOf(baseline))}
-            </span>
-          ) : null}
-          <Space wrap>
-            {newCount > 0 ? (
-              <Button size="small" onClick={() => void markRead(versionNoOf(versions[0]))}>标记最新为已读</Button>
-            ) : null}
-            {baseline && canRollback ? (
-              <Button disabled={!canWrite} onClick={rollbackBaseline}>回滚上一版</Button>
-            ) : null}
-            {baseline ? (
-              <Button onClick={() => void selectVersion(versionNoOf(baseline), { openMobile: true })}>查看详情</Button>
-            ) : null}
-            {baseline ? <Button onClick={() => openWorkbench(versionNoOf(baseline))}>打开工作台</Button> : null}
-          </Space>
         </section>
+      ) : null}
+
+      {planningError ? (
+        <Alert
+          className={styles.pageAlert}
+          type="warning"
+          showIcon
+          message="规划摘要暂不可用"
+          description={planningError}
+          action={<Button size="small" onClick={() => void loadPlanning()}>重试</Button>}
+        />
       ) : null}
 
       {pageError ? (
@@ -591,7 +873,37 @@ export default function ProjectVersions() {
                 <Checkbox checked={includeVoid} onChange={(event) => setIncludeVoid(event.target.checked)}>
                   显示已废弃版本
                 </Checkbox>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<FilterOutlined />}
+                  aria-expanded={advancedFiltersOpen}
+                  onClick={() => setAdvancedFiltersOpen((value) => !value)}
+                >
+                  {advancedFiltersOpen ? '收起高级筛选' : '高级筛选'}
+                </Button>
               </div>
+              {advancedFiltersOpen ? (
+                <div className={styles.advancedFilters}>
+                  <Input
+                    allowClear
+                    aria-label="按创建人筛选"
+                    placeholder="创建人"
+                    value={authorFilter}
+                    onChange={(event) => setAuthorFilter(event.target.value)}
+                  />
+                  <Input
+                    allowClear
+                    aria-label="按关联需求筛选"
+                    placeholder="需求编号或标题"
+                    value={requirementFilter}
+                    onChange={(event) => setRequirementFilter(event.target.value)}
+                  />
+                  <Checkbox checked={externalOnly} onChange={(event) => setExternalOnly(event.target.checked)}>
+                    仅看有外部依赖
+                  </Checkbox>
+                </div>
+              ) : null}
             </div>
 
             {filteredVersions.length ? (
@@ -605,12 +917,13 @@ export default function ProjectVersions() {
                 {filteredVersions.map((version: any) => {
                   const versionNo = versionNoOf(version);
                   const display = displayOf(version);
+                  const review = reviewStateOf(version);
                   return (
                     <button
                       className={`${styles.indexRow} ${versionNo === selectedVersionNo ? styles.selected : ''}`}
                       type="button"
                       role="option"
-                      aria-label={`${versionNo} ${textOf(version.title, '未命名版本')}，${display.label}`}
+                      aria-label={`${versionNo} ${textOf(version.title, '未命名版本')}，${display.label}，${review.label}`}
                       aria-selected={versionNo === selectedVersionNo}
                       data-version-no={versionNo}
                       key={versionNo}
@@ -631,6 +944,7 @@ export default function ProjectVersions() {
                         {isBaselineVersion(version) ? (
                           <span className={styles.baselineLabel}>基线</span>
                         ) : <Tag color={display.color}>{display.label}</Tag>}
+                        <Tag color={review.color}>{review.label}</Tag>
                       </span>
                     </button>
                   );
@@ -660,6 +974,54 @@ export default function ProjectVersions() {
         onClose={() => setMobileDetailOpen(false)}
       >
         {renderVersionSummary('mobile-version-summary')}
+      </Drawer>
+      <Drawer
+        className={styles.historyDrawer}
+        open={historyOpen}
+        title="基线历史"
+        width={560}
+        onClose={() => setHistoryOpen(false)}
+      >
+        {planning?.historyError ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Git 基线历史不可用"
+            description={`${planning.historyError}。当前页面已使用本地 baselineAt 记录降级。`}
+          />
+        ) : null}
+        {planning?.history?.length ? (
+          <div className={styles.historyList}>
+            {planning.history.map((item: any, index: number) => {
+              const older = planning.history[index + 1];
+              return (
+                <article className={styles.historyItem} key={item.hash || `${item.versionNo}-${index}`}>
+                  <div>
+                    <Tag color={index === 0 ? 'blue' : 'default'}>{index === 0 ? '当前记录' : '历史记录'}</Tag>
+                    <strong className="fl-mono">{item.versionNo || '未知版本'}</strong>
+                  </div>
+                  <p>{item.subject || '基线切换'}</p>
+                  <small>{item.author || '-'} · {fmtTime(item.date)} · {item.short || item.hash?.slice(0, 8)}</small>
+                  {older?.versionNo && older.versionNo !== item.versionNo ? (
+                    <Button
+                      size="small"
+                      icon={<SwapOutlined />}
+                      onClick={() => openComparison({ a: older.versionNo, b: item.versionNo })}
+                    >
+                      与上一条比较
+                    </Button>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <Empty description={planning?.historyError ? '无法读取 Git 历史' : '暂无已提交的基线历史'} />
+        )}
+        <Divider />
+        <Typography.Text type="secondary">
+          基线历史来自 Git 提交；尚未同步的本地切换可能只出现在页面当前状态中。
+        </Typography.Text>
       </Drawer>
       <NewVersionDialog
         open={newVersionOpen}

@@ -124,6 +124,15 @@ describe('沙箱隔离', () => {
     t.assert.match(body, /首版/)
     t.assert.match(body, /flowlark-edit-bridge/)
     t.assert.match(body, /flowlark:get-edit-html/)
+    t.assert.match(body, /flowlark:edit-command/)
+    t.assert.match(body, /flowlark:edit-dirty/)
+    t.assert.match(body, /flowlark:edit-state/)
+    t.assert.match(body, /flowlark-edit-style/)
+    t.assert.match(body, /ALLOWED_COMMANDS/)
+    t.assert.match(body, /data-flowlark-edit-target/)
+
+    const normal = await fetch(`${previewBase}/p/ord/v1.0`)
+    t.assert.doesNotMatch(await normal.text(), /flowlark-edit-bridge/)
   })
 
   test('主端口拒绝 /p/ —— 否则原型可被同源加载，隔离就白做了', async (t) => {
@@ -139,6 +148,12 @@ describe('沙箱隔离', () => {
 
   test('两个端口不同源', (t) => {
     t.assert.notStrictEqual(server.port, server.previewPort)
+  })
+
+  test('工作台自动管理仅供本机使用的企业微信 MCP Sidecar', (t) => {
+    t.assert.equal(server.wecomMcp.available, true)
+    t.assert.equal(typeof server.wecomMcp.pid, 'number')
+    t.assert.doesNotMatch(server.wecomMcp.stderr, /Bearer|FLOWLARK_WECOM_MCP_TOKEN/)
   })
 
   test('文件缺失时返回可读占位页，而非浏览器原生错误', async (t) => {

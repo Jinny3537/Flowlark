@@ -1,7 +1,8 @@
 import { err } from '../../errors.js'
 import * as mcp from './mcp.js'
+import * as assessTask from '../assess-task/adapter.js'
 
-const PROVIDERS = { mcp }
+const PROVIDERS = { mcp, 'assess-task': assessTask }
 
 function adapter(name) {
   const value = String(name || '').toLowerCase()

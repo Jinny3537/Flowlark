@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { App, Badge, Button, Checkbox, Dropdown, Empty, Form, Input, Modal, Select, Space, Tag } from 'antd';
+import { Alert, App, Badge, Button, Checkbox, Divider, Dropdown, Empty, Form, Input, Modal, Select, Space, Switch, Tag } from 'antd';
 import { ArrowRightOutlined, EditOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
@@ -245,6 +245,57 @@ export default function Projects() {
               <Checkbox>已归档</Checkbox>
             </Form.Item>
           </Space>
+          <Divider orientation="left">发版邮件</Divider>
+          <Form.Item
+            name={['releaseMail', 'enabled']}
+            valuePropName="checked"
+            label="企业微信发版邮件"
+            extra="启用后，“正式发版”会依次设置基线、同步 Git，再通过企业微信发送邮件。"
+          >
+            <Switch checkedChildren="已启用" unCheckedChildren="未启用" />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(before, after) => before.releaseMail?.enabled !== after.releaseMail?.enabled}>
+            {({ getFieldValue }) => getFieldValue(['releaseMail', 'enabled']) ? (
+              <div className="fl-release-mail-settings">
+                <Form.Item
+                  name={['releaseMail', 'to']}
+                  label="默认收件人"
+                  extra="输入企业微信成员姓名并按回车；正式发版时会通过通讯录解析，同名成员必须再次选择。"
+                  rules={[{ required: true, type: 'array', min: 1, message: '请至少填写一位默认收件人' }]}
+                >
+                  <Select mode="tags" tokenSeparators={[',', '，']} placeholder="例如：张三" aria-label="默认发版邮件收件人" />
+                </Form.Item>
+                <Form.Item
+                  name={['releaseMail', 'cc']}
+                  label="默认抄送人"
+                  extra="可选；与收件人重复的姓名会自动从抄送中移除。"
+                >
+                  <Select mode="tags" tokenSeparators={[',', '，']} placeholder="例如：李四" aria-label="默认发版邮件抄送人" />
+                </Form.Item>
+                <Form.Item
+                  name={['releaseMail', 'subjectTemplate']}
+                  label="邮件主题模板"
+                  rules={[{ required: true, whitespace: true, message: '请填写邮件主题模板' }]}
+                >
+                  <Input maxLength={500} placeholder="【发版】{{project}} {{version}}" />
+                </Form.Item>
+                <Form.Item
+                  name={['releaseMail', 'bodyTemplate']}
+                  label="Markdown 正文模板"
+                  extra="变量：{{project}}、{{projectCode}}、{{version}}、{{title}}、{{previousBaseline}}、{{releasedAt}}、{{releasedBy}}、{{changes}}、{{requirements}}"
+                  rules={[{ required: true, whitespace: true, message: '请填写 Markdown 正文模板' }]}
+                >
+                  <Input.TextArea rows={10} maxLength={50000} showCount className="fl-mono" />
+                </Form.Item>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="发件人使用当前 wecom-cli 授权身份"
+                  description="Flowlark 不保存企业微信 Bot Secret；正式发版前会展示最终收件人、主题和正文。"
+                />
+              </div>
+            ) : null}
+          </Form.Item>
         </Form>
       </Modal>
     </main>

@@ -71,4 +71,51 @@ describe('项目编辑与概览 API', () => {
     t.assert.strictEqual(result.status, 400)
     t.assert.strictEqual(result.body.code, 'REQUIREMENT_DUE_DATE_INVALID')
   })
+
+  test('原型规划、预检、偏好和回滚预览接口走通', async (t) => {
+    let result = await send('POST', '/api/projects', { name: '规划项目', code: 'PLANNING' })
+    t.assert.strictEqual(result.status, 201)
+    const slug = result.body.slug
+
+    result = await send('POST', `/api/projects/${slug}/versions`, {
+      versionNo: 'v1', title: '首版', html: '<!doctype html><html><body>v1</body></html>'
+    })
+    t.assert.strictEqual(result.status, 201)
+    result = await send('POST', `/api/versions/${slug}/v1/baseline`)
+    t.assert.strictEqual(result.status, 200)
+
+    result = await send('POST', `/api/projects/${slug}/version-preflight`, {
+      versionNo: 'v2', title: '二版', html: '<!doctype html><html><body>v2</body></html>',
+      changes: [], requirements: []
+    })
+    t.assert.strictEqual(result.status, 200)
+    t.assert.strictEqual(result.body.ready, false)
+    t.assert.ok(result.body.blockers.some((item) => item.code === 'CHANGELOG_REQUIRED'))
+
+    result = await send('POST', `/api/projects/${slug}/versions`, {
+      versionNo: 'v2', title: '二版', html: '<!doctype html><html><body>v2</body></html>',
+      changes: [{ type: 'MODIFY', location: '首页', content: '调整入口', requirement: 'REQ-API' }]
+    })
+    t.assert.strictEqual(result.status, 201)
+    result = await send('POST', `/api/versions/${slug}/v2/baseline`)
+    t.assert.strictEqual(result.status, 200)
+
+    result = await send('GET', `/api/projects/${slug}/planning`)
+    t.assert.strictEqual(result.status, 200)
+    t.assert.strictEqual(result.body.baseline.versionNo, 'v2')
+    t.assert.strictEqual(result.body.previousBaseline.versionNo, 'v1')
+
+    result = await send('PUT', `/api/projects/${slug}/preferences`, {
+      query: 'REQ', task: 'pending', order: 'oldest', external: true
+    })
+    t.assert.strictEqual(result.status, 200)
+    t.assert.strictEqual(result.body.task, 'pending')
+    result = await send('GET', `/api/projects/${slug}/preferences`)
+    t.assert.strictEqual(result.body.query, 'REQ')
+
+    result = await send('GET', `/api/projects/${slug}/rollback-preview`)
+    t.assert.strictEqual(result.status, 200)
+    t.assert.strictEqual(result.body.current.versionNo, 'v2')
+    t.assert.strictEqual(result.body.target.versionNo, 'v1')
+  })
 })

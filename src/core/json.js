@@ -16,8 +16,9 @@ const KEY_ORDER = {
     'createdAt', 'createdBy', 'updatedAt', 'baselineAt', 'specUpdatedAt'
   ],
   change: ['type', 'location', 'content', 'requirement'],
-  requirement: ['code', 'title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'statusOverride', 'external', 'url', 'createdAt', 'updatedAt'],
-  milestone: ['name', 'title', 'startAt', 'endAt', 'items', 'external', 'createdAt', 'updatedAt'],
+  requirement: ['code', 'title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'statusOverride', 'external', 'externalTasks', 'url', 'createdAt', 'updatedAt'],
+  externalTask: ['provider', 'server', 'projectId', 'taskId', 'revision', 'remoteStatus', 'url', 'lastSyncHash', 'syncedAt'],
+  milestone: ['name', 'title', 'goal', 'owner', 'status', 'startAt', 'endAt', 'items', 'external', 'createdAt', 'updatedAt'],
   snapshot: ['name', 'title', 'milestone', 'items', 'changesDigest', 'createdAt', 'createdBy'],
   attachment: ['name', 'size', 'contentType', 'addedAt', 'addedBy'],
   mcp: ['schemaVersion', 'servers', 'capabilities']
@@ -33,7 +34,7 @@ function orderKeys(obj, schema) {
 }
 
 /** 深度整理：对已知 schema 的对象排键，数组元素按元素 schema 递归 */
-const ITEM_SCHEMA = { changes: 'change', requirements: 'requirement', attachments: 'attachment' }
+const ITEM_SCHEMA = { changes: 'change', requirements: 'requirement', attachments: 'attachment', externalTasks: 'externalTask' }
 
 function normalize(value, schema) {
   if (Array.isArray(value)) {

@@ -91,6 +91,24 @@ export function updateWatchItem(root, id, patch) {
   return items[index]
 }
 
+export function removeWatchItem(root, id) {
+  const safeId = assertItemId(id)
+  const items = readItems(root)
+  const index = items.findIndex((item) => item.id === safeId)
+  if (index < 0) throw err.notFound(`watch 草稿「${id}」`)
+  const item = items[index]
+  if (item.status !== 'archived') {
+    throw err.conflict(
+      'WATCH_ITEM_NOT_ARCHIVED',
+      '只有已归档的 watch 记录可以清理',
+      '失败项请先重试；待归档项请等待处理完成'
+    )
+  }
+  items.splice(index, 1)
+  writeItems(root, items)
+  return item
+}
+
 export async function waitForStableFile(file, { delayMs = 250, checks = 2 } = {}) {
   let previous = null
   for (let i = 0; i < checks; i++) {

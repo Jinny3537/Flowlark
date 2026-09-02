@@ -12,6 +12,10 @@ export function previewUrl({ protocol, hostname, previewPort, slug, versionNo, o
   return params.size ? `${base}?${params}` : base
 }
 
+export function prototypeEditorRoute(slug, versionNo) {
+  return `/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}/edit`
+}
+
 export function canEditStructure({ canWrite, version, lockBaseline = true }) {
   if (!canWrite || !version?.display) return false
   if (version.display.key === 'VOID') return false

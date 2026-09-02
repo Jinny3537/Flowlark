@@ -14,6 +14,7 @@ import DeliveryDetail from './pages/DeliveryDetail';
 import Milestones from './pages/Milestones';
 import MilestoneDetail from './pages/MilestoneDetail';
 import NotFound from './pages/NotFound';
+import PrototypeEditor from './pages/PrototypeEditor';
 import ProjectVersions from './pages/ProjectVersions';
 import Projects from './pages/Projects';
 import RequirementDetail from './pages/RequirementDetail';
@@ -49,6 +50,15 @@ function AppRoutes() {
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppShell>
+  );
+}
+
+function RootRoutes() {
+  return (
+    <Routes>
+      <Route path="/projects/:slug/versions/:versionNo/edit" element={<PrototypeEditor />} />
+      <Route path="*" element={<AppRoutes />} />
+    </Routes>
   );
 }
 
@@ -91,7 +101,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <AntApp>
         <HashRouter>
           <AppRuntimeProvider>
-            <AppRoutes />
+            <RootRoutes />
           </AppRuntimeProvider>
         </HashRouter>
       </AntApp>
