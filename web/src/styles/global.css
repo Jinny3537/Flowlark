@@ -2445,7 +2445,13 @@ button:active,
   }
 
   .fl-page-actions .ant-btn {
+    min-height: 44px;
     white-space: normal;
+  }
+
+  .fl-back-button,
+  .fl-dashboard-panel .ant-btn {
+    min-height: 44px;
   }
 
   .fl-metric-grid {
@@ -2478,11 +2484,16 @@ button:active,
 
   .fl-project-entry-actions {
     align-items: stretch;
-    flex-direction: column-reverse;
+    flex-direction: column;
   }
 
   .fl-project-entry-actions .ant-btn {
     width: 100%;
+    min-height: 44px;
+  }
+
+  .fl-project-entry-more {
+    min-width: 44px;
     min-height: 44px;
   }
 

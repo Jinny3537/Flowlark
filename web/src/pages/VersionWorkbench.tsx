@@ -5,8 +5,9 @@ import {
   ExportOutlined,
   HistoryOutlined,
   LinkOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
-import { Alert, App, Button, Segmented, Select, Spin, Tag, Tooltip } from 'antd';
+import { Alert, App, Button, Dropdown, Segmented, Select, Spin, Tag } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type HealthInfo } from '@/services/api';
@@ -375,21 +376,23 @@ export default function VersionWorkbench() {
         <div className={styles.toolbarActions}>
           <Button icon={<HistoryOutlined />} onClick={() => setHistoryOpen(true)}>历史</Button>
           <Button icon={<BranchesOutlined />} onClick={goCompare}>并排对比</Button>
-          <Tooltip title="复制原型预览直链">
-            <Button icon={<LinkOutlined />} onClick={() => void copyPreviewLink()}>直链</Button>
-          </Tooltip>
-          <Button
-            icon={<ExportOutlined />}
-            onClick={() => window.open(previewBase, '_blank', 'noopener,noreferrer')}
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                { key: 'link', label: '复制预览直链', icon: <LinkOutlined /> },
+                { key: 'window', label: '新窗口打开', icon: <ExportOutlined /> },
+                { key: 'download', label: '下载原型', icon: <DownloadOutlined /> },
+              ],
+              onClick: ({ key }) => {
+                if (key === 'link') void copyPreviewLink();
+                if (key === 'window') window.open(previewBase, '_blank', 'noopener,noreferrer');
+                if (key === 'download') window.open(api.downloadUrl(slug, versionNo), '_blank', 'noopener,noreferrer');
+              },
+            }}
           >
-            新窗口
-          </Button>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={() => window.open(api.downloadUrl(slug, versionNo), '_blank', 'noopener,noreferrer')}
-          >
-            下载
-          </Button>
+            <Button icon={<MoreOutlined />} aria-label="更多版本操作" />
+          </Dropdown>
           {version?.isBaseline ? (
             <Button disabled>当前基线</Button>
           ) : version && version.display?.key !== 'VOID' ? (

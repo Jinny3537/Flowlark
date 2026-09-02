@@ -15,7 +15,7 @@
   flex: 0 0 auto;
   align-items: center;
   gap: var(--fl-s-2);
-  padding: var(--fl-s-2) var(--fl-s-4);
+  padding: var(--fl-s-2) var(--fl-s-3);
   border-bottom: 1px solid var(--fl-line);
   background: rgba(255, 255, 255, .96);
 }
@@ -65,7 +65,7 @@
 }
 
 .versionSelect {
-  width: min(300px, 28vw);
+  width: min(250px, 24vw);
   min-width: 190px;
 }
 

@@ -170,10 +170,10 @@ export default function Projects() {
                       </span>
                     </div>
                     <div className="fl-project-entry-actions">
-                      <Button onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}>全部版本</Button>
                       <Button type="primary" onClick={() => navigate(projectContinueRoute(item))}>
                         {latest ? '继续处理' : '进入项目'} <ArrowRightOutlined />
                       </Button>
+                      <Button onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}>全部版本</Button>
                     </div>
                     <Dropdown
                       trigger={['click']}
