@@ -283,7 +283,7 @@ Expected: `baseline-test` contains baseline `v1`, `no-baseline` contains one ver
 
 - [ ] **Step 3: Verify desktop behavior at 1440px**
 
-Open `http://localhost:7798/projects/baseline-test/versions` and verify:
+Open `http://localhost:7798/#/projects/baseline-test` and verify:
 
 1. “当前开发基线 v1 首个基线版本” is collapsed on first render.
 2. The trigger is approximately 44px high and the version browser appears immediately below it.
@@ -298,7 +298,7 @@ Verify that the baseline label, version, disclosure state, and tags remain reada
 
 - [ ] **Step 5: Verify the no-baseline edge state**
 
-Open `http://localhost:7798/projects/no-baseline/versions`.
+Open `http://localhost:7798/#/projects/no-baseline`.
 
 Expected: the collapsed row reads “基线状态 · 未设置”; expanding reveals “基线历史”; the version list remains usable. Confirm in the final diff that the pre-existing `!canWrite` alert/disabled props and `planningError` warning/retry block remain unchanged, so this presentation-only change does not bypass either edge path.
 
