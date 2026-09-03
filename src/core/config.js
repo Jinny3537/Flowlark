@@ -187,10 +187,6 @@ export function describe(key) {
   return BY_KEY.get(key) || null
 }
 
-export function allKeys() {
-  return SCHEMA.map((s) => s.key)
-}
-
 // ---------- 嵌套读写 ----------
 
 function getPath(obj, key) {

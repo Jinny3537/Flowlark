@@ -14,7 +14,6 @@ let commandRunner=(cmd,args,options)=>execFileAsync(cmd,args,options)
 function queueFile(root){return path.join(root,INTERNAL_DIR,'cache','notifications.json')}
 function readQueue(root){const file=queueFile(root);if(!fs.existsSync(file))return{items:[]};const value=parse(fs.readFileSync(file,'utf8'),'通知队列');return{items:Array.isArray(value.items)?value.items:[]}}
 function writeQueue(root,data){const file=queueFile(root);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,stringify(data))}
-export function notificationProviders(){return PROVIDERS}
 export function setNotificationCommandRunner(runner){const prev=commandRunner;commandRunner=runner||((cmd,args,options)=>execFileAsync(cmd,args,options));return()=>{commandRunner=prev}}
 export function renderNotification(template,event){return String(template||'{{event}} {{project}} {{version}}').replace(/\{\{([A-Za-z]+)\}\}/g,(raw,key)=>{if(!VARIABLES.has(key))throw err.bad('NOTIFICATION_VARIABLE_INVALID',`通知模板包含未知变量：${key}`);return String(event[key]??'')})}
 export function enqueueNotification(root,event){const id=crypto.createHash('sha256').update(JSON.stringify({type:event.event,payload:event})).digest('hex').slice(0,24),data=readQueue(root),existing=data.items.find(item=>item.id===id);if(existing)return existing;const item={id,event,status:'pending',attempts:0,lastError:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};data.items.push(item);writeQueue(root,data);return item}

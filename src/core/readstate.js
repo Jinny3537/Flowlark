@@ -55,10 +55,6 @@ export function clearRead(root, slug = null) {
   save(root, d)
 }
 
-export function allRead(root) {
-  return load(root)
-}
-
 /**
  * 判断哪些版本是「上次看过之后新增的」。
  * 按时间线顺序（倒序）算：已读版本之前的都算新。

@@ -1,14 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { operationMeta, statusMeta, VERSION_STATUS, WATCH_STATUS } from './status.js'
+import { operationMeta, statusMeta, WATCH_STATUS } from './status.js'
 
-test('returns canonical version and watch labels', () => {
-  assert.deepEqual(statusMeta(VERSION_STATUS, 'DRAFT'), { label: '编辑中', color: 'gold' })
+test('returns canonical watch labels', () => {
   assert.deepEqual(statusMeta(WATCH_STATUS, 'failed'), { label: '失败', color: 'red' })
 })
 
 test('falls back to readable unknown state', () => {
-  assert.deepEqual(statusMeta(VERSION_STATUS, 'CUSTOM'), { label: 'CUSTOM', color: 'default' })
+  assert.deepEqual(statusMeta(WATCH_STATUS, 'CUSTOM'), { label: 'CUSTOM', color: 'default' })
 })
 
 test('maps semantic operation log actions', () => {

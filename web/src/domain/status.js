@@ -1,20 +1,3 @@
-export const VERSION_STATUS = {
-  DRAFT: { label: '编辑中', color: 'gold' },
-  BASELINE: { label: '当前基线', color: 'green' },
-  HISTORY: { label: '历史版本', color: 'default' },
-  VOID: { label: '已废弃', color: 'red' }
-}
-
-export const REVIEW_STATUS = {
-  unread: { label: '未读', color: 'orange' },
-  reviewing: { label: '审阅中', color: 'gold' },
-  approved: { label: '已确认', color: 'green' },
-  obsolete: { label: '已过期', color: 'default' },
-  pending: { label: '待评审', color: 'orange' },
-  confirmed: { label: '已确认', color: 'green' },
-  questions: { label: '有疑问', color: 'gold' }
-}
-
 export const WATCH_STATUS = {
   pending: { label: '待归档', color: 'gold' },
   archived: { label: '已归档', color: 'green' },

@@ -95,11 +95,3 @@ export function assertWritable(root, action = '修改数据') {
   throw err.forbidden('GIT_READONLY', `当前仓库是 Git 只读模式，不能${action}`,
     '请让有写权限的产品经理操作；或确认远端权限后运行 flowlark git permission --refresh')
 }
-
-export function clear(root) {
-  try {
-    fs.rmSync(cacheFile(root), { force: true })
-  } catch {
-    /* ignore */
-  }
-}

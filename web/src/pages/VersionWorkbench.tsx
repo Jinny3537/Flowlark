@@ -5,12 +5,13 @@ import {
   ExportOutlined,
   HistoryOutlined,
   LinkOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
-import { Alert, App, Button, Segmented, Select, Spin, Tag, Tooltip } from 'antd';
+import { Alert, App, Button, Dropdown, Segmented, Select, Spin, Tag } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type HealthInfo } from '@/services/api';
-import { textOf } from '@/utils/format';
+import { fmtTime, textOf } from '@/utils/format';
 import { FeedbackDrawer } from './workbench/FeedbackDrawer';
 import { PrototypeEditorDrawer } from './workbench/PrototypeEditorDrawer';
 import { PrototypeStage } from './workbench/PrototypeStage';
@@ -337,11 +338,21 @@ export default function VersionWorkbench() {
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
+            aria-label={`返回 ${textOf(project?.name, slug)} 的版本列表`}
             onClick={() => navigate(`/projects/${encodeURIComponent(slug)}`)}
           >
-            返回
+            返回版本列表
           </Button>
-          <strong>{textOf(project?.name, slug)}</strong>
+          <div className={styles.contextCopy}>
+            <div className={styles.contextPath}>
+              <span>{textOf(project?.name, slug)}</span>
+              <span aria-hidden>/</span>
+              <strong className="fl-mono">{versionNo}</strong>
+            </div>
+            <span className={styles.contextMeta}>
+              {textOf(version?.title, '未命名版本')} · 更新于 {fmtTime(version?.updatedAt || version?.createdAt)}
+            </span>
+          </div>
         </div>
         <Select
           className={styles.versionSelect}
@@ -365,21 +376,23 @@ export default function VersionWorkbench() {
         <div className={styles.toolbarActions}>
           <Button icon={<HistoryOutlined />} onClick={() => setHistoryOpen(true)}>历史</Button>
           <Button icon={<BranchesOutlined />} onClick={goCompare}>并排对比</Button>
-          <Tooltip title="复制原型预览直链">
-            <Button icon={<LinkOutlined />} onClick={() => void copyPreviewLink()}>直链</Button>
-          </Tooltip>
-          <Button
-            icon={<ExportOutlined />}
-            onClick={() => window.open(previewBase, '_blank', 'noopener,noreferrer')}
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                { key: 'link', label: '复制预览直链', icon: <LinkOutlined /> },
+                { key: 'window', label: '新窗口打开', icon: <ExportOutlined /> },
+                { key: 'download', label: '下载原型', icon: <DownloadOutlined /> },
+              ],
+              onClick: ({ key }) => {
+                if (key === 'link') void copyPreviewLink();
+                if (key === 'window') window.open(previewBase, '_blank', 'noopener,noreferrer');
+                if (key === 'download') window.open(api.downloadUrl(slug, versionNo), '_blank', 'noopener,noreferrer');
+              },
+            }}
           >
-            新窗口
-          </Button>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={() => window.open(api.downloadUrl(slug, versionNo), '_blank', 'noopener,noreferrer')}
-          >
-            下载
-          </Button>
+            <Button icon={<MoreOutlined />} aria-label="更多版本操作" />
+          </Dropdown>
           {version?.isBaseline ? (
             <Button disabled>当前基线</Button>
           ) : version && version.display?.key !== 'VOID' ? (

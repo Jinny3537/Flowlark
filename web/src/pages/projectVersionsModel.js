@@ -65,6 +65,39 @@ export function filterVersions(versions, {
   return filtered.sort((a, b) => direction * compareNewest(a, b))
 }
 
+export function projectContinuation(versions = []) {
+  const ordered = filterVersions(versions, { order: 'newest' })
+  const latest = ordered.find((version) => version?.display?.key !== 'VOID') || null
+  const baseline = ordered.find((version) => version?.isBaseline === true
+    || version?.baseline === true
+    || version?.display?.key === 'BASELINE') || null
+  if (!latest) {
+    return {
+      latest: null,
+      baseline,
+      relation: { key: 'empty', label: '暂无版本', color: 'default' },
+    }
+  }
+  const latestNo = versionNoOf(latest)
+  const baselineNo = versionNoOf(baseline)
+  if (latestNo && latestNo === baselineNo) {
+    return {
+      latest,
+      baseline,
+      relation: { key: 'current', label: '最新版本即当前基线', color: 'blue' },
+    }
+  }
+  return {
+    latest,
+    baseline,
+    relation: {
+      key: baseline ? 'ahead' : 'unset',
+      label: baseline ? '最新版本尚未设为基线' : '尚未设置当前基线',
+      color: 'gold',
+    },
+  }
+}
+
 export function adjacentVersionNo(versions, currentVersionNo, direction) {
   if (versions.length === 0) return null
   const currentIndex = versions.findIndex((version) => versionNoOf(version) === currentVersionNo)

@@ -5,6 +5,7 @@ import {
   comparisonTargets,
   filterVersions,
   planningBadges,
+  projectContinuation,
   projectFilterQuery,
   projectFilterState,
   reviewStateOf,
@@ -138,4 +139,22 @@ test('maps review states and planning badges to readable labels', () => {
     { key: 'questions', label: '1 个有疑问', color: 'red' },
     { key: 'watch', label: '3 个待归档', color: 'blue' },
   ])
+})
+
+test('summarizes latest usable version and its baseline relationship', () => {
+  assert.deepEqual(projectContinuation(versions), {
+    latest: versions[0],
+    baseline: versions[1],
+    relation: { key: 'ahead', label: '最新版本尚未设为基线', color: 'gold' },
+  })
+  assert.deepEqual(projectContinuation([versions[1], versions[2]]), {
+    latest: versions[1],
+    baseline: versions[1],
+    relation: { key: 'current', label: '最新版本即当前基线', color: 'blue' },
+  })
+  assert.deepEqual(projectContinuation([]), {
+    latest: null,
+    baseline: null,
+    relation: { key: 'empty', label: '暂无版本', color: 'default' },
+  })
 })
