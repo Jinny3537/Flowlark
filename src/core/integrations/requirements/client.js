@@ -1,14 +1,4 @@
 import { err } from '../../errors.js'
-import { cleanBaseUrl, fetchJson, query, requireToken } from '../issues/client.js'
-
-export { cleanBaseUrl, fetchJson, query, requireToken }
-
-export function headerToken(config, envKey) {
-  const token = requireToken(config, envKey)
-  return config.tokenHeader
-    ? { [String(config.tokenHeader)]: token }
-    : { Authorization: `Bearer ${token}` }
-}
 
 export function normalizeRequirement(provider, item) {
   const code = String(item.code || item.key || item.id || item.number || '').trim()
@@ -27,12 +17,4 @@ export function normalizeRequirement(provider, item) {
     url: String(item.url || item.web_url || item.html_url || ''),
     raw: item
   }
-}
-
-export function endpoint(base, template, params = {}) {
-  let path = String(template || '')
-  for (const [key, value] of Object.entries(params)) {
-    path = path.replaceAll(`{${key}}`, encodeURIComponent(String(value)))
-  }
-  return `${base}${path.startsWith('/') ? path : '/' + path}`
 }

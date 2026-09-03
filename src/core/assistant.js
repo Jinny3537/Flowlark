@@ -1,4 +1,3 @@
-import path from 'node:path'
 import * as G from './git.js'
 import { readProject } from './store.js'
 
@@ -173,4 +172,3 @@ export function suggestMessage(root) {
 }
 
 export { RULES as ASSISTANT_RULES }
-export const briefFileName = (root) => path.basename(root) + '-git-brief.md'

@@ -24,7 +24,6 @@ export const DISPLAY = {
   VOID: { key: 'VOID', label: '已废弃', short: '废弃', color: 'red' }
 }
 
-export const CHANGE_TYPES = ['ADD', 'MODIFY', 'REMOVE']
 export const CHANGE_LABEL = { ADD: '新增', MODIFY: '修改', REMOVE: '删除' }
 
 /** 中文/英文都接受，方便 CLI 里直接写 `-m 新增:位置:说明` */

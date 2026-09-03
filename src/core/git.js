@@ -449,13 +449,6 @@ export function specAt(root, slug, versionNo, ref) {
   return fileAt(root, rel, ref)
 }
 
-/** 两次提交之间某个文件的差异，直接给 git 的彩色输出 */
-export function diffFile(root, relPath, from, to = 'HEAD', { color = false } = {}) {
-  requireRepo(root)
-  const args = ['diff', color ? '--color=always' : '--no-color', `${from}..${to}`, '--', relPath]
-  return git(root, args).out
-}
-
 // ==================== 冲突辅助 ====================
 
 const CONFLICT_RE = /^<{7}[^\n]*\n([\s\S]*?)^={7}\n([\s\S]*?)^>{7}[^\n]*$/m
