@@ -1177,7 +1177,7 @@ git commit -m "feat: add project synchronization settings"
 - Modify: `docs/ASSESS-TASK-MCP.md`
 - Modify: `CHANGELOG.md`
 
-- [ ] **Step 1: Update storage documentation**
+- [x] **Step 1: Update storage documentation**
 
 Document:
 
@@ -1188,7 +1188,7 @@ Document:
 - `.flowlark/backup/` as local migration recovery data;
 - the rule that backups, queue records, and external caches do not enter Git.
 
-- [ ] **Step 2: Update MCP documentation**
+- [x] **Step 2: Update MCP documentation**
 
 Document the exact user flow:
 
@@ -1198,11 +1198,11 @@ Document the exact user flow:
 
 State explicitly that `trusted-auto` is preparatory metadata in `v0.7.2`; unattended execution remains disabled until `v0.7.5`.
 
-- [ ] **Step 3: Update the changelog**
+- [x] **Step 3: Update the changelog**
 
 Under `Unreleased`, add concise entries for schema 3 migration/recovery, project sync policy, persisted previews, Sync Center, redacted audit, and fixed server-owned actions. Do not claim automatic synchronization.
 
-- [ ] **Step 4: Run all focused tests together**
+- [x] **Step 4: Run all focused tests together**
 
 Run:
 
@@ -1224,7 +1224,7 @@ node --test \
 
 Expected: PASS with zero failed tests.
 
-- [ ] **Step 5: Run the complete regression suite**
+- [x] **Step 5: Run the complete regression suite**
 
 Run:
 
@@ -1234,7 +1234,7 @@ npm test
 
 Expected: exit code `0` and zero failures.
 
-- [ ] **Step 6: Build the production Web app**
+- [x] **Step 6: Build the production Web app**
 
 Run:
 
@@ -1244,7 +1244,7 @@ npm run build:web
 
 Expected: exit code `0`. Compare bundle output with the baseline; investigate any new warning other than the already-recorded size warning.
 
-- [ ] **Step 7: Perform three manual smoke tests**
+- [x] **Step 7: Perform three manual smoke tests**
 
 Test these flows in a temporary repository and test MCP environment:
 
@@ -1254,7 +1254,7 @@ Test these flows in a temporary repository and test MCP environment:
 
 Also verify 1440×900 and 390×844 layouts, read-only mode, long project names, long error messages, and empty Sync Center state.
 
-- [ ] **Step 8: Check scope and secrets**
+- [x] **Step 8: Check scope and secrets**
 
 Run:
 
@@ -1267,7 +1267,7 @@ rg -n "Bearer private|private-password|ASSESS_PASSWORD=" .flowlark/sync-audit.nd
 
 Expected: no whitespace errors; only planned files changed; audit search returns no sensitive values. Existing user-owned untracked regression artifacts remain untouched.
 
-- [ ] **Step 9: Commit documentation and verification notes**
+- [x] **Step 9: Commit documentation and verification notes**
 
 ```bash
 git add docs/STORAGE.md docs/ASSESS-TASK-MCP.md CHANGELOG.md
@@ -1276,15 +1276,15 @@ git commit -m "docs: describe v0.7.2 synchronization foundation"
 
 ## Final Review Checklist
 
-- [ ] Only `v0.7.2` scope was implemented.
-- [ ] Existing milestone synchronization behavior and tests remain intact.
-- [ ] Browser requests cannot choose an MCP tool or arbitrary remote operation.
-- [ ] `trusted-auto` cannot execute unattended in this release.
-- [ ] Queue and audit writes are atomic or append-only as designed.
-- [ ] All audit paths redact secret-bearing keys recursively.
-- [ ] Schema 1 and schema 2 repositories both reach schema 3 safely.
-- [ ] Migration rollback restores every touched metadata path.
-- [ ] MCP failure does not break local read and ordinary edit flows.
-- [ ] Read-only users can inspect but cannot execute, retry, cancel, or change policy.
-- [ ] Full tests and the production Web build pass.
-- [ ] No user-owned untracked artifacts were staged or committed.
+- [x] Only `v0.7.2` scope was implemented.
+- [x] Existing milestone synchronization behavior and tests remain intact.
+- [x] Browser requests cannot choose an MCP tool or arbitrary remote operation.
+- [x] `trusted-auto` cannot execute unattended in this release.
+- [x] Queue and audit writes are atomic or append-only as designed.
+- [x] All audit paths redact secret-bearing keys recursively.
+- [x] Schema 1 and schema 2 repositories both reach schema 3 safely.
+- [x] Migration rollback restores every touched metadata path.
+- [x] MCP failure does not break local read and ordinary edit flows.
+- [x] Read-only users can inspect but cannot execute, retry, cancel, or change policy.
+- [x] Full tests and the production Web build pass.
+- [x] No user-owned untracked artifacts were staged or committed.

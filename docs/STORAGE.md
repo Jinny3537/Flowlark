@@ -10,11 +10,11 @@
 
 ```
 my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
-├── flowlark.json                 仓库配置（schemaVersion / 仓库名 / 设置）
+├── flowlark.json                 仓库配置（schemaVersion: 3 / 仓库名 / 设置）
 ├── .gitattributes                原型 HTML 标记为二进制，避免污染 diff
 ├── projects/
 │   └── order-center/             ← 项目 slug，即目录名
-│       ├── project.json          项目元数据
+│       ├── project.json          项目元数据（含 project.sync 准备配置）
 │       ├── BASELINE              ← 单行文本：当前基线的版本号
 │       └── versions/
 │           ├── v1.0.json         版本元数据（含变更日志、关联需求）
@@ -25,8 +25,54 @@ my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
 │           └── v1.1.spec.md
 └── .flowlark/
     ├── oplog.ndjson              操作日志，append-only
+    ├── sync-audit.ndjson         同步审计，追加写入、递归脱敏并进入 Git
+    ├── cache/                    本机运行缓存，不进入 Git
+    │   └── sync-queue/           可恢复的同步预览与执行状态
+    ├── backup/                   Schema 迁移恢复数据，不进入 Git
     └── trash/                    逻辑删除的版本移动到这里
 ```
+
+## Schema 3 保存项目同步准备数据
+
+Schema 3 在每个 `projects/<项目>/project.json` 中增加 `project.sync`：
+
+```json
+{
+  "sync": {
+    "mode": "manual",
+    "server": "",
+    "projectId": "",
+    "managedFields": [
+      "title",
+      "description",
+      "acceptance",
+      "priority",
+      "assignee",
+      "sprint",
+      "status",
+      "delivery"
+    ]
+  }
+}
+```
+
+- `mode` 只接受 `manual` 或 `trusted-auto`，缺省时为 `manual`。`v0.7.2` 里这两个值都是准备元数据，不会触发无人值守的远端写入。
+- `server` 是逻辑 MCP 服务标识，`projectId` 是外部项目标识。密码、Token、可执行文件路径和个人运行配置不放进 `project.sync`。
+- `managedFields` 只保存 Flowlark 允许管理的字段：`title`、`description`、`acceptance`、`priority`、`assignee`、`sprint`、`status` 和 `delivery`。
+
+打开 Schema 1 或 Schema 2 仓库时，Flowlark 会先备份受迁移影响的元数据，再补齐项目策略，最后写入 `schemaVersion: 3`。迁移中任一步失败时，恢复备份；也可以使用保留在 `.flowlark/backup/` 中的备份手工回滚。
+
+## 区分团队历史和本机恢复状态
+
+| 路径 | 用途 | 是否进入 Git |
+|---|---|---|
+| `projects/*/project.json` | 项目同步策略等团队元数据 | 是 |
+| `.flowlark/sync-audit.ndjson` | 同步状态和步骤的 append-only 审计历史 | 是，使用 `merge=union` |
+| `.flowlark/cache/sync-queue/` | 已持久化预览、步骤状态、安全错误和重试进度 | 否 |
+| `.flowlark/backup/` | Schema 迁移前的可恢复元数据 | 否 |
+| `.flowlark/cache/` 中的其他外部系统缓存 | 旧版 MCP 记录等本机运行数据 | 否 |
+
+`.flowlark/sync-audit.ndjson` 在写入前按键名递归脱敏，密码、授权信息、Token、Secret 和环境变量值都替换为 `[REDACTED]`。审计文件是可追踪历史，但不是凭据存储。备份、队列记录和所有外部缓存都只留在当前本机 checkout，由 `.gitignore` 排除。
 
 ## 三个关键决定
 
