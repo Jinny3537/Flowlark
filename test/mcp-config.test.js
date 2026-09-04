@@ -155,7 +155,7 @@ describe('MCP 配置文件', () => {
     t.assert.throws(() => hub.saveMcpCapability('requirements', { enabled: true, server: '' }), /需求 MCP 能力已启用/)
   })
 
-  test('迭代能力支持从任务平台拉取和推送本地迭代', async (t) => {
+  test('迭代能力可拉取，但旧推送入口不再绕过安全预览', async (t) => {
     const { root, hub } = newHub()
     dirs.push(root)
     hub.saveMcpServer({ id: 'planning-mcp', name: '迭代系统 MCP', url: `${baseUrl}/mcp` })
@@ -177,9 +177,11 @@ describe('MCP 配置文件', () => {
     t.assert.strictEqual(synced.created, 1)
     t.assert.strictEqual(hub.getMilestone('S-MCP').external.status, 'active')
 
-    const pushed = await hub.syncMilestoneToExternal('S-MCP', 'mcp')
-    t.assert.strictEqual(pushed.external.status, 'synced')
-    t.assert.strictEqual(pushed.external.url, 'https://task.test/S-MCP')
+    await t.assert.rejects(
+      hub.syncMilestoneToExternal('S-MCP', 'mcp'),
+      (error) => error.code === 'ASSESS_MCP_NOT_CONFIGURED'
+    )
+    t.assert.strictEqual(hub.getMilestone('S-MCP').external.status, 'active')
   })
 
   test('启用迭代能力但没有绑定服务会被拦截', (t) => {

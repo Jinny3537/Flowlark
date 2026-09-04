@@ -37,7 +37,7 @@ export function savePendingSync(root, input, now = new Date()) {
   const existing = readSyncRecord(root, id)
   const at = new Date(now).toISOString()
 
-  if (existing?.planHash === plan.hash) {
+  if (existing?.planHash === plan.hash && existing.status !== 'canceled') {
     const expired = existing.status === 'pending-confirmation' &&
       Number.isFinite(Date.parse(existing.plan?.expiresAt)) &&
       Date.parse(existing.plan.expiresAt) <= new Date(now).getTime()
@@ -55,6 +55,7 @@ export function savePendingSync(root, input, now = new Date()) {
     entityKey,
     route: String(input?.route || ''),
     mode: String(input?.mode || 'manual'),
+    intent: sanitizeSyncValue(input?.intent ?? safePlan.intent ?? null),
     planHash: String(plan.hash),
     plan: safePlan,
     status: 'pending-confirmation',

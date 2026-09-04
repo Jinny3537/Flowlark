@@ -16,6 +16,8 @@ export function buildMilestoneSyncPlan({
   resolutions = {},
   now = new Date()
 } = {}) {
+  const normalizedAction = ['start', 'end', 'cancel'].includes(String(action || '')) ? String(action) : null
+  const normalizedResolutions = normalizeResolutions(resolutions)
   const blockers = []
   const warnings = []
   const operations = []
@@ -61,7 +63,7 @@ export function buildMilestoneSyncPlan({
       local: sprintAfter,
       remote: remoteSprint,
       lastSyncHash: sprintBinding.lastSyncHash,
-      resolution: resolutions[`sprint:${sprintBinding.sprintId}`],
+      resolution: normalizedResolutions[`sprint:${sprintBinding.sprintId}`],
       acceptPatch: sprintLocalPatch(remoteSprint),
       operations,
       blockers,
@@ -120,7 +122,7 @@ export function buildMilestoneSyncPlan({
       local: taskAfter,
       remote: remoteTask,
       lastSyncHash: binding.lastSyncHash,
-      resolution: resolutions[`task:${binding.taskId}`],
+      resolution: normalizedResolutions[`task:${binding.taskId}`],
       acceptPatch: taskLocalPatch(remoteTask, requirement, mapping),
       operations,
       blockers,
@@ -170,13 +172,16 @@ export function buildMilestoneSyncPlan({
     })
   }
 
-  const lifecycleKind = { start: 'sprint.start', end: 'sprint.end', cancel: 'sprint.cancel' }[action]
+  const lifecycleKind = { start: 'sprint.start', end: 'sprint.end', cancel: 'sprint.cancel' }[normalizedAction]
   if (lifecycleKind) {
     operations.push({
       key: `${lifecycleKind}:${milestone.name}`,
       kind: lifecycleKind,
       risk: 'high',
       sprintId: targetSprintId || '$sprint',
+      before: remoteSprint
+        ? { status: remoteSprint.status ?? null, revision: remoteSprint.revision ?? null }
+        : null,
       dependsOn: operations.filter((item) => item.kind !== 'conflict').map((item) => item.key)
     })
   }
@@ -186,9 +191,10 @@ export function buildMilestoneSyncPlan({
   const semantic = {
     milestone: milestone.name,
     projectId,
-    action,
+    action: normalizedAction,
     scopeItems,
     scopeChangeReason: String(scopeChangeReason || ''),
+    resolutions: normalizedResolutions,
     operations: operations.map(semanticOperation),
     blockers: blockers.map(({ code, target }) => ({ code, target })),
     warnings: warnings.map(({ code, target }) => ({ code, target }))
@@ -197,6 +203,12 @@ export function buildMilestoneSyncPlan({
     milestone: milestone.name,
     server: String(mapping.server || ''),
     projectId,
+    intent: {
+      action: normalizedAction,
+      scopeItems: Array.isArray(scopeItems) ? scopeItems : null,
+      reason: Array.isArray(scopeItems) ? String(scopeChangeReason || '') : '',
+      resolutions: normalizedResolutions
+    },
     scopeItems: Array.isArray(scopeItems) ? scopeItems : null,
     scopeChangeReason: String(scopeChangeReason || ''),
     generatedAt,
@@ -406,7 +418,14 @@ function escapeRegExp(value) {
 }
 
 function semanticOperation(operation) {
-  return pick(operation, ['key', 'kind', 'risk', 'requirement', 'entity', 'before', 'after', 'reason', 'localPatch', 'contentHash', 'taskId', 'sprintId', 'dependsOn'])
+  return pick(operation, ['key', 'kind', 'risk', 'requirement', 'entity', 'before', 'after', 'reason', 'localPatch', 'contentHash', 'taskId', 'taskRevision', 'sprintId', 'revision', 'dependsOn'])
+}
+
+function normalizeResolutions(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value)
+    .filter(([, resolution]) => ['accept-remote', 'restore-local'].includes(resolution))
+    .sort(([left], [right]) => left.localeCompare(right)))
 }
 
 function problem(code, message, target) {

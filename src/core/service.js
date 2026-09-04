@@ -43,9 +43,10 @@ import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycl
 import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
 import { executeMilestoneSync as executeSync, resumeMilestoneSync as resumeSync } from './milestone-sync.js'
 import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
-import { listSyncAudit as readSyncAudit } from './sync-audit.js'
+import { appendSyncAudit, listSyncAudit as readSyncAudit } from './sync-audit.js'
 import {
   cancelSyncRecord as cancelQueuedSyncRecord,
+  findSyncRecord,
   listSyncRecords as readSyncRecords,
   readSyncRecord,
   savePendingSync
@@ -605,13 +606,7 @@ export class Hub {
   }
 
   async syncMilestoneToExternal(name, provider = null, overrides = {}) {
-    this.#assertWritable('同步迭代到任务平台')
-    const selected = provider || 'mcp'
-    const local = milestones.inspectMilestone(this.root, name)
-    const remote = await milestoneIntegration.upsertMilestone(selected, this.milestoneConfig(selected, overrides), local)
-    const item = milestones.updateMilestone(this.root, local.name, this.#externalMilestoneInput(selected, remote, local.external))
-    this.#log(null, null, 'MILESTONE_PUSH_SYNC', `同步迭代 ${item.name} 到任务平台`)
-    return item
+    return this.planMilestoneSync(name, {})
   }
 
   inspectMilestonePreflight(name) {
@@ -639,20 +634,9 @@ export class Hub {
   }
 
   async planMilestoneSync(name, input = {}) {
-    const plan = await this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, input, adapter, config))
-    const milestone = milestones.inspectMilestone(this.root, name)
-    const scopeItems = Array.isArray(plan.scopeItems) ? plan.scopeItems : milestone.items
-    const projects = [...new Set(scopeItems.map((item) => item.project).filter(Boolean))]
-    const mode = projects.length === 1
-      ? normalizeSyncPolicy(store.readProject(this.root, projects[0]).sync).mode
-      : 'manual'
-    const sync = savePendingSync(this.root, {
-      entityType: 'milestone',
-      entityKey: name,
-      route: `/milestones/${encodeURIComponent(name)}`,
-      mode,
-      plan
-    })
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    const plan = await this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, value, adapter, config))
+    const sync = this.#saveMilestoneSyncPreview(name, plan)
     return { ...plan, syncId: sync.id, syncStatus: sync.status }
   }
 
@@ -689,17 +673,30 @@ export class Hub {
 
   async executeMilestoneSync(name, input = {}) {
     this.#assertWritable('执行迭代同步')
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    const planHash = String(value.planHash || '').trim()
+    if (value.confirmed && !planHash) throw err.bad('MCP_SYNC_PLAN_HASH_REQUIRED', '确认同步时必须提供计划哈希')
+    const record = findSyncRecord(this.root, 'milestone', name)
+    if (value.confirmed && !record) {
+      throw err.conflict('MCP_SYNC_PREVIEW_REQUIRED', '执行同步前必须先生成同步预览')
+    }
+    if (value.confirmed && record.status !== 'pending-confirmation') {
+      throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
+    }
+    if (planHash && record && planHash !== record.planHash) {
+      throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+    }
+    const intent = record && planHash === record.planHash ? this.#syncIntent(record) : value
     return this.#withAssessAdapter(true, async (adapter, config) => {
-      const plan = await this.#buildMilestoneSyncPlan(name, input, adapter, config)
-      if (input.confirmed && !input.planHash) throw err.bad('MCP_SYNC_PLAN_HASH_REQUIRED', '确认同步时必须提供计划哈希')
-      if (input.planHash && input.planHash !== plan.hash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+      const plan = await this.#buildMilestoneSyncPlan(name, intent, adapter, config)
+      if (planHash && planHash !== plan.hash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
       const result = await executeSync({
         root: this.root,
         milestoneName: name,
         plan,
-        confirmed: input.confirmed === true,
-        reason: input.reason || '',
-        confirmUnfinished: input.confirmUnfinished === true,
+        confirmed: value.confirmed === true,
+        reason: value.reason || '',
+        confirmUnfinished: value.confirmUnfinished === true,
         adapter
       })
       this.#log(null, null, 'MILESTONE_SYNC_EXECUTE', `执行迭代 ${name} 同步计划 ${plan.hash}`)
@@ -709,12 +706,24 @@ export class Hub {
 
   async resumeMilestoneSync(name, input = {}) {
     this.#assertWritable('恢复迭代同步')
-    return this.#withAssessAdapter(true, async (adapter) => {
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    const record = findSyncRecord(this.root, 'milestone', name)
+    if (!record) throw err.notFound(`迭代「${name}」的同步记录`)
+    if (!['failed', 'paused'].includes(record.status)) {
+      throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
+    }
+    return this.#withAssessAdapter(true, async (adapter, config) => {
+      const plan = await this.#buildMilestoneSyncPlan(name, this.#syncIntent(record), adapter, config)
+      if (plan.hash !== record.planHash) {
+        this.#saveMilestoneSyncPreview(name, plan)
+        throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+      }
       const result = await resumeSync({
         root: this.root,
         milestoneName: name,
-        reason: input.reason || '',
-        confirmUnfinished: input.confirmUnfinished === true,
+        plan,
+        reason: value.reason || '',
+        confirmUnfinished: value.confirmUnfinished === true,
         adapter
       })
       this.#log(null, null, 'MILESTONE_SYNC_RESUME', `恢复迭代 ${name} 同步`)
@@ -759,11 +768,21 @@ export class Hub {
     const planHash = String(value.planHash || '').trim()
     if (!planHash) throw err.bad('MCP_SYNC_PLAN_HASH_REQUIRED', '确认同步时必须提供计划哈希')
     if (planHash !== record.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
-    return this.executeMilestoneSync(record.entityKey, {
-      confirmed: true,
-      planHash,
-      reason: String(value.reason || ''),
-      confirmUnfinished: value.confirmUnfinished === true
+    return this.#withAssessAdapter(true, async (adapter, config) => {
+      const plan = await this.#buildMilestoneSyncPlan(record.entityKey, this.#syncIntent(record), adapter, config)
+      if (plan.hash !== record.planHash) {
+        this.#saveMilestoneSyncPreview(record.entityKey, plan)
+        throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+      }
+      return executeSync({
+        root: this.root,
+        milestoneName: record.entityKey,
+        plan,
+        confirmed: true,
+        reason: String(value.reason || ''),
+        confirmUnfinished: value.confirmUnfinished === true,
+        adapter
+      })
     })
   }
 
@@ -775,15 +794,48 @@ export class Hub {
       throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
     }
     const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
-    return this.resumeMilestoneSync(record.entityKey, {
-      reason: String(value.reason || ''),
-      confirmUnfinished: value.confirmUnfinished === true
+    return this.#withAssessAdapter(true, async (adapter, config) => {
+      const plan = await this.#buildMilestoneSyncPlan(record.entityKey, this.#syncIntent(record), adapter, config)
+      if (plan.hash !== record.planHash) {
+        this.#saveMilestoneSyncPreview(record.entityKey, plan)
+        throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+      }
+      return resumeSync({
+        root: this.root,
+        milestoneName: record.entityKey,
+        plan,
+        reason: String(value.reason || ''),
+        confirmUnfinished: value.confirmUnfinished === true,
+        adapter
+      })
     })
   }
 
   cancelSyncRecord(id, reason) {
     this.#assertWritable('取消同步记录')
-    return cancelQueuedSyncRecord(this.root, id, reason)
+    const record = this.getSyncRecord(id)
+    const value = String(reason || '').trim()
+    if (!value) throw err.bad('SYNC_CANCEL_REASON_REQUIRED', '取消同步必须填写原因')
+    this.#appendRequiredSyncAudit({
+      syncId: record.id,
+      action: 'sync.cancel-requested',
+      status: record.status,
+      entityType: record.entityType,
+      entityKey: record.entityKey,
+      before: { status: record.status },
+      after: { reason: value }
+    })
+    const canceled = cancelQueuedSyncRecord(this.root, id, value)
+    this.#appendRequiredSyncAudit({
+      syncId: canceled.id,
+      action: 'sync.canceled',
+      status: canceled.status,
+      entityType: canceled.entityType,
+      entityKey: canceled.entityKey,
+      before: { status: record.status },
+      after: { status: canceled.status, reason: value }
+    })
+    return canceled
   }
 
   transitionMilestone(name, input = {}) {
@@ -2149,9 +2201,9 @@ export class Hub {
 
   async #buildMilestoneSyncPlan(name, input, adapter, config) {
     const storedMilestone = milestones.inspectMilestone(this.root, name)
-    const scopeItems = input.scopeItems === undefined
-      ? null
-      : milestones.normalizeMilestoneItems(this.root, input.scopeItems)
+    const scopeItems = Array.isArray(input?.scopeItems)
+      ? milestones.normalizeMilestoneItems(this.root, input.scopeItems)
+      : null
     if (scopeItems && storedMilestone.status !== 'active') throw err.conflict('MILESTONE_SCOPE_CHANGE_INVALID', '只有进行中的迭代使用范围变更流程')
     if (scopeItems && !String(input.reason || '').trim()) throw err.bad('MILESTONE_REASON_REQUIRED', '进行中范围变更必须填写原因')
     const milestone = scopeItems ? { ...storedMilestone, items: scopeItems } : storedMilestone
@@ -2164,9 +2216,8 @@ export class Hub {
     const options = config.capability?.options || {}
     const mapping = {
       ...options,
-      ...(input.mapping || {}),
-      server: config.server?.id || input.mapping?.server || '',
-      projectId: Number(config.project || input.mapping?.projectId || options.projectId)
+      server: config.server?.id || '',
+      projectId: Number(config.project || options.projectId)
     }
     const sprintId = Number(milestone.external?.sprintId || 0)
     const remoteSprint = sprintId ? await adapter.getSprint(sprintId) : null
@@ -2199,6 +2250,62 @@ export class Hub {
       scopeChangeReason: scopeItems ? String(input.reason).trim() : '',
       resolutions: input.resolutions || {}
     })
+  }
+
+  #saveMilestoneSyncPreview(name, plan) {
+    const existing = findSyncRecord(this.root, 'milestone', name)
+    const milestone = milestones.inspectMilestone(this.root, name)
+    const scopeItems = Array.isArray(plan.scopeItems) ? plan.scopeItems : milestone.items
+    const projects = [...new Set(scopeItems.map((item) => item.project).filter(Boolean))]
+    const mode = projects.length === 1
+      ? normalizeSyncPolicy(store.readProject(this.root, projects[0]).sync).mode
+      : 'manual'
+    const sync = savePendingSync(this.root, {
+      entityType: 'milestone',
+      entityKey: name,
+      route: `/milestones/${encodeURIComponent(name)}`,
+      mode,
+      intent: plan.intent,
+      plan
+    })
+    const previewed = readSyncAudit(this.root, { syncId: sync.id, limit: 500 }).some((entry) =>
+      entry.action === 'sync.previewed' && entry.after?.planHash === sync.planHash)
+    if (sync.status === 'pending-confirmation' && !previewed) {
+      this.#appendRequiredSyncAudit({
+        syncId: sync.id,
+        action: 'sync.previewed',
+        status: sync.status,
+        entityType: sync.entityType,
+        entityKey: sync.entityKey,
+        before: existing ? { status: existing.status, planHash: existing.planHash } : null,
+        after: { status: sync.status, planHash: sync.planHash }
+      })
+    }
+    return sync
+  }
+
+  #syncIntent(record) {
+    const source = record?.intent || record?.plan?.intent || {}
+    const lifecycle = (record?.plan?.operations || []).find((operation) =>
+      ['sprint.start', 'sprint.end', 'sprint.cancel'].includes(operation.kind))
+    return {
+      action: source.action || lifecycle?.kind?.split('.')[1] || null,
+      scopeItems: Array.isArray(source.scopeItems)
+        ? source.scopeItems
+        : (Array.isArray(record?.plan?.scopeItems) ? record.plan.scopeItems : null),
+      reason: String(source.reason || record?.plan?.scopeChangeReason || ''),
+      resolutions: source.resolutions && typeof source.resolutions === 'object' && !Array.isArray(source.resolutions)
+        ? source.resolutions
+        : {}
+    }
+  }
+
+  #appendRequiredSyncAudit(input) {
+    try {
+      return appendSyncAudit(this.root, input)
+    } catch {
+      throw err.conflict('SYNC_AUDIT_WRITE_FAILED', '同步审计写入失败，操作未完整记录')
+    }
   }
 
   #decorate(v, baselineNo) {

@@ -145,8 +145,8 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, hub.transitionMilestone(p.name, body))
   })
   r.post('/api/milestones/:name/sync', async (req, res, p) => {
-    const body = await readJson(req, maxBody)
-    sendJson(res, 200, await hub.syncMilestoneToExternal(p.name, body.provider || null, body.config || body))
+    await readJson(req, maxBody)
+    sendJson(res, 200, await hub.planMilestoneSync(p.name, {}))
   })
   r.post('/api/milestones/:name/versions/:slug/:no/formal-release/preflight', async (req, res, p) => {
     const body = await readJson(req, maxBody)

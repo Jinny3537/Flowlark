@@ -135,6 +135,21 @@ test('allows cancellation only from pending, failed, or paused records', (t) => 
   )
 })
 
+test('an explicit preview revives a canceled record but preserves completed idempotency', (t) => {
+  const canceledRoot = fixture(t)
+  const canceled = cancelSyncRecord(canceledRoot, save(canceledRoot).id, 'changed my mind')
+  const revived = save(canceledRoot, canceled.plan, new Date('2026-09-04T00:07:00Z'))
+  assert.equal(revived.status, 'pending-confirmation')
+  assert.equal(revived.planHash, canceled.planHash)
+  assert.equal(revived.canceledAt, null)
+
+  const completedRoot = fixture(t)
+  const running = transitionSyncRecord(completedRoot, save(completedRoot).id, 'running')
+  const completed = transitionSyncRecord(completedRoot, running.id, 'completed')
+  const repeated = save(completedRoot, completed.plan, new Date('2026-09-04T00:08:00Z'))
+  assert.deepEqual(repeated, completed)
+})
+
 test('rejects unknown targets and transitions not present in the fixed graph', (t) => {
   const root = fixture(t)
   const saved = save(root)

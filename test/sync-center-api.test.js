@@ -14,24 +14,41 @@ let base
 let remote
 
 function fakeAdapter() {
-  const state = { sprints: new Map(), calls: [], failNextSave: false }
+  const state = { sprints: new Map(), tasks: new Map(), calls: [], failNextSave: false, unknownNextSave: false }
   return {
     state,
-    async listTasks() { state.calls.push(['listTasks']); return [] },
+    async listTasks({ sprintId } = {}) {
+      state.calls.push(['listTasks'])
+      return [...state.tasks.values()].filter((task) => !sprintId || Number(task.sprintId) === Number(sprintId))
+    },
     async getSprint(id) { state.calls.push(['getSprint', id]); return state.sprints.get(Number(id)) || null },
-    async getTask(id) { state.calls.push(['getTask', id]); return { id, revision: 1, status: 0 } },
+    async getTask(id) { state.calls.push(['getTask', id]); return state.tasks.get(Number(id)) || null },
     async saveSprint(body) {
       state.calls.push(['saveSprint', body])
       if (state.failNextSave) {
         state.failNextSave = false
         throw err.conflict('REMOTE_TEMPORARY_FAILURE', 'temporary remote failure')
       }
+      if (state.unknownNextSave) {
+        state.unknownNextSave = false
+        throw Object.assign(new Error('connection timed out after send'), { code: 'ETIMEDOUT' })
+      }
       const sprint = { ...body, id: body.id || state.sprints.size + 10, revision: Number(body.revision || 0) + 1, status: 0 }
       state.sprints.set(Number(sprint.id), sprint)
       return sprint
     },
-    async createTask(body) { state.calls.push(['createTask', body]); return { ...body, id: 20, revision: 1, status: 0 } },
-    async updateTask(body) { state.calls.push(['updateTask', body]); return { ...body, revision: body.revision + 1 } },
+    async createTask(body) {
+      state.calls.push(['createTask', body])
+      const task = { ...body, id: 20, revision: 1, sprintId: body.currentSprintId, status: 0 }
+      state.tasks.set(task.id, task)
+      return task
+    },
+    async updateTask(body) {
+      state.calls.push(['updateTask', body])
+      const task = { ...state.tasks.get(Number(body.id)), ...body, revision: body.revision + 1 }
+      state.tasks.set(Number(task.id), task)
+      return task
+    },
     async moveTasks(body) { state.calls.push(['moveTasks', body]); return { ok: true } },
     async startSprint(body) { state.calls.push(['startSprint', body]); return { id: body.sprintId, revision: body.revision + 1, status: 'active' } },
     async endSprint(body) { state.calls.push(['endSprint', body]); return { id: body.sprintId, revision: body.revision + 1, status: 'ended' } },
@@ -208,6 +225,117 @@ test('retry dispatches only failed or paused milestone records', async (t) => {
   t.assert.strictEqual(rejected.body.code, 'SYNC_TRANSITION_INVALID')
 })
 
+test('retry replaces a stale failed plan with a fresh pending preview', async (t) => {
+  const ctx = newHub()
+  const isolatedRoot = ctx.root
+  t.after(() => cleanup(isolatedRoot))
+  ctx.hub.createMilestone({ name: 'RETRY-STALE', title: 'Before', startAt: '2026-09-01', endAt: '2026-09-10' })
+  const isolatedRemote = fakeAdapter()
+  const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
+    assessAdapter: isolatedRemote,
+    assessConfig: {
+      server: { id: 'assess-task-test' }, project: '123',
+      capability: { options: { ownerId: 7, taskType: 2, timezoneOffset: '+08:00' } }
+    }
+  })
+  const preview = await isolatedHub.planMilestoneSync('RETRY-STALE')
+  isolatedRemote.state.failNextSave = true
+  await t.assert.rejects(
+    isolatedHub.executeSyncRecord(preview.syncId, { planHash: preview.hash }),
+    (error) => error.code === 'REMOTE_TEMPORARY_FAILURE'
+  )
+  ctx.hub.updateMilestone('RETRY-STALE', { title: 'After' })
+  await t.assert.rejects(
+    isolatedHub.retrySyncRecord(preview.syncId, {}),
+    (error) => error.code === 'MCP_SYNC_PLAN_CHANGED'
+  )
+  const refreshed = findSyncRecord(isolatedRoot, 'milestone', 'RETRY-STALE')
+  t.assert.strictEqual(refreshed.status, 'pending-confirmation')
+  t.assert.notStrictEqual(refreshed.planHash, preview.hash)
+  t.assert.strictEqual(isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length, 1)
+})
+
+test('retry refuses an uncertain sprint create until a remote link is supplied', async (t) => {
+  const ctx = newHub()
+  const isolatedRoot = ctx.root
+  t.after(() => cleanup(isolatedRoot))
+  ctx.hub.createMilestone({ name: 'RETRY-LINK', title: 'Retry link', startAt: '2026-09-01', endAt: '2026-09-10' })
+  const isolatedRemote = fakeAdapter()
+  const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
+    assessAdapter: isolatedRemote,
+    assessConfig: {
+      server: { id: 'assess-task-test' }, project: '123',
+      capability: { options: { ownerId: 7, taskType: 2, timezoneOffset: '+08:00' } }
+    }
+  })
+  const preview = await isolatedHub.planMilestoneSync('RETRY-LINK')
+  isolatedRemote.state.unknownNextSave = true
+  await t.assert.rejects(
+    isolatedHub.executeSyncRecord(preview.syncId, { planHash: preview.hash }),
+    (error) => error.code === 'MCP_SYNC_LINK_REQUIRED' && error.causeCode === 'ETIMEDOUT'
+  )
+  await t.assert.rejects(
+    isolatedHub.retrySyncRecord(preview.syncId, {}),
+    (error) => error.code === 'MCP_SYNC_LINK_REQUIRED' && error.causeCode === 'ETIMEDOUT'
+  )
+  t.assert.strictEqual(findSyncRecord(isolatedRoot, 'milestone', 'RETRY-LINK').status, 'paused')
+  t.assert.strictEqual(isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length, 1)
+})
+
+test('sync center applies persisted drift resolutions and ignores browser resolution pollution', async (t) => {
+  const ctx = newHub()
+  const isolatedRoot = ctx.root
+  t.after(() => cleanup(isolatedRoot))
+  ctx.hub.createProject({ name: 'Drift', code: 'drift' })
+  ctx.hub.createRequirement({ code: 'REQ-DRIFT', title: 'Local title', description: 'Local body' })
+  ctx.hub.addVersion('drift', { versionNo: 'v1', title: 'v1', html: html(), requirements: ['REQ-DRIFT'] })
+  ctx.hub.createMilestone({
+    name: 'DRIFT', title: 'Drift', startAt: '2026-09-01', endAt: '2026-09-10',
+    items: [{ requirement: 'REQ-DRIFT', project: 'drift', version: 'v1' }]
+  })
+  const isolatedRemote = fakeAdapter()
+  const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
+    assessAdapter: isolatedRemote,
+    assessConfig: {
+      server: { id: 'assess-task-test' }, project: '123',
+      capability: { options: { ownerId: 7, taskType: 2, timezoneOffset: '+08:00' } }
+    }
+  })
+  let preview = await isolatedHub.planMilestoneSync('DRIFT')
+  await isolatedHub.executeSyncRecord(preview.syncId, { planHash: preview.hash })
+
+  const remoteTask = isolatedRemote.state.tasks.get(20)
+  isolatedRemote.state.tasks.set(20, { ...remoteTask, title: '[REQ-DRIFT] Remote accepted', revision: 2 })
+  preview = await isolatedHub.planMilestoneSync('DRIFT', {
+    resolutions: { 'task:20': 'accept-remote' }
+  })
+  let record = findSyncRecord(isolatedRoot, 'milestone', 'DRIFT')
+  t.assert.deepStrictEqual(record.intent.resolutions, { 'task:20': 'accept-remote' })
+  isolatedRemote.state.calls.length = 0
+  await isolatedHub.executeSyncRecord(record.id, {
+    planHash: preview.hash,
+    resolutions: { 'task:20': 'restore-local' }
+  })
+  t.assert.strictEqual(ctx.hub.getRequirement('REQ-DRIFT').title, 'Remote accepted')
+  t.assert.strictEqual(isolatedRemote.state.calls.some(([name]) => name === 'updateTask'), false)
+
+  const accepted = isolatedRemote.state.tasks.get(20)
+  isolatedRemote.state.tasks.set(20, { ...accepted, title: '[REQ-DRIFT] Remote rejected', revision: 3 })
+  preview = await isolatedHub.planMilestoneSync('DRIFT', {
+    resolutions: { 'task:20': 'restore-local' }
+  })
+  record = findSyncRecord(isolatedRoot, 'milestone', 'DRIFT')
+  isolatedRemote.state.calls.length = 0
+  await isolatedHub.executeSyncRecord(record.id, {
+    planHash: preview.hash,
+    reason: 'restore reviewed local value',
+    resolutions: { 'task:20': 'accept-remote' }
+  })
+  t.assert.ok(isolatedRemote.state.calls.some(([name]) => name === 'updateTask'))
+  t.assert.strictEqual(isolatedRemote.state.tasks.get(20).title, '[REQ-DRIFT] Remote accepted')
+  t.assert.strictEqual(ctx.hub.getRequirement('REQ-DRIFT').title, 'Remote accepted')
+})
+
 test('cancel requires a reason and only cancels an eligible record', async (t) => {
   const record = savePendingSync(root, {
     entityType: 'milestone', entityKey: 'CANCEL', route: '/milestones/CANCEL',
@@ -223,6 +351,10 @@ test('cancel requires a reason and only cancels an eligible record', async (t) =
   t.assert.strictEqual(canceled.status, 200)
   t.assert.strictEqual(canceled.body.status, 'canceled')
   t.assert.strictEqual(canceled.body.reason, '范围取消')
+  const actions = (await call('GET', `/api/sync/audit?limit=20&syncId=${record.id}`)).body
+    .map((entry) => entry.action)
+    .reverse()
+  t.assert.deepStrictEqual(actions.slice(-2), ['sync.cancel-requested', 'sync.canceled'])
 })
 
 test('unknown entity types are rejected before resolving an adapter', async (t) => {

@@ -51,8 +51,10 @@ export default function Milestones() {
         endAt: range?.[1]?.format('YYYY-MM-DD') || '',
         items: [],
       });
-      if (syncExternal) item = await api.syncMilestone(item.name);
-      message.success(syncExternal ? `已创建并同步 ${item.name}` : `已创建 ${item.name}`);
+      if (syncExternal) await api.syncMilestone(item.name);
+      message.success(syncExternal
+        ? `已创建 ${item.name}，并生成同步预览，请在同步中心确认`
+        : `已创建 ${item.name}`);
       setOpen(false);
       form.resetFields();
       navigate(`/milestones/${encodeURIComponent(item.name)}`);
@@ -144,7 +146,7 @@ export default function Milestones() {
           <Form.Item name="title" label="标题"><Input /></Form.Item>
           <Form.Item name="range" label="周期"><DatePicker.RangePicker className="fl-full-width" /></Form.Item>
           <Form.Item name="syncExternal" valuePropName="checked" initialValue={false}>
-            <Checkbox>创建后同步到任务平台</Checkbox>
+            <Checkbox>创建后生成任务平台同步预览</Checkbox>
           </Form.Item>
         </Form>
       </Modal>

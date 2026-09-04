@@ -1,3 +1,6 @@
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
 import { err } from './errors.js'
 import { transitionMilestoneStatus } from './milestone-lifecycle.js'
 import { appendSyncAudit } from './sync-audit.js'
@@ -9,7 +12,16 @@ import {
 import * as milestones from './milestones.js'
 import * as requirements from './requirements.js'
 
-export async function executeMilestoneSync({
+export async function executeMilestoneSync(options = {}) {
+  const release = acquireExecutionLock(options.root, options.milestoneName)
+  try {
+    return await executeMilestoneSyncUnlocked(options)
+  } finally {
+    release()
+  }
+}
+
+async function executeMilestoneSyncUnlocked({
   root,
   milestoneName,
   plan,
@@ -44,6 +56,30 @@ export async function executeMilestoneSync({
     finalizeLocalStatus(root, milestoneName, plan)
     return journal
   }
+  const unresolvedCreate = journal.operations.find((step) =>
+    ['sprint.create', 'task.create'].includes(step.kind) &&
+    (step.status === 'executing' || (step.status === 'paused' && step.error?.code === 'MCP_SYNC_LINK_REQUIRED')))
+  if (unresolvedCreate) {
+    const causeCode = unresolvedCreate.error?.causeCode || 'PROCESS_INTERRUPTED'
+    if (unresolvedCreate.status === 'executing') {
+      const failure = createLinkFailure(unresolvedCreate.kind, causeCode)
+      unresolvedCreate.status = 'paused'
+      unresolvedCreate.error = failure
+      unresolvedCreate.updatedAt = new Date().toISOString()
+      journal.status = 'paused'
+      journal.error = failure
+      journal.updatedAt = unresolvedCreate.updatedAt
+      persistAuditTransition(root, milestoneName, journal, {
+        action: 'step.paused',
+        status: 'paused',
+        operationKey: unresolvedCreate.key,
+        before: unresolvedCreate.operation.before ?? null,
+        after: null,
+        error: failure
+      })
+    }
+    throw linkRequiredError(unresolvedCreate.kind, causeCode)
+  }
   journal.status = 'running'
   journal.reason = String(reason || journal.reason || '')
   journal.error = null
@@ -55,12 +91,63 @@ export async function executeMilestoneSync({
   })
 
   for (const step of journal.operations) {
+    if (step.status === 'remote-complete') {
+      if (['sprint.create', 'task.create'].includes(step.kind) && !positiveId(step.remoteResult?.id)) {
+        const failure = createLinkFailure(step.kind, 'REMOTE_ID_MISSING')
+        step.status = 'paused'
+        step.error = failure
+        step.updatedAt = new Date().toISOString()
+        journal.status = 'paused'
+        journal.error = failure
+        journal.updatedAt = step.updatedAt
+        persistAuditTransition(root, milestoneName, journal, {
+          action: 'step.paused',
+          status: 'paused',
+          operationKey: step.key,
+          before: step.operation.before ?? null,
+          after: step.remoteResult ?? null,
+          error: failure
+        })
+        throw linkRequiredError(step.kind, failure.causeCode)
+      }
+      try {
+        await persistOperationResult({
+          root, milestoneName, plan, operation: step.operation, result: step.remoteResult, adapter
+        })
+        step.status = 'completed'
+        step.error = null
+        step.updatedAt = new Date().toISOString()
+        journal.updatedAt = step.updatedAt
+        persistAuditTransition(root, milestoneName, journal, {
+          action: 'step.completed',
+          status: 'completed',
+          operationKey: step.key,
+          before: step.operation.before ?? null,
+          after: step.remoteResult ?? null
+        })
+        continue
+      } catch (error) {
+        if (error?.code === 'SYNC_AUDIT_WRITE_FAILED') throw error
+        step.status = 'failed'
+        step.error = { code: error?.code || 'MCP_SYNC_STEP_FAILED', message: String(error?.message || error) }
+        step.updatedAt = new Date().toISOString()
+        journal.status = 'failed'
+        journal.error = step.error
+        journal.updatedAt = step.updatedAt
+        persistAuditTransition(root, milestoneName, journal, {
+          action: 'step.failed',
+          status: 'failed',
+          operationKey: step.key,
+          before: step.operation.before ?? null,
+          after: step.remoteResult ?? null,
+          error: step.error
+        })
+        throw error
+      }
+    }
     if (step.status === 'completed') {
       if (await verifyCompletedStep(root, plan, step, adapter)) continue
       step.status = 'pending'
-    }
-    if (step.status === 'executing' && ['sprint.create', 'task.create'].includes(step.kind)) {
-      throw err.conflict('MCP_SYNC_LINK_REQUIRED', `${step.kind === 'sprint.create' ? '冲刺' : '任务'}创建结果不明确，请先关联远端对象`)
     }
     step.status = 'executing'
     step.error = null
@@ -97,6 +184,24 @@ export async function executeMilestoneSync({
       })
     } catch (error) {
       if (error?.code === 'SYNC_AUDIT_WRITE_FAILED') throw error
+      if (['sprint.create', 'task.create'].includes(step.kind) && isUnknownCreateResult(error)) {
+        const failure = createLinkFailure(step.kind, error.code)
+        step.status = 'paused'
+        step.error = failure
+        step.updatedAt = new Date().toISOString()
+        journal.status = 'paused'
+        journal.error = failure
+        journal.updatedAt = step.updatedAt
+        persistAuditTransition(root, milestoneName, journal, {
+          action: 'step.paused',
+          status: 'paused',
+          operationKey: step.key,
+          before: step.operation.before ?? null,
+          after: step.remoteResult ?? null,
+          error: failure
+        })
+        throw linkRequiredError(step.kind, error.code)
+      }
       step.status = 'failed'
       step.error = { code: error?.code || 'MCP_SYNC_STEP_FAILED', message: String(error?.message || error) }
       step.updatedAt = new Date().toISOString()
@@ -328,6 +433,28 @@ function safeRemoteResult(value = {}) {
   }
 }
 
+function isUnknownCreateResult(error) {
+  return new Set([
+    'MCP_UNAVAILABLE', 'MCP_TIMEOUT', 'NETWORK', 'ETIMEDOUT', 'ECONNRESET',
+    'ECONNABORTED', 'EPIPE', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'
+  ]).has(String(error?.code || '').toUpperCase())
+}
+
+function createLinkFailure(kind, causeCode) {
+  return {
+    code: 'MCP_SYNC_LINK_REQUIRED',
+    causeCode: String(causeCode || 'UNKNOWN'),
+    message: `${kind === 'sprint.create' ? '冲刺' : '任务'}创建结果不明确，请先关联远端对象`
+  }
+}
+
+function linkRequiredError(kind, causeCode) {
+  const failure = createLinkFailure(kind, causeCode)
+  const error = err.conflict(failure.code, failure.message)
+  error.causeCode = failure.causeCode
+  return error
+}
+
 function persistAuditTransition(root, milestoneName, journal, audit) {
   const persisted = writeMilestoneSyncJournal(root, milestoneName, journal)
   journal.id = persisted.id
@@ -350,4 +477,70 @@ function persistAuditTransition(root, milestoneName, journal, audit) {
     throw err.conflict(failure.code, failure.message)
   }
   return persisted
+}
+
+function acquireExecutionLock(root, milestoneName) {
+  const parent = path.join(String(root || ''), '.flowlark', 'cache', 'sync-locks')
+  const key = crypto.createHash('sha256').update(`milestone:${String(milestoneName || '')}`).digest('hex')
+  const lock = path.join(parent, key)
+  const token = crypto.randomUUID()
+  fs.mkdirSync(parent, { recursive: true })
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.mkdirSync(lock)
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error
+      if (attempt === 0 && reclaimOrphanedLock(lock)) continue
+      throw err.conflict('MCP_SYNC_EXECUTION_CONFLICT', `迭代「${milestoneName}」已有同步正在执行`)
+    }
+    try {
+      fs.writeFileSync(path.join(lock, 'owner.json'), JSON.stringify({ pid: process.pid, token, createdAt: new Date().toISOString() }), 'utf8')
+      return () => releaseExecutionLock(lock, token)
+    } catch (error) {
+      fs.rmSync(lock, { recursive: true, force: true })
+      throw error
+    }
+  }
+  throw err.conflict('MCP_SYNC_EXECUTION_CONFLICT', `迭代「${milestoneName}」已有同步正在执行`)
+}
+
+function reclaimOrphanedLock(lock) {
+  let owner = null
+  try {
+    owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner.json'), 'utf8'))
+  } catch {
+    try {
+      if (Date.now() - fs.statSync(lock).mtimeMs < 30_000) return false
+    } catch {
+      return true
+    }
+  }
+  if (owner?.pid && processIsAlive(owner.pid)) return false
+  const stale = `${lock}.stale.${crypto.randomUUID()}`
+  try {
+    fs.renameSync(lock, stale)
+  } catch (error) {
+    return error?.code === 'ENOENT'
+  }
+  fs.rmSync(stale, { recursive: true, force: true })
+  return true
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(Number(pid), 0)
+    return true
+  } catch (error) {
+    return error?.code === 'EPERM'
+  }
+}
+
+function releaseExecutionLock(lock, token) {
+  try {
+    const owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner.json'), 'utf8'))
+    if (owner.token === token) fs.rmSync(lock, { recursive: true, force: true })
+  } catch {
+    // 只有仍由本次调用持有时才释放；丢失或已被回收的锁不触碰。
+  }
 }
