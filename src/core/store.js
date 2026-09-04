@@ -59,7 +59,8 @@ export const paths = {
   views: (root) => path.join(root, 'views'),
   teamViews: (root) => path.join(root, 'views', 'team.json'),
   trash: (root) => path.join(root, '.flowlark', 'trash'),
-  oplog: (root) => path.join(root, '.flowlark', 'oplog.ndjson')
+  oplog: (root) => path.join(root, '.flowlark', 'oplog.ndjson'),
+  syncAudit: (root) => path.join(root, '.flowlark', 'sync-audit.ndjson')
 }
 
 // ---------- 附件 ----------

@@ -499,7 +499,7 @@ git commit -m "feat: add recoverable schema 3 migration"
 - Create: `test/sync-audit.test.js`
 - Modify: `src/core/store.js`
 
-- [ ] **Step 1: Write failing audit tests**
+- [x] **Step 1: Write failing audit tests**
 
 Create `test/sync-audit.test.js` with imports and a fixture, then verify append order, limits, malformed final lines, and recursive redaction:
 
@@ -531,7 +531,7 @@ test('redacts secrets before appending audit data', (t) => {
 })
 ```
 
-- [ ] **Step 2: Verify the audit tests fail**
+- [x] **Step 2: Verify the audit tests fail**
 
 Run:
 
@@ -541,7 +541,7 @@ node --test test/sync-audit.test.js
 
 Expected: FAIL because the module does not exist.
 
-- [ ] **Step 3: Implement audit append and read**
+- [x] **Step 3: Implement audit append and read**
 
 Add `paths.syncAudit` to `src/core/store.js` and create `src/core/sync-audit.js` with:
 
@@ -573,7 +573,7 @@ Every entry must contain only:
 
 Use `currentUser()` for `actor`, append exactly one JSON object per line, cap reads at 500 entries, ignore one malformed trailing line, and reject malformed entries in the middle of the file. Redact keys matching `password`, `authorization`, `token`, `secret`, `environment`, or `env` recursively.
 
-- [ ] **Step 4: Run audit tests**
+- [x] **Step 4: Run audit tests**
 
 Run:
 
@@ -583,7 +583,7 @@ node --test test/sync-audit.test.js
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the audit module**
+- [x] **Step 5: Commit the audit module**
 
 ```bash
 git add src/core/store.js src/core/sync-audit.js test/sync-audit.test.js
