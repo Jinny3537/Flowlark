@@ -172,7 +172,9 @@ export function validate(config) {
   }
   for (const [name, capability] of Object.entries(config.capabilities)) {
     const label = capability.label || BUILTIN_CAPABILITIES[name]?.label || name
-    if (capability.enabled && !ids.has(capability.server)) problems.push(`${label} MCP 能力已启用，但没有绑定可用服务`)
+    if (capability.enabled && name !== 'milestones' && !ids.has(capability.server)) {
+      problems.push(`${label} MCP 能力已启用，但没有绑定可用服务`)
+    }
     if (capability.enabled && !capability.tools.test) problems.push(`${label} MCP 能力已启用，但没有配置连接测试工具`)
   }
   return problems
@@ -227,14 +229,17 @@ export function removeCapability(root, name) {
   return inspect(root)
 }
 
-export function resolveCapability(root, name) {
+export function resolveCapability(root, name, target = {}) {
   if (!validId(name)) throw err.bad('MCP_CAPABILITY_INVALID', `不支持的 MCP 能力：${name}`)
   const config = readMcpConfig(root)
   const capability = config.capabilities[name]
   const label = capability?.label || BUILTIN_CAPABILITIES[name]?.label || name
   if (!capability) throw err.bad('MCP_CAPABILITY_MISSING', `${label} MCP 能力不存在`)
   if (!capability.enabled) throw err.bad('MCP_CAPABILITY_DISABLED', `${label} MCP 能力尚未启用`)
-  const server = config.servers.find((item) => item.id === capability.server)
+  const serverId = target.server === undefined ? capability.server : String(target.server || '').trim()
+  const projectTarget = target.projectId === undefined ? target.project : target.projectId
+  const project = projectTarget === undefined ? capability.project : String(projectTarget || '').trim()
+  const server = config.servers.find((item) => item.id === serverId)
   if (!server) throw err.bad('MCP_SERVER_MISSING', `${label} MCP 能力绑定的服务不存在`)
   if (!server.enabled) throw err.bad('MCP_SERVER_DISABLED', `MCP 服务 ${server.name} 已停用`)
   const result = {
@@ -245,7 +250,7 @@ export function resolveCapability(root, name) {
     baseUrl: server.url,
     server,
     capability,
-    project: capability.project,
+    project,
     mePath: capability.tools.test,
     timeoutMs: server.timeoutMs,
     headers: resolveHeaders(server),

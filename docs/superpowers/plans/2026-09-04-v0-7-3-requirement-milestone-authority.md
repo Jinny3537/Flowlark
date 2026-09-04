@@ -205,8 +205,8 @@ git commit -m "feat: migrate requirement lifecycle to schema 4"
 - Modify: `test/mcp-config.test.js`
 - Modify: `test/milestone-sync-api.test.js`
 
-- [ ] Write failing tests for one project, same-target projects, missing target, target mismatch, managed-field mismatch, disabled/non-stdio/non-assess server, and existing Sprint target mismatch.
-- [ ] Implement:
+- [x] Write failing tests for one project, same-target projects, missing target, target mismatch, managed-field mismatch, disabled/non-stdio/non-assess server, and existing Sprint target mismatch.
+- [x] Implement:
 
 ```js
 export function resolveProjectSyncContext(root, milestone, mcpInfo)
@@ -214,20 +214,20 @@ export function resolveProjectSyncContext(root, milestone, mcpInfo)
 
 Return normalized `{server, projectId, managedFields, capability, serverConfig}` or blockers with precise `repairTo` routes.
 
-- [ ] Require all milestone projects to use the same server, project ID, and sorted managed fields.
-- [ ] Treat the selected project server as authoritative; never fall back silently to the capability server.
-- [ ] Use milestones capability only for tool names and mapping options.
-- [ ] Validate selected server is enabled, stdio, and `adapter === "assess-task"`.
-- [ ] Refactor the service adapter connection so the resolved project server/runtime and project ID drive the session and adapter.
-- [ ] Preserve injected adapters in tests without creating a production fallback.
-- [ ] Ensure browser `mapping`, `server`, `projectId`, and tool fields remain ignored.
-- [ ] Run:
+- [x] Require all milestone projects to use the same server, project ID, and sorted managed fields.
+- [x] Treat the selected project server as authoritative; never fall back silently to the capability server.
+- [x] Use milestones capability only for tool names and mapping options.
+- [x] Validate selected server is enabled, stdio, and `adapter === "assess-task"`.
+- [x] Refactor the service adapter connection so the resolved project server/runtime and project ID drive the session and adapter.
+- [x] Preserve injected adapters in tests without creating a production fallback.
+- [x] Ensure browser `mapping`, `server`, `projectId`, and tool fields remain ignored.
+- [x] Run:
 
 ```bash
 node --test test/project-sync-context.test.js test/mcp-config.test.js test/milestone-sync-api.test.js
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/core/project-sync-context.js src/core/mcp-config.js src/core/service.js test/project-sync-context.test.js test/mcp-config.test.js test/milestone-sync-api.test.js

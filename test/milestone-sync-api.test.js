@@ -20,6 +20,7 @@ const mapping = {
   server: 'assess-task-test', projectId: 123, ownerId: 7, taskType: 2,
   priorities: { P1: 1 }, members: { dev: 8 }, timezoneOffset: '+08:00'
 }
+const managedFields = ['title', 'description', 'acceptance', 'priority', 'assignee', 'sprint']
 
 function fakeAdapter() {
   const state = { sprint: null, task: null, calls: [], failNextSave: false }
@@ -59,6 +60,18 @@ before(async () => {
   process.env.ASSESS_PASSWORD = 'test-only-password'
   ctx.hub.createProject({ name: '订单', code: 'orders' })
   ctx.hub.createProject({ name: '库存', code: 'inventory' })
+  ctx.hub.updateProject('orders', { sync: { server: 'project-task', projectId: '123', managedFields } })
+  ctx.hub.updateProject('inventory', { sync: { server: 'project-task', projectId: '123', managedFields } })
+  ctx.hub.saveMcpServer({
+    id: 'project-task', name: '项目任务服务', type: 'stdio',
+    adapter: 'assess-task', runtimeProfile: 'project-task-runtime'
+  })
+  ctx.hub.saveMcpCapability('milestones', {
+    enabled: true,
+    server: '',
+    project: '999',
+    options: { ...mapping, server: 'capability-server', projectId: 999 }
+  })
   ctx.hub.createRequirement({ code: 'REQ-1', title: '需求一', description: '说明', priority: 'P1', owner: 'dev' })
   ctx.hub.createRequirement({ code: 'REQ-2', title: '需求二', description: '说明', priority: 'P1', owner: 'dev' })
   ctx.hub.addVersion('orders', { versionNo: 'v1', title: '一版', html: html(), requirements: ['REQ-1'] })
@@ -68,8 +81,13 @@ before(async () => {
     startAt: '2026-08-01', endAt: '2026-08-21',
     items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }]
   })
-  ctx.hub.createMilestone({ name: 'S2', title: '本地迭代', startAt: '2026-09-01', endAt: '2026-09-10' })
+  ctx.hub.createMilestone({ name: 'S2', title: '本地迭代', startAt: '2026-09-01', endAt: '2026-09-10', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
   ctx.hub.createMilestone({ name: 'S3', title: '待取消迭代', startAt: '2026-09-11', endAt: '2026-09-20' })
+  ctx.hub.createMilestone({
+    name: 'S4', title: '已绑定其他目标', startAt: '2026-09-11', endAt: '2026-09-20',
+    items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }],
+    external: { provider: 'assess-task', server: 'other-task', projectId: 456, sprintId: 40 }
+  })
   ctx.hub.createMilestone({ name: 'S5', title: '进行中迭代', goal: '验证范围变更', owner: 'pm', startAt: '2026-09-21', endAt: '2026-09-30', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
   ctx.hub.createMilestone({ name: 'S6', title: '可信策略迭代', startAt: '2026-10-01', endAt: '2026-10-10', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
   ctx.hub.createMilestone({ name: 'S7', title: '跨项目迭代', startAt: '2026-10-11', endAt: '2026-10-20', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }, { requirement: 'REQ-2', project: 'inventory', version: 'v1' }] })
@@ -124,7 +142,7 @@ test('preflight and plan endpoints expose blockers and deterministic operations'
   t.assert.ok(preflight.body.blockers.length > 0)
 
   const plan = await call('POST', '/api/milestones/S1/sync-plan', {
-    resolutions: { 'task:20': 'accept-remote', unsafe: 'delete-remote' }
+    resolutions: { unsafe: 'delete-remote' }
   })
   t.assert.strictEqual(plan.status, 200)
   t.assert.match(plan.body.hash, /^sha256:/)
@@ -152,7 +170,7 @@ test('preflight and plan endpoints expose blockers and deterministic operations'
     action: null,
     scopeItems: null,
     reason: '',
-    resolutions: { 'task:20': 'accept-remote' }
+    resolutions: {}
   })
   t.assert.strictEqual(listSyncAudit(root, { syncId: queued.id })[0].action, 'sync.previewed')
 })
@@ -164,8 +182,17 @@ test('legacy single-milestone sync route only creates a server-owned preview', a
   })
   t.assert.strictEqual(result.status, 200)
   t.assert.strictEqual(result.body.syncStatus, 'pending-confirmation')
+  t.assert.strictEqual(result.body.server, 'project-task')
   t.assert.strictEqual(result.body.projectId, 123)
   t.assert.strictEqual(milestones.readMilestone(root, 'S2').external, null)
+})
+
+test('an existing Sprint bound to another target is blocked before remote reads', async (t) => {
+  remote.state.calls.length = 0
+  const result = await call('POST', '/api/milestones/S4/sync-plan', {})
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MILESTONE_EXTERNAL_TARGET_MISMATCH')
+  t.assert.strictEqual(remote.state.calls.length, 0)
 })
 
 test('sync center executes the persisted lifecycle intent instead of browser fields', async (t) => {
@@ -249,9 +276,13 @@ test('execute endpoint requires confirmation and matching plan hash', async (t) 
   t.assert.strictEqual(execution.body.tasks.total, 1)
 })
 
-test('trusted-auto remains descriptive and cross-project previews stay manual', async (t) => {
-  await call('PUT', '/api/projects/orders', { sync: { mode: 'trusted-auto' } })
-  await call('PUT', '/api/projects/inventory', { sync: { mode: 'trusted-auto' } })
+test('trusted-auto remains descriptive and cross-project target mismatches are blocked', async (t) => {
+  await call('PUT', '/api/projects/orders', {
+    sync: { mode: 'trusted-auto', server: 'project-task', projectId: '123', managedFields }
+  })
+  await call('PUT', '/api/projects/inventory', {
+    sync: { mode: 'trusted-auto', server: 'project-task', projectId: '123', managedFields }
+  })
 
   const trusted = await call('POST', '/api/milestones/S6/sync-plan', {})
   t.assert.strictEqual(trusted.status, 200)
@@ -259,13 +290,33 @@ test('trusted-auto remains descriptive and cross-project previews stay manual', 
   t.assert.strictEqual(findSyncRecord(root, 'milestone', 'S6').status, 'pending-confirmation')
   t.assert.strictEqual(milestones.readMilestone(root, 'S6').external, null)
 
-  const crossProject = await call('POST', '/api/milestones/S7/sync-plan', {})
-  t.assert.strictEqual(crossProject.status, 200)
+  const sameTarget = await call('POST', '/api/milestones/S7/sync-plan', {
+    server: 'browser-server', projectId: 999,
+    tools: { saveSprint: 'browser-tool' }, mapping: { projectId: 999 }
+  })
+  t.assert.strictEqual(sameTarget.status, 200)
+  t.assert.strictEqual(sameTarget.body.server, 'project-task')
+  t.assert.strictEqual(sameTarget.body.projectId, 123)
   t.assert.strictEqual(findSyncRecord(root, 'milestone', 'S7').mode, 'manual')
-  t.assert.strictEqual(findSyncRecord(root, 'milestone', 'S7').status, 'pending-confirmation')
 
-  await call('PUT', '/api/projects/orders', { sync: { mode: 'manual' } })
-  await call('PUT', '/api/projects/inventory', { sync: { mode: 'manual' } })
+  await call('PUT', '/api/projects/inventory', {
+    sync: { mode: 'trusted-auto', server: 'project-task', projectId: '456', managedFields }
+  })
+  remote.state.calls.length = 0
+  const crossProject = await call('POST', '/api/milestones/S7/sync-plan', {
+    server: 'browser-server', projectId: 999,
+    tools: { saveSprint: 'browser-tool' }, mapping: { projectId: 999 }
+  })
+  t.assert.strictEqual(crossProject.status, 409)
+  t.assert.strictEqual(crossProject.body.code, 'PROJECT_SYNC_TARGET_MISMATCH')
+  t.assert.strictEqual(remote.state.calls.length, 0)
+
+  await call('PUT', '/api/projects/orders', {
+    sync: { mode: 'manual', server: 'project-task', projectId: '123', managedFields }
+  })
+  await call('PUT', '/api/projects/inventory', {
+    sync: { mode: 'manual', server: 'project-task', projectId: '123', managedFields }
+  })
 })
 
 test('local lifecycle transitions remain explicit', async (t) => {

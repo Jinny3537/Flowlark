@@ -3,6 +3,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cleanup, newHub } from './helpers.js'
+import { resolveCapability } from '../src/core/mcp-config.js'
 
 const dirs = []
 let server
@@ -179,15 +180,47 @@ describe('MCP 配置文件', () => {
 
     await t.assert.rejects(
       hub.syncMilestoneToExternal('S-MCP', 'mcp'),
-      (error) => error.code === 'ASSESS_MCP_NOT_CONFIGURED'
+      (error) => error.code === 'PROJECT_SYNC_TARGET_REQUIRED'
     )
     t.assert.strictEqual(hub.getMilestone('S-MCP').external.status, 'active')
   })
 
-  test('启用迭代能力但没有绑定服务会被拦截', (t) => {
+  test('迭代能力可只配置工具与选项，不要求全局目标', (t) => {
     const { root, hub } = newHub()
     dirs.push(root)
-    t.assert.throws(() => hub.saveMcpCapability('milestones', { enabled: true, server: '' }), /迭代 MCP 能力已启用/)
+    const info = hub.saveMcpCapability('milestones', {
+      enabled: true,
+      server: '',
+      project: '',
+      options: { ownerId: 7, taskType: 2 }
+    })
+    t.assert.strictEqual(info.config.capabilities.milestones.enabled, true)
+  })
+
+  test('迭代能力可由项目目标解析服务和项目，能力只提供工具与选项', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    hub.saveMcpServer({
+      id: 'project-task',
+      name: '项目任务服务',
+      type: 'stdio',
+      adapter: 'assess-task',
+      runtimeProfile: 'project-task-runtime'
+    })
+    hub.saveMcpCapability('milestones', {
+      enabled: true,
+      server: 'capability-only',
+      project: '999',
+      tools: { test: 'custom.test', get: 'custom.get', upsert: 'custom.save' },
+      options: { ownerId: 7, taskType: 2, projectId: 999 }
+    })
+
+    const resolved = resolveCapability(root, 'milestones', { server: 'project-task', projectId: '123' })
+    t.assert.strictEqual(resolved.server.id, 'project-task')
+    t.assert.strictEqual(resolved.runtimeProfile, 'project-task-runtime')
+    t.assert.strictEqual(resolved.project, '123')
+    t.assert.strictEqual(resolved.tools.get, 'custom.get')
+    t.assert.deepStrictEqual(resolved.capability.options, { ownerId: 7, taskType: 2, projectId: 999 })
   })
 
   test('支持保存、测试和删除扩展模块 MCP 能力', async (t) => {

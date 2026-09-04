@@ -42,6 +42,7 @@ import { createAssessTaskAdapter } from './integrations/assess-task/adapter.js'
 import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycle.js'
 import { confirmationPreflight, transitionRequirementStatus } from './requirement-lifecycle.js'
 import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
+import { resolveProjectSyncContext } from './project-sync-context.js'
 import {
   executeMilestoneSync as executeSync,
   resumeMilestoneSync as resumeSync,
@@ -658,10 +659,10 @@ export class Hub {
     const info = mcpConfig.inspect(this.root)
     const integrationProblems = [...info.problems]
     const capability = info.config.capabilities.milestones
-    const server = info.config.servers.find((entry) => entry.id === capability?.server)
-    if (capability?.enabled && server?.type === 'stdio' && server.adapter === 'assess-task') {
+    const syncContext = resolveProjectSyncContext(this.root, item, info)
+    integrationProblems.push(...syncContext.blockers)
+    if (syncContext.ready) {
       const options = capability.options || {}
-      if (!Number(capability.project)) integrationProblems.push({ code: 'ASSESS_PROJECT_REQUIRED', message: '尚未配置平台项目 ID' })
       if (!Number(options.ownerId)) integrationProblems.push({ code: 'SPRINT_OWNER_REQUIRED', message: '尚未配置平台冲刺负责人' })
       if (!Number(options.taskType)) integrationProblems.push({ code: 'TASK_TYPE_REQUIRED', message: '尚未配置平台默认任务类型' })
       for (const code of new Set(item.items.map((entry) => entry.requirement))) {
@@ -679,7 +680,7 @@ export class Hub {
 
   async planMilestoneSync(name, input = {}) {
     const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
-    const plan = await this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, value, adapter, config))
+    const plan = await this.#withAssessAdapter(name, false, (adapter, config) => this.#buildMilestoneSyncPlan(name, value, adapter, config), value)
     const sync = await withMilestoneSyncLock(this.root, name, () => this.#saveMilestoneSyncPreview(name, plan))
     return { ...plan, syncId: sync.id, syncStatus: sync.status }
   }
@@ -688,7 +689,7 @@ export class Hub {
     const item = milestones.readMilestone(this.root, name)
     const sprintId = Number(item.external?.sprintId || 0)
     if (!sprintId) return null
-    return this.#withAssessAdapter(false, async (adapter) => {
+    return this.#withAssessAdapter(name, false, async (adapter) => {
       const [sprint, tasks] = await Promise.all([
         adapter.getSprint(sprintId),
         adapter.listTasks({ sprintId })
@@ -731,7 +732,7 @@ export class Hub {
       throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
     }
     const intent = record && planHash === record.planHash ? this.#syncIntent(record) : value
-    return this.#withAssessAdapter(true, async (adapter, config) => {
+    return this.#withAssessAdapter(name, true, async (adapter, config) => {
       const plan = await this.#buildMilestoneSyncPlan(name, intent, adapter, config)
       if (planHash && planHash !== plan.hash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
       const result = await withMilestoneSyncLock(this.root, name, async () => {
@@ -756,7 +757,7 @@ export class Hub {
       })
       this.#log(null, null, 'MILESTONE_SYNC_EXECUTE', `执行迭代 ${name} 同步计划 ${plan.hash}`)
       return result
-    })
+    }, intent)
   }
 
   async resumeMilestoneSync(name, input = {}) {
@@ -767,8 +768,9 @@ export class Hub {
     if (!['failed', 'paused'].includes(record.status)) {
       throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
     }
-    return this.#withAssessAdapter(true, async (adapter, config) => {
-      const plan = await this.#buildMilestoneSyncPlan(name, this.#syncIntent(record), adapter, config)
+    const intent = this.#syncIntent(record)
+    return this.#withAssessAdapter(name, true, async (adapter, config) => {
+      const plan = await this.#buildMilestoneSyncPlan(name, intent, adapter, config)
       const result = await withMilestoneSyncLock(this.root, name, async () => {
         const current = findSyncRecord(this.root, 'milestone', name)
         if (!current) throw err.notFound(`迭代「${name}」的同步记录`)
@@ -792,7 +794,7 @@ export class Hub {
       })
       this.#log(null, null, 'MILESTONE_SYNC_RESUME', `恢复迭代 ${name} 同步`)
       return result
-    })
+    }, intent)
   }
 
   milestoneSyncJournal(name) {
@@ -832,8 +834,9 @@ export class Hub {
     const planHash = String(value.planHash || '').trim()
     if (!planHash) throw err.bad('MCP_SYNC_PLAN_HASH_REQUIRED', '确认同步时必须提供计划哈希')
     if (planHash !== record.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
-    return this.#withAssessAdapter(true, async (adapter, config) => {
-      const plan = await this.#buildMilestoneSyncPlan(record.entityKey, this.#syncIntent(record), adapter, config)
+    const intent = this.#syncIntent(record)
+    return this.#withAssessAdapter(record.entityKey, true, async (adapter, config) => {
+      const plan = await this.#buildMilestoneSyncPlan(record.entityKey, intent, adapter, config)
       return withMilestoneSyncLock(this.root, record.entityKey, async () => {
         const current = this.getSyncRecord(id)
         if (current.status !== 'pending-confirmation') {
@@ -857,7 +860,7 @@ export class Hub {
           lockHeld: true
         })
       })
-    })
+    }, intent)
   }
 
   async retrySyncRecord(id, input = {}) {
@@ -868,8 +871,9 @@ export class Hub {
       throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
     }
     const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
-    return this.#withAssessAdapter(true, async (adapter, config) => {
-      const plan = await this.#buildMilestoneSyncPlan(record.entityKey, this.#syncIntent(record), adapter, config)
+    const intent = this.#syncIntent(record)
+    return this.#withAssessAdapter(record.entityKey, true, async (adapter, config) => {
+      const plan = await this.#buildMilestoneSyncPlan(record.entityKey, intent, adapter, config)
       return withMilestoneSyncLock(this.root, record.entityKey, async () => {
         const current = this.getSyncRecord(id)
         if (!['failed', 'paused'].includes(current.status)) {
@@ -890,7 +894,7 @@ export class Hub {
           lockHeld: true
         })
       })
-    })
+    }, intent)
   }
 
   cancelSyncRecord(id, reason) {
@@ -1381,7 +1385,7 @@ export class Hub {
     if (name === 'milestones') {
       const config = mcpConfig.resolveCapability(this.root, 'milestones')
       if (config.transport === 'stdio' && config.adapter === 'assess-task') {
-        return this.#withAssessAdapter(false, async (adapter) => {
+        return this.#withAssessAdapter(null, false, async (adapter) => {
           const identity = await adapter.probe()
           return { provider: 'assess-task', ok: true, identity: identity.name || identity.account, account: identity.account }
         })
@@ -2244,12 +2248,33 @@ export class Hub {
 
   // ==================== 内部 ====================
 
-  async #withAssessAdapter(write, fn) {
-    if (this.assessAdapter) {
-      const config = this.assessConfig || { server: { id: 'assess-task-test' }, project: '', capability: { options: {} } }
-      return fn(this.assessAdapter, config)
+  async #withAssessAdapter(name, write, fn, input = {}) {
+    let config
+    if (name) {
+      const stored = milestones.inspectMilestone(this.root, name)
+      const scopeItems = Array.isArray(input?.scopeItems)
+        ? milestones.normalizeMilestoneItems(this.root, input.scopeItems)
+        : null
+      const milestone = scopeItems ? { ...stored, items: scopeItems } : stored
+      const context = resolveProjectSyncContext(this.root, milestone, mcpConfig.inspect(this.root))
+      if (context.ready) {
+        config = {
+          ...mcpConfig.resolveCapability(this.root, 'milestones', {
+            server: context.server,
+            projectId: context.projectId
+          }),
+          managedFields: context.managedFields
+        }
+      } else if (this.assessAdapter && this.assessConfig && context.blockers.every((item) => item.code === 'PROJECT_SYNC_TARGET_REQUIRED')) {
+        config = this.assessConfig
+      } else {
+        const blocker = context.blockers[0]
+        throw err.conflict(blocker.code, blocker.message, blocker.repairTo)
+      }
+    } else {
+      config = this.assessConfig || mcpConfig.resolveCapability(this.root, 'milestones')
     }
-    const config = mcpConfig.resolveCapability(this.root, 'milestones')
+    if (this.assessAdapter) return fn(this.assessAdapter, config)
     if (config.transport !== 'stdio' || config.adapter !== 'assess-task') {
       throw err.bad('ASSESS_MCP_NOT_CONFIGURED', '迭代能力尚未绑定 Assess Task stdio MCP')
     }
@@ -2328,6 +2353,7 @@ export class Hub {
       remoteTasks,
       managedTaskBindings,
       mapping,
+      managedFields: config.managedFields,
       action: input.action || null,
       scopeItems,
       scopeChangeReason: scopeItems ? String(input.reason).trim() : '',
