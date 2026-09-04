@@ -60,7 +60,7 @@ Schema 3 在每个 `projects/<项目>/project.json` 中增加 `project.sync`：
 - `server` 是逻辑 MCP 服务标识，`projectId` 是外部项目标识。密码、Token、可执行文件路径和个人运行配置不放进 `project.sync`。
 - `managedFields` 只保存 Flowlark 允许管理的字段：`title`、`description`、`acceptance`、`priority`、`assignee`、`sprint`、`status` 和 `delivery`。
 
-打开 Schema 1 或 Schema 2 仓库时，Flowlark 会先备份受迁移影响的元数据，再补齐项目策略，最后写入 `schemaVersion: 3`。迁移中任一步失败时，恢复备份；也可以使用保留在 `.flowlark/backup/` 中的备份手工回滚。
+打开 Schema 1 或 Schema 2 仓库时，Flowlark 会先备份受迁移影响的元数据，再补齐项目策略，最后写入 `schemaVersion: 3`。迁移中任一步失败时，恢复备份；也可以使用保留在 `.flowlark/backup/` 中的备份手工回滚。Schema 3 迁移会拒绝符号链接形式的 `.gitignore` 或 `.gitattributes`，避免通过链接改写仓库外文件。
 
 ## 区分团队历史和本机恢复状态
 
@@ -72,7 +72,7 @@ Schema 3 在每个 `projects/<项目>/project.json` 中增加 `project.sync`：
 | `.flowlark/backup/` | Schema 迁移前的可恢复元数据 | 否 |
 | `.flowlark/cache/` 中的其他外部系统缓存 | 旧版 MCP 记录等本机运行数据 | 否 |
 
-`.flowlark/sync-audit.ndjson` 在写入前按键名递归脱敏，密码、授权信息、Token、Secret 和环境变量值都替换为 `[REDACTED]`。审计文件是可追踪历史，但不是凭据存储。备份、队列记录和所有外部缓存都只留在当前本机 checkout，由 `.gitignore` 排除。
+`.flowlark/sync-audit.ndjson` 记录预览生成、取消请求与结果、执行状态和步骤变化。写入前会按键名递归脱敏，并清洗错误消息等字符串中的 `Bearer`、`Basic`、`api_key` 和 `sk-` Token，敏感值替换为 `[REDACTED]`。审计文件是可追踪历史，但不是凭据存储。备份、队列记录和所有外部缓存都只留在当前本机 checkout，由 `.gitignore` 排除。
 
 ## 三个关键决定
 
