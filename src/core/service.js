@@ -43,7 +43,13 @@ import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycl
 import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
 import { executeMilestoneSync as executeSync, resumeMilestoneSync as resumeSync } from './milestone-sync.js'
 import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
-import { savePendingSync } from './sync-queue.js'
+import { listSyncAudit as readSyncAudit } from './sync-audit.js'
+import {
+  cancelSyncRecord as cancelQueuedSyncRecord,
+  listSyncRecords as readSyncRecords,
+  readSyncRecord,
+  savePendingSync
+} from './sync-queue.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -718,6 +724,66 @@ export class Hub {
 
   milestoneSyncJournal(name) {
     return readMilestoneSyncJournal(this.root, name) || { milestone: name, status: 'not-started', operations: [] }
+  }
+
+  listSyncRecords(filters = {}) {
+    const records = readSyncRecords(this.root, filters)
+    return {
+      items: records,
+      counts: {
+        attention: records.filter((item) => ['pending-confirmation', 'failed', 'paused'].includes(item.status)).length,
+        running: records.filter((item) => item.status === 'running').length,
+        completed: records.filter((item) => item.status === 'completed').length
+      }
+    }
+  }
+
+  getSyncRecord(id) {
+    const record = readSyncRecord(this.root, id)
+    if (!record) throw err.notFound(`同步记录「${id}」`)
+    return record
+  }
+
+  listSyncAudit(filters = {}) {
+    return readSyncAudit(this.root, filters)
+  }
+
+  async executeSyncRecord(id, input = {}) {
+    this.#assertWritable('执行同步记录')
+    const record = this.getSyncRecord(id)
+    this.#assertSupportedSyncEntity(record)
+    if (record.status !== 'pending-confirmation') {
+      throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
+    }
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    const planHash = String(value.planHash || '').trim()
+    if (!planHash) throw err.bad('MCP_SYNC_PLAN_HASH_REQUIRED', '确认同步时必须提供计划哈希')
+    if (planHash !== record.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+    return this.executeMilestoneSync(record.entityKey, {
+      confirmed: true,
+      planHash,
+      reason: String(value.reason || ''),
+      confirmUnfinished: value.confirmUnfinished === true
+    })
+  }
+
+  async retrySyncRecord(id, input = {}) {
+    this.#assertWritable('重试同步记录')
+    const record = this.getSyncRecord(id)
+    this.#assertSupportedSyncEntity(record)
+    if (!['failed', 'paused'].includes(record.status)) {
+      throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
+    }
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    return this.resumeMilestoneSync(record.entityKey, {
+      reason: String(value.reason || ''),
+      confirmUnfinished: value.confirmUnfinished === true
+    })
+  }
+
+  cancelSyncRecord(id, reason) {
+    this.#assertWritable('取消同步记录')
+    return cancelQueuedSyncRecord(this.root, id, reason)
   }
 
   transitionMilestone(name, input = {}) {
@@ -2232,6 +2298,12 @@ export class Hub {
 
   #assertWritable(action) {
     return permissions.assertWritable(this.root, action)
+  }
+
+  #assertSupportedSyncEntity(record) {
+    if (record.entityType !== 'milestone') {
+      throw err.bad('SYNC_ENTITY_UNSUPPORTED', `不支持的同步对象类型：${record.entityType || 'unknown'}`)
+    }
   }
 }
 

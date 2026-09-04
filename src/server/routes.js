@@ -162,6 +162,25 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   })
   r.delete('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.removeMilestone(p.name)))
 
+  // ---- 同步中心 ----
+  // audit 必须先于动态 :id，否则会被当作同步记录 ID。
+  r.get('/api/sync', async (req, res, p, url) => sendJson(res, 200,
+    hub.listSyncRecords({ status: url.searchParams.get('status') || '' })))
+  r.get('/api/sync/audit', async (req, res, p, url) => sendJson(res, 200,
+    hub.listSyncAudit({
+      limit: Number(url.searchParams.get('limit')) || 100,
+      syncId: url.searchParams.get('syncId') || ''
+    })))
+  r.get('/api/sync/:id', async (req, res, p) => sendJson(res, 200, hub.getSyncRecord(p.id)))
+  r.post('/api/sync/:id/execute', async (req, res, p) =>
+    sendJson(res, 200, await hub.executeSyncRecord(p.id, await readJson(req, maxBody))))
+  r.post('/api/sync/:id/retry', async (req, res, p) =>
+    sendJson(res, 200, await hub.retrySyncRecord(p.id, await readJson(req, maxBody))))
+  r.post('/api/sync/:id/cancel', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.cancelSyncRecord(p.id, body?.reason))
+  })
+
   // ---- 团队已存视图 ----
   r.get('/api/views', async (req, res) => sendJson(res, 200, hub.listSavedViews()))
   r.put('/api/views/:id', async (req, res, p) => {

@@ -799,7 +799,7 @@ git commit -m "feat: register milestone synchronization runs"
 - Modify: `src/server/routes.js`
 - Create: `test/sync-center-api.test.js`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 Create `test/sync-center-api.test.js` covering:
 
@@ -824,7 +824,7 @@ The execute body is fixed:
 
 It must not accept `tool`, `toolName`, `server`, `command`, or arbitrary operation data.
 
-- [ ] **Step 2: Run the API test and verify failure**
+- [x] **Step 2: Run the API test and verify failure**
 
 Run:
 
@@ -834,7 +834,7 @@ node --test test/sync-center-api.test.js
 
 Expected: FAIL with 404 routes or missing Hub methods.
 
-- [ ] **Step 3: Add Hub methods**
+- [x] **Step 3: Add Hub methods**
 
 Add these fixed methods to `src/core/service.js`:
 
@@ -862,7 +862,7 @@ cancelSyncRecord(id, reason)
 }
 ```
 
-- [ ] **Step 4: Register HTTP routes in collision-safe order**
+- [x] **Step 4: Register HTTP routes in collision-safe order**
 
 Add before `GET /api/sync/:id`:
 
@@ -882,7 +882,7 @@ r.post('/api/sync/:id/cancel', async (req, res, p) => {
 })
 ```
 
-- [ ] **Step 5: Run API and permission tests**
+- [x] **Step 5: Run API and permission tests**
 
 Run:
 
@@ -892,7 +892,7 @@ node --test test/sync-center-api.test.js test/milestone-sync-api.test.js test/v0
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the APIs**
+- [x] **Step 6: Commit the APIs**
 
 ```bash
 git add src/core/service.js src/server/routes.js test/sync-center-api.test.js
