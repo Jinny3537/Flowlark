@@ -31,6 +31,30 @@ describe('需求实体与反向索引', () => {
     t.assert.strictEqual(item.external, null)
   })
 
+  test('受控任务绑定执行 CAS 并保证远端任务反向唯一', (t) => {
+    const { root, hub } = fixture()
+    hub.createRequirement({ code: 'REQ-CAS-A', title: 'CAS A' })
+    hub.createRequirement({ code: 'REQ-CAS-B', title: 'CAS B' })
+    let item = reqx.replaceExternalTask(root, 'REQ-CAS-A', {
+      provider: 'assess-task', server: 'team', projectId: 123, taskId: 7, revision: 1,
+      lastSyncHash: 'must-be-cleared'
+    }, { expectedTaskId: null })
+    t.assert.strictEqual(item.externalTasks[0].taskId, 7)
+    t.assert.strictEqual(item.externalTasks[0].lastSyncHash, '')
+
+    throwsCode(t, 'EXTERNAL_TASK_CAS_MISMATCH', () => reqx.replaceExternalTask(root, 'REQ-CAS-A', {
+      provider: 'assess-task', server: 'team', projectId: 123, taskId: 8
+    }, { expectedTaskId: null }))
+    throwsCode(t, 'EXTERNAL_TASK_ALREADY_BOUND', () => reqx.replaceExternalTask(root, 'REQ-CAS-B', {
+      provider: 'assess-task', server: 'team', projectId: 123, taskId: 7
+    }, { expectedTaskId: null }))
+
+    item = reqx.replaceExternalTask(root, 'REQ-CAS-A', {
+      provider: 'assess-task', server: 'team', projectId: 123, taskId: 8, revision: 2
+    }, { expectedTaskId: 7 })
+    t.assert.strictEqual(item.externalTasks[0].taskId, 8)
+  })
+
   test('客户端不能注入外部绑定，但显式 trusted 内部导入可以保存', (t) => {
     const { root, hub } = fixture()
     const external = { provider: 'mcp', key: 'REMOTE-1', status: 'doing' }

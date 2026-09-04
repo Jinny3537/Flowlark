@@ -36,9 +36,13 @@ export function normalizeMilestoneItems(root, items) {
   return out
 }
 
-export function createMilestone(root, input) {
+export function createMilestone(root, input, { system = false } = {}) {
+  if (!system && Object.hasOwn(input || {}, 'external')) {
+    throw err.bad('MILESTONE_MANAGED_FIELD', '字段「external」由 Flowlark 管理，不能由普通创建请求设置')
+  }
   const name = assertMilestoneName(input.name)
   if (milestoneExists(root, name)) throw err.conflict('MILESTONE_EXISTS', `迭代「${name}」已存在`)
+  if (system && input.external?.sprintId) assertExternalSprintAvailable(root, name, input.external)
   const now = new Date().toISOString()
   const item = {
     name,
@@ -49,7 +53,7 @@ export function createMilestone(root, input) {
     startAt: input.startAt || null,
     endAt: input.endAt || null,
     items: normalizeMilestoneItems(root, input.items),
-    external: input.external || null,
+    external: system ? input.external || null : null,
     createdAt: now,
     updatedAt: now
   }
@@ -76,6 +80,10 @@ export function listMilestones(root) {
 export function updateMilestone(root, name, patch, { system = false } = {}) {
   const item = readMilestone(root, name)
   const businessFields = ['title', 'goal', 'owner', 'startAt', 'endAt', 'items']
+  if (!system && Object.hasOwn(patch || {}, 'external')) {
+    throw err.bad('MILESTONE_MANAGED_FIELD', '字段「external」由 Flowlark 管理，不能由普通编辑请求设置')
+  }
+  if (system && patch.external?.sprintId) assertExternalSprintAvailable(root, item.name, patch.external)
   if (!system && isLocked(item.status) && businessFields.some((key) => patch[key] !== undefined)) {
     throw err.conflict('MILESTONE_LOCKED', `迭代「${item.name}」处于 ${item.status} 状态，不能直接编辑`)
   }
@@ -91,6 +99,58 @@ export function updateMilestone(root, name, patch, { system = false } = {}) {
   item.updatedAt = new Date().toISOString()
   fs.writeFileSync(store.paths.milestoneFile(root, item.name), stringify(item, 'milestone'))
   return inspectMilestone(root, item)
+}
+
+export function replaceExternalSprint(root, milestoneName, binding, { expectedSprintId } = {}) {
+  const item = readMilestone(root, milestoneName)
+  const expected = nullablePositiveId(expectedSprintId, '预期平台 Sprint ID')
+  const currentSprintId = item.external?.sprintId ? positiveId(item.external.sprintId, '当前平台 Sprint ID') : null
+  if (currentSprintId !== expected) {
+    throw err.conflict(
+      'EXTERNAL_SPRINT_CAS_MISMATCH',
+      `迭代 ${item.name} 的平台 Sprint 绑定已变化，当前为 ${currentSprintId ?? '未绑定'}`
+    )
+  }
+  const server = String(binding?.server || '').trim()
+  const projectId = positiveId(binding?.projectId, '平台项目 ID')
+  const sprintId = positiveId(binding?.sprintId, '平台 Sprint ID')
+  if (!server) throw err.bad('EXTERNAL_SPRINT_INVALID', '平台 Sprint 绑定缺少服务标识')
+  assertExternalSprintAvailable(root, item.name, { server, projectId, sprintId })
+  item.external = {
+    provider: String(binding?.provider || 'assess-task'),
+    server,
+    projectId,
+    sprintId,
+    revision: finiteOrNull(binding?.revision),
+    remoteStatus: binding?.remoteStatus ?? null,
+    url: String(binding?.url || ''),
+    lastSyncHash: '',
+    syncedAt: binding?.syncedAt || null
+  }
+  item.updatedAt = new Date().toISOString()
+  fs.writeFileSync(store.paths.milestoneFile(root, item.name), stringify(item, 'milestone'))
+  return inspectMilestone(root, item)
+}
+
+export function assertExternalSprintAvailable(root, milestoneName, binding) {
+  const server = String(binding?.server || '').trim()
+  const projectId = positiveId(binding?.projectId, '平台项目 ID')
+  const sprintId = positiveId(binding?.sprintId, '平台 Sprint ID')
+  if (!server) throw err.bad('EXTERNAL_SPRINT_INVALID', '平台 Sprint 绑定缺少服务标识')
+  const dir = store.paths.milestones(root)
+  if (!fs.existsSync(dir)) return { server, projectId, sprintId }
+  for (const file of fs.readdirSync(dir).filter((name) => name.endsWith('.json'))) {
+    const otherName = file.slice(0, -5)
+    if (otherName === milestoneName) continue
+    const external = readMilestone(root, otherName).external
+    if (external?.server === server && Number(external.projectId) === projectId && Number(external.sprintId) === sprintId) {
+      throw err.conflict(
+        'EXTERNAL_SPRINT_ALREADY_BOUND',
+        `平台 Sprint ${sprintId} 已绑定迭代 ${otherName}`
+      )
+    }
+  }
+  return { server, projectId, sprintId }
 }
 
 export function removeMilestone(root, name) {
@@ -126,4 +186,21 @@ function normalizeStoredMilestone(input = {}) {
 
 function isLocked(status) {
   return MILESTONE_STATUSES.has(status) && !['planning', 'reviewing'].includes(status)
+}
+
+function positiveId(value, label) {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number <= 0) throw err.bad('EXTERNAL_SPRINT_INVALID', `${label} 必须是正整数`)
+  return number
+}
+
+function nullablePositiveId(value, label) {
+  if (value == null || value === '') return null
+  return positiveId(value, label)
+}
+
+function finiteOrNull(value) {
+  if (value == null || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
 }

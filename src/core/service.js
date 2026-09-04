@@ -43,6 +43,7 @@ import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycl
 import { confirmationPreflight, transitionRequirementStatus } from './requirement-lifecycle.js'
 import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
 import { resolveProjectSyncContext } from './project-sync-context.js'
+import * as externalBindings from './external-bindings.js'
 import {
   executeMilestoneSync as executeSync,
   resumeMilestoneSync as resumeSync,
@@ -55,7 +56,8 @@ import {
   findSyncRecord,
   listSyncRecords as readSyncRecords,
   readSyncRecord,
-  savePendingSync
+  savePendingSync,
+  transitionSyncRecord as transitionQueuedSyncRecord
 } from './sync-queue.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
@@ -636,10 +638,10 @@ export class Hub {
       try {
         const input = this.#externalMilestoneInput(selected, remote)
         if (milestones.milestoneExists(this.root, remote.name)) {
-          milestones.updateMilestone(this.root, remote.name, input)
+          milestones.updateMilestone(this.root, remote.name, input, { system: true })
           result.updated++
         } else {
-          milestones.createMilestone(this.root, { ...input, name: remote.name, items: [] })
+          milestones.createMilestone(this.root, { ...input, name: remote.name, items: [] }, { system: true })
           result.created++
         }
       } catch (e) {
@@ -683,6 +685,46 @@ export class Hub {
     const plan = await this.#withAssessAdapter(name, false, (adapter, config) => this.#buildMilestoneSyncPlan(name, value, adapter, config), value)
     const sync = await withMilestoneSyncLock(this.root, name, () => this.#saveMilestoneSyncPreview(name, plan))
     return { ...plan, syncId: sync.id, syncStatus: sync.status }
+  }
+
+  async planRequirementTaskBinding(code, input = {}) {
+    this.#assertWritable('预览需求平台任务绑定')
+    reqx.readRequirement(this.root, code)
+    const value = externalBindings.normalizeTaskBindingInput(input)
+    return this.#withProjectAssessAdapter(value.project, false, async (adapter, config) => {
+      const remote = await adapter.getTask(value.remoteId)
+      return withMilestoneSyncLock(this.root, 'binding:external-tasks', () => {
+        const plan = externalBindings.buildTaskBindingPlan(this.root, {
+          code,
+          ...value,
+          server: config.server.id,
+          projectId: Number(config.project),
+          remote
+        })
+        const sync = this.#saveBindingSyncPreview(plan)
+        return { ...plan, syncId: sync.id, syncStatus: sync.status }
+      })
+    })
+  }
+
+  async planMilestoneSprintBinding(name, input = {}) {
+    this.#assertWritable('预览迭代平台 Sprint 绑定')
+    milestones.readMilestone(this.root, name)
+    const value = externalBindings.normalizeSprintBindingInput(input)
+    return this.#withProjectAssessAdapter(value.project, false, async (adapter, config) => {
+      const remote = await adapter.getSprint(value.remoteId)
+      return withMilestoneSyncLock(this.root, 'binding:external-sprints', () => {
+        const plan = externalBindings.buildSprintBindingPlan(this.root, {
+          milestoneName: name,
+          ...value,
+          server: config.server.id,
+          projectId: Number(config.project),
+          remote
+        })
+        const sync = this.#saveBindingSyncPreview(plan)
+        return { ...plan, syncId: sync.id, syncStatus: sync.status }
+      })
+    })
   }
 
   async milestoneExecutionSummary(name) {
@@ -826,6 +868,9 @@ export class Hub {
   async executeSyncRecord(id, input = {}) {
     this.#assertWritable('执行同步记录')
     const record = this.getSyncRecord(id)
+    if (externalBindings.isBindingPlan(record.plan, record.entityType, record.entityKey)) {
+      return this.#executeBindingSyncRecord(record, input, { retry: false })
+    }
     this.#assertSupportedSyncEntity(record)
     if (record.status !== 'pending-confirmation') {
       throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
@@ -866,6 +911,9 @@ export class Hub {
   async retrySyncRecord(id, input = {}) {
     this.#assertWritable('重试同步记录')
     const record = this.getSyncRecord(id)
+    if (externalBindings.isBindingPlan(record.plan, record.entityType, record.entityKey)) {
+      return this.#executeBindingSyncRecord(record, input, { retry: true })
+    }
     this.#assertSupportedSyncEntity(record)
     if (!['failed', 'paused'].includes(record.status)) {
       throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
@@ -902,7 +950,7 @@ export class Hub {
     const record = this.getSyncRecord(id)
     const value = String(reason || '').trim()
     if (!value) throw err.bad('SYNC_CANCEL_REASON_REQUIRED', '取消同步必须填写原因')
-    return withMilestoneSyncLock(this.root, record.entityKey, () => {
+    return withMilestoneSyncLock(this.root, this.#syncRecordLockKey(record), () => {
       const current = this.getSyncRecord(id)
       this.#appendRequiredSyncAudit({
         syncId: current.id,
@@ -2274,6 +2322,30 @@ export class Hub {
     } else {
       config = this.assessConfig || mcpConfig.resolveCapability(this.root, 'milestones')
     }
+    return this.#withResolvedAssessAdapter(config, write, fn)
+  }
+
+  async #withProjectAssessAdapter(project, write, fn) {
+    store.readProject(this.root, project)
+    const context = resolveProjectSyncContext(this.root, {
+      name: `binding:${project}`,
+      items: [{ project }]
+    }, mcpConfig.inspect(this.root))
+    if (!context.ready) {
+      const blocker = context.blockers[0]
+      throw err.conflict(blocker.code, blocker.message, blocker.repairTo)
+    }
+    const config = {
+      ...mcpConfig.resolveCapability(this.root, 'milestones', {
+        server: context.server,
+        projectId: context.projectId
+      }),
+      managedFields: context.managedFields
+    }
+    return this.#withResolvedAssessAdapter(config, write, fn)
+  }
+
+  async #withResolvedAssessAdapter(config, write, fn) {
     if (this.assessAdapter) return fn(this.assessAdapter, config)
     if (config.transport !== 'stdio' || config.adapter !== 'assess-task') {
       throw err.bad('ASSESS_MCP_NOT_CONFIGURED', '迭代能力尚未绑定 Assess Task stdio MCP')
@@ -2305,6 +2377,123 @@ export class Hub {
     } finally {
       await session.close()
     }
+  }
+
+  async #executeBindingSyncRecord(record, input = {}, { retry = false } = {}) {
+    const allowedStatuses = retry ? ['failed', 'paused'] : ['pending-confirmation']
+    if (!allowedStatuses.includes(record.status)) {
+      throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 变更为 running`)
+    }
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    if (!retry && value.confirmed !== true) throw err.bad('MCP_SYNC_CONFIRMATION_REQUIRED', '请先确认绑定计划')
+    const planHash = retry ? record.planHash : String(value.planHash || '').trim()
+    if (!planHash) throw err.bad('MCP_SYNC_PLAN_HASH_REQUIRED', '确认绑定时必须提供计划哈希')
+    if (planHash !== record.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '绑定计划已经变化，请重新确认')
+    if (!retry && Date.parse(record.plan?.expiresAt) <= Date.now()) {
+      throw err.conflict('MCP_SYNC_PLAN_EXPIRED', '绑定计划已过期，请重新生成')
+    }
+    const intent = record.intent || record.plan?.intent || {}
+    const normalized = record.entityType === 'requirement'
+      ? externalBindings.normalizeTaskBindingInput(intent)
+      : externalBindings.normalizeSprintBindingInput(intent)
+    const lockKey = this.#syncRecordLockKey(record)
+    return this.#withProjectAssessAdapter(normalized.project, false, async (adapter, config) => {
+      const remote = record.entityType === 'requirement'
+        ? await adapter.getTask(normalized.remoteId)
+        : await adapter.getSprint(normalized.remoteId)
+      const plan = record.entityType === 'requirement'
+        ? externalBindings.buildTaskBindingPlan(this.root, {
+            code: record.entityKey,
+            ...normalized,
+            server: config.server.id,
+            projectId: Number(config.project),
+            remote
+          })
+        : externalBindings.buildSprintBindingPlan(this.root, {
+            milestoneName: record.entityKey,
+            ...normalized,
+            server: config.server.id,
+            projectId: Number(config.project),
+            remote
+          })
+      return withMilestoneSyncLock(this.root, lockKey, async () => {
+        const current = this.getSyncRecord(record.id)
+        if (!allowedStatuses.includes(current.status)) {
+          throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${current.status || 'unknown'} 变更为 running`)
+        }
+        if (current.planHash !== record.planHash || current.planHash !== planHash) {
+          throw err.conflict('MCP_SYNC_PLAN_CHANGED', '绑定计划已经变化，请重新确认')
+        }
+        if (plan.hash !== record.planHash) {
+          this.#saveBindingSyncPreview(plan)
+          throw err.conflict('MCP_SYNC_PLAN_CHANGED', '绑定计划已经变化，请重新确认')
+        }
+        const operation = plan.operations[0]
+        const running = transitionQueuedSyncRecord(this.root, record.id, 'running', {
+          reason: normalized.reason,
+          operations: current.operations.map((step) => ({ ...step, status: 'running', updatedAt: new Date().toISOString() }))
+        })
+        this.#appendRequiredSyncAudit({
+          syncId: running.id,
+          action: 'sync.running',
+          status: running.status,
+          entityType: running.entityType,
+          entityKey: running.entityKey,
+          operationKey: operation.key,
+          before: operation.before,
+          after: operation.after
+        })
+        try {
+          externalBindings.executeBindingPlan(this.root, plan)
+          this.#appendRequiredSyncAudit({
+            syncId: running.id,
+            action: 'binding.replaced',
+            status: 'completed',
+            entityType: running.entityType,
+            entityKey: running.entityKey,
+            operationKey: operation.key,
+            before: operation.before,
+            after: operation.after
+          })
+        } catch (error) {
+          const failed = transitionQueuedSyncRecord(this.root, record.id, 'failed', {
+            error: { code: error?.code || 'EXTERNAL_BINDING_FAILED', message: String(error?.message || error) }
+          })
+          this.#appendRequiredSyncAudit({
+            syncId: failed.id,
+            action: 'sync.failed',
+            status: failed.status,
+            entityType: failed.entityType,
+            entityKey: failed.entityKey,
+            operationKey: operation.key,
+            before: operation.before,
+            after: operation.after,
+            error: failed.error
+          })
+          throw error
+        }
+        const completed = transitionQueuedSyncRecord(this.root, record.id, 'completed', {
+          operations: running.operations.map((step) => ({
+            ...step,
+            status: 'completed',
+            remoteResult: operation.after,
+            updatedAt: new Date().toISOString()
+          })),
+          error: null
+        })
+        this.#appendRequiredSyncAudit({
+          syncId: completed.id,
+          action: 'sync.completed',
+          status: completed.status,
+          entityType: completed.entityType,
+          entityKey: completed.entityKey,
+          operationKey: operation.key,
+          before: operation.before,
+          after: operation.after
+        })
+        return completed
+      })
+    })
   }
 
   async #buildMilestoneSyncPlan(name, input, adapter, config) {
@@ -2373,6 +2562,33 @@ export class Hub {
       entityType: 'milestone',
       entityKey: name,
       route: `/milestones/${encodeURIComponent(name)}`,
+      mode,
+      intent: plan.intent,
+      plan
+    })
+    const previewed = readSyncAudit(this.root, { syncId: sync.id, limit: 500 }).some((entry) =>
+      entry.action === 'sync.previewed' && entry.after?.planHash === sync.planHash)
+    if (sync.status === 'pending-confirmation' && !previewed) {
+      this.#appendRequiredSyncAudit({
+        syncId: sync.id,
+        action: 'sync.previewed',
+        status: sync.status,
+        entityType: sync.entityType,
+        entityKey: sync.entityKey,
+        before: existing ? { status: existing.status, planHash: existing.planHash } : null,
+        after: { status: sync.status, planHash: sync.planHash }
+      })
+    }
+    return sync
+  }
+
+  #saveBindingSyncPreview(plan) {
+    const existing = findSyncRecord(this.root, plan.entityType, plan.entityKey)
+    const mode = normalizeSyncPolicy(store.readProject(this.root, plan.project).sync).mode
+    const sync = savePendingSync(this.root, {
+      entityType: plan.entityType,
+      entityKey: plan.entityKey,
+      route: plan.route,
       mode,
       intent: plan.intent,
       plan
@@ -2544,6 +2760,15 @@ export class Hub {
 
   #assertWritable(action) {
     return permissions.assertWritable(this.root, action)
+  }
+
+  #syncRecordLockKey(record) {
+    if (externalBindings.isBindingPlan(record?.plan, record?.entityType, record?.entityKey)) {
+      return record.entityType === 'requirement'
+        ? 'binding:external-tasks'
+        : 'binding:external-sprints'
+    }
+    return record.entityKey
   }
 
   #assertSupportedSyncEntity(record) {

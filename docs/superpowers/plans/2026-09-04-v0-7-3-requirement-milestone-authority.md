@@ -291,27 +291,27 @@ git commit -m "feat: enforce managed synchronization fields"
 - Modify: `test/requirements.test.js`
 - Modify: `test/milestones.test.js`
 
-- [ ] Write failing tests for first bind, CAS rebind, duplicate task binding, wrong project, missing remote object, stale expected ID, and browser-supplied server/tool rejection.
-- [ ] Implement reverse uniqueness for `(server, projectId, taskId)` across all requirements.
-- [ ] Implement system-only CAS helpers:
+- [x] Write failing tests for first bind, CAS rebind, duplicate task binding, wrong project, missing remote object, stale expected ID, and browser-supplied server/tool rejection.
+- [x] Implement reverse uniqueness for `(server, projectId, taskId)` across all requirements.
+- [x] Implement system-only CAS helpers:
 
 ```js
 export function replaceExternalTask(root, code, binding, { expectedTaskId })
 export function replaceExternalSprint(root, milestoneName, binding, { expectedSprintId })
 ```
 
-- [ ] Add server-owned binding preview endpoints that accept only project slug, remote ID, expected old ID, reason, and confirmation flag.
-- [ ] Resolve server/project from project sync context; fetch and verify the remote object before producing a high-risk queue plan.
-- [ ] Execute binding changes through a known `requirement` or `milestone-binding` queue entity, fixed dispatcher, hash revalidation, lock, and team audit.
-- [ ] Leave `lastSyncHash` empty after rebind so the next field synchronization requires `restore-local` confirmation.
-- [ ] Prevent ordinary requirement/milestone create/update routes from accepting binding fields.
-- [ ] Run:
+- [x] Add server-owned binding preview endpoints that accept only project slug, remote ID, expected old ID, reason, and confirmation flag.
+- [x] Resolve server/project from project sync context; fetch and verify the remote object before producing a high-risk queue plan.
+- [x] Execute binding changes through a known `requirement` or `milestone-binding` queue entity, fixed dispatcher, hash revalidation, lock, and team audit.
+- [x] Leave `lastSyncHash` empty after rebind so the next field synchronization requires `restore-local` confirmation.
+- [x] Prevent ordinary requirement/milestone create/update routes from accepting binding fields.
+- [x] Run:
 
 ```bash
 node --test test/external-binding-api.test.js test/requirements.test.js test/milestones.test.js test/sync-center-api.test.js
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/core/external-bindings.js src/core/requirements.js src/core/milestones.js src/core/service.js src/server/routes.js test/external-binding-api.test.js test/requirements.test.js test/milestones.test.js test/sync-center-api.test.js

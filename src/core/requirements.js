@@ -159,6 +159,7 @@ export function updateRequirementLifecycle(root, code, target, {
 export function upsertExternalTask(root, code, binding) {
   const item = readRequirement(root, code)
   const normalized = normalizeExternalTask(binding)
+  assertExternalTaskAvailable(root, code, normalized)
   const key = externalTaskKey(normalized)
   const existing = item.externalTasks.findIndex((entry) => externalTaskKey(entry) === key)
   if (existing >= 0) item.externalTasks[existing] = normalized
@@ -166,6 +167,46 @@ export function upsertExternalTask(root, code, binding) {
   item.externalTasks.sort((a, b) => externalTaskKey(a).localeCompare(externalTaskKey(b)))
   item.updatedAt = new Date().toISOString()
   fs.writeFileSync(store.paths.requirementFile(root, item.code), stringify(item, 'requirement'))
+  return item
+}
+
+export function assertExternalTaskAvailable(root, code, binding) {
+  const normalized = normalizeExternalTask(binding)
+  for (const otherCode of listRequirementCodes(root)) {
+    if (otherCode === code) continue
+    const occupied = readRequirement(root, otherCode).externalTasks.some((item) =>
+      item.server === normalized.server &&
+      item.projectId === normalized.projectId &&
+      item.taskId === normalized.taskId)
+    if (occupied) {
+      throw err.conflict(
+        'EXTERNAL_TASK_ALREADY_BOUND',
+        `平台任务 ${normalized.taskId} 已绑定需求 ${otherCode}`
+      )
+    }
+  }
+  return normalized
+}
+
+export function replaceExternalTask(root, code, binding, { expectedTaskId } = {}) {
+  const item = readRequirement(root, code)
+  const normalized = normalizeExternalTask({ ...binding, lastSyncHash: '' })
+  const key = externalTaskKey(normalized)
+  const existing = item.externalTasks.findIndex((entry) => externalTaskKey(entry) === key)
+  const currentTaskId = existing >= 0 ? item.externalTasks[existing].taskId : null
+  const expected = nullablePositiveId(expectedTaskId, '预期平台任务 ID')
+  if (currentTaskId !== expected) {
+    throw err.conflict(
+      'EXTERNAL_TASK_CAS_MISMATCH',
+      `需求 ${item.code} 的平台任务绑定已变化，当前为 ${currentTaskId ?? '未绑定'}`
+    )
+  }
+  assertExternalTaskAvailable(root, item.code, normalized)
+  if (existing >= 0) item.externalTasks[existing] = normalized
+  else item.externalTasks.push(normalized)
+  item.externalTasks.sort((a, b) => externalTaskKey(a).localeCompare(externalTaskKey(b)))
+  item.updatedAt = new Date().toISOString()
+  writeRequirementFileAtomic(root, item)
   return item
 }
 
@@ -324,6 +365,11 @@ function positiveId(value, label) {
   const number = Number(value)
   if (!Number.isInteger(number) || number <= 0) throw err.bad('EXTERNAL_TASK_INVALID', `${label} 必须是正整数`)
   return number
+}
+
+function nullablePositiveId(value, label) {
+  if (value == null || value === '') return null
+  return positiveId(value, label)
 }
 
 function finiteOrNull(value) {

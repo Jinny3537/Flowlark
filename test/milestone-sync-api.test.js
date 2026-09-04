@@ -23,11 +23,11 @@ const mapping = {
 const managedFields = ['title', 'description', 'acceptance', 'priority', 'assignee', 'sprint']
 
 function fakeAdapter() {
-  const state = { sprint: null, task: null, calls: [], failNextSave: false }
+  const state = { sprints: new Map(), nextSprintId: 10, task: null, calls: [], failNextSave: false }
   return {
     state,
     async listTasks() { state.calls.push('listTasks'); return state.task ? [state.task] : [] },
-    async getSprint() { state.calls.push('getSprint'); return state.sprint },
+    async getSprint(id) { state.calls.push('getSprint'); return state.sprints.get(Number(id)) || null },
     async getTask() { state.calls.push('getTask'); return state.task },
     async saveSprint(body) {
       state.calls.push('saveSprint')
@@ -35,8 +35,9 @@ function fakeAdapter() {
         state.failNextSave = false
         throw err.conflict('REMOTE_VALIDATION_FAILED', 'known validation failure')
       }
-      state.sprint = { ...body, id: body.id || 10, revision: Number(body.revision || 0) + 1, status: 0 }
-      return state.sprint
+      const sprint = { ...body, id: body.id || state.nextSprintId++, revision: Number(body.revision || 0) + 1, status: 0 }
+      state.sprints.set(Number(sprint.id), sprint)
+      return sprint
     },
     async createTask(body) {
       state.calls.push('createTask')
@@ -45,9 +46,9 @@ function fakeAdapter() {
     },
     async updateTask(body) { state.calls.push('updateTask'); state.task = { ...state.task, ...body, revision: body.revision + 1 }; return state.task },
     async moveTasks(body) { state.calls.push('moveTasks'); state.task.sprintId = body.toSprintId; state.task.revision++; return { ok: true } },
-    async startSprint() { state.calls.push('startSprint'); state.sprint.status = 'active'; state.sprint.revision++; return state.sprint },
-    async endSprint() { state.calls.push('endSprint'); state.sprint.status = 'ended'; state.sprint.revision++; return state.sprint },
-    async cancelSprint() { state.calls.push('cancelSprint'); state.sprint.status = 'canceled'; state.sprint.revision++; return state.sprint }
+    async startSprint(body) { state.calls.push('startSprint'); const sprint = state.sprints.get(Number(body.sprintId)); sprint.status = 'active'; sprint.revision++; return sprint },
+    async endSprint(body) { state.calls.push('endSprint'); const sprint = state.sprints.get(Number(body.sprintId)); sprint.status = 'ended'; sprint.revision++; return sprint },
+    async cancelSprint(body) { state.calls.push('cancelSprint'); const sprint = state.sprints.get(Number(body.sprintId)); sprint.status = 'canceled'; sprint.revision++; return sprint }
   }
 }
 
@@ -85,9 +86,11 @@ before(async () => {
   ctx.hub.createMilestone({ name: 'S3', title: '待取消迭代', startAt: '2026-09-11', endAt: '2026-09-20' })
   ctx.hub.createMilestone({
     name: 'S4', title: '已绑定其他目标', startAt: '2026-09-11', endAt: '2026-09-20',
-    items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }],
-    external: { provider: 'assess-task', server: 'other-task', projectId: 456, sprintId: 40 }
+    items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }]
   })
+  milestones.updateMilestone(root, 'S4', {
+    external: { provider: 'assess-task', server: 'other-task', projectId: 456, sprintId: 40 }
+  }, { system: true })
   ctx.hub.createMilestone({ name: 'S5', title: '进行中迭代', goal: '验证范围变更', owner: 'pm', startAt: '2026-09-21', endAt: '2026-09-30', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
   ctx.hub.createMilestone({ name: 'S6', title: '可信策略迭代', startAt: '2026-10-01', endAt: '2026-10-10', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
   ctx.hub.createMilestone({ name: 'S7', title: '跨项目迭代', startAt: '2026-10-11', endAt: '2026-10-20', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }, { requirement: 'REQ-2', project: 'inventory', version: 'v1' }] })
@@ -267,12 +270,12 @@ test('execute endpoint requires confirmation and matching plan hash', async (t) 
   t.assert.doesNotMatch(JSON.stringify(result.body), /ASSESS_PASSWORD|private-password/)
 
   const milestone = await call('GET', '/api/milestones/S1')
-  t.assert.strictEqual(milestone.body.external.sprintId, 10)
+  t.assert.ok(Number.isInteger(milestone.body.external.sprintId))
   const journal = await call('GET', '/api/milestones/S1/sync-journal')
   t.assert.strictEqual(journal.body.status, 'completed')
   const execution = await call('GET', '/api/milestones/S1/execution')
   t.assert.strictEqual(execution.status, 200)
-  t.assert.strictEqual(execution.body.sprint.id, 10)
+  t.assert.strictEqual(execution.body.sprint.id, milestone.body.external.sprintId)
   t.assert.strictEqual(execution.body.tasks.total, 1)
 })
 

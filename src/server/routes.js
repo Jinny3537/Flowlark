@@ -69,6 +69,16 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 201, hub.createRequirement(body))
   })
   r.get('/api/requirements/:code', async (req, res, p) => sendJson(res, 200, hub.getRequirement(p.code)))
+  r.post('/api/requirements/:code/task-binding/plan', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.planRequirementTaskBinding(p.code, {
+      project: body?.project,
+      remoteId: body?.remoteId,
+      expectedTaskId: body?.expectedTaskId,
+      reason: body?.reason,
+      confirmed: body?.confirmed
+    }))
+  })
   r.put('/api/requirements/:code', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.updateRequirement(p.code, body))
@@ -122,6 +132,16 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 201, hub.createMilestone(body))
   })
   r.get('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.getMilestone(p.name)))
+  r.post('/api/milestones/:name/sprint-binding/plan', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.planMilestoneSprintBinding(p.name, {
+      project: body?.project,
+      remoteId: body?.remoteId,
+      expectedSprintId: body?.expectedSprintId,
+      reason: body?.reason,
+      confirmed: body?.confirmed
+    }))
+  })
   r.get('/api/milestones/:name/preflight', async (req, res, p) =>
     sendJson(res, 200, hub.inspectMilestonePreflight(p.name)))
   r.get('/api/milestones/:name/sync-journal', async (req, res, p) =>
