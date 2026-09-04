@@ -4,6 +4,7 @@ import path from 'node:path'
 import { cleanup, html, newHub } from './helpers.js'
 import { startServer } from '../src/server/index.js'
 import { unavailableWecomMcp } from '../src/core/wecom-mcp-manager.js'
+import { findSyncRecord } from '../src/core/sync-queue.js'
 import * as milestones from '../src/core/milestones.js'
 
 let root
@@ -48,8 +49,11 @@ before(async () => {
   process.env.FLOWLARK_HOME = path.join(root, '.test-flowlark-home')
   process.env.ASSESS_PASSWORD = 'test-only-password'
   ctx.hub.createProject({ name: '订单', code: 'orders' })
+  ctx.hub.createProject({ name: '库存', code: 'inventory' })
   ctx.hub.createRequirement({ code: 'REQ-1', title: '需求一', description: '说明', priority: 'P1', owner: 'dev' })
+  ctx.hub.createRequirement({ code: 'REQ-2', title: '需求二', description: '说明', priority: 'P1', owner: 'dev' })
   ctx.hub.addVersion('orders', { versionNo: 'v1', title: '一版', html: html(), requirements: ['REQ-1'] })
+  ctx.hub.addVersion('inventory', { versionNo: 'v1', title: '一版', html: html(), requirements: ['REQ-2'] })
   ctx.hub.createMilestone({
     name: 'S1', title: '迭代一', goal: '完成联调', owner: 'pm',
     startAt: '2026-08-01', endAt: '2026-08-21',
@@ -58,6 +62,8 @@ before(async () => {
   ctx.hub.createMilestone({ name: 'S2', title: '本地迭代', startAt: '2026-09-01', endAt: '2026-09-10' })
   ctx.hub.createMilestone({ name: 'S3', title: '待取消迭代', startAt: '2026-09-11', endAt: '2026-09-20' })
   ctx.hub.createMilestone({ name: 'S5', title: '进行中迭代', goal: '验证范围变更', owner: 'pm', startAt: '2026-09-21', endAt: '2026-09-30', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
+  ctx.hub.createMilestone({ name: 'S6', title: '可信策略迭代', startAt: '2026-10-01', endAt: '2026-10-10', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
+  ctx.hub.createMilestone({ name: 'S7', title: '跨项目迭代', startAt: '2026-10-11', endAt: '2026-10-20', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }, { requirement: 'REQ-2', project: 'inventory', version: 'v1' }] })
   milestones.updateMilestone(root, 'S5', { status: 'active' }, { system: true })
   remote = fakeAdapter()
   server = await startServer(root, {
@@ -107,6 +113,24 @@ test('preflight and plan endpoints expose blockers and deterministic operations'
   t.assert.match(plan.body.hash, /^sha256:/)
   t.assert.ok(plan.body.operations.some((item) => item.kind === 'sprint.create'))
   t.assert.ok(plan.body.operations.some((item) => item.kind === 'task.create'))
+  const queued = findSyncRecord(root, 'milestone', 'S1')
+  t.assert.deepStrictEqual({
+    entityType: queued.entityType,
+    entityKey: queued.entityKey,
+    route: queued.route,
+    status: queued.status,
+    planHash: queued.planHash,
+    mode: queued.mode
+  }, {
+    entityType: 'milestone',
+    entityKey: 'S1',
+    route: '/milestones/S1',
+    status: 'pending-confirmation',
+    planHash: plan.body.hash,
+    mode: 'manual'
+  })
+  t.assert.strictEqual(plan.body.syncId, queued.id)
+  t.assert.strictEqual(plan.body.syncStatus, 'pending-confirmation')
 })
 
 test('execute endpoint requires confirmation and matching plan hash', async (t) => {
@@ -128,6 +152,25 @@ test('execute endpoint requires confirmation and matching plan hash', async (t) 
   t.assert.strictEqual(execution.status, 200)
   t.assert.strictEqual(execution.body.sprint.id, 10)
   t.assert.strictEqual(execution.body.tasks.total, 1)
+})
+
+test('trusted-auto remains descriptive and cross-project previews stay manual', async (t) => {
+  await call('PUT', '/api/projects/orders', { sync: { mode: 'trusted-auto' } })
+  await call('PUT', '/api/projects/inventory', { sync: { mode: 'trusted-auto' } })
+
+  const trusted = await call('POST', '/api/milestones/S6/sync-plan', {})
+  t.assert.strictEqual(trusted.status, 200)
+  t.assert.strictEqual(findSyncRecord(root, 'milestone', 'S6').mode, 'trusted-auto')
+  t.assert.strictEqual(findSyncRecord(root, 'milestone', 'S6').status, 'pending-confirmation')
+  t.assert.strictEqual(milestones.readMilestone(root, 'S6').external, null)
+
+  const crossProject = await call('POST', '/api/milestones/S7/sync-plan', {})
+  t.assert.strictEqual(crossProject.status, 200)
+  t.assert.strictEqual(findSyncRecord(root, 'milestone', 'S7').mode, 'manual')
+  t.assert.strictEqual(findSyncRecord(root, 'milestone', 'S7').status, 'pending-confirmation')
+
+  await call('PUT', '/api/projects/orders', { sync: { mode: 'manual' } })
+  await call('PUT', '/api/projects/inventory', { sync: { mode: 'manual' } })
 })
 
 test('local lifecycle transitions remain explicit', async (t) => {

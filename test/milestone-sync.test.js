@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import { after, test } from 'node:test'
 import { cleanup, html, newHub } from './helpers.js'
 import { buildMilestoneSyncPlan } from '../src/core/milestone-sync-plan.js'
 import { executeMilestoneSync, resumeMilestoneSync } from '../src/core/milestone-sync.js'
-import { readMilestoneSyncJournal } from '../src/core/milestone-sync-journal.js'
+import {
+  newMilestoneSyncJournal,
+  readMilestoneSyncJournal,
+  writeMilestoneSyncJournal
+} from '../src/core/milestone-sync-journal.js'
+import { listSyncAudit } from '../src/core/sync-audit.js'
+import { findSyncRecord } from '../src/core/sync-queue.js'
 import * as milestones from '../src/core/milestones.js'
 import * as requirements from '../src/core/requirements.js'
 
@@ -34,7 +42,7 @@ function fixture({ action = null } = {}) {
   return { root, hub, plan, mapping }
 }
 
-function adapter({ failTaskOnce = false } = {}) {
+function adapter({ failTaskOnce = false, afterSaveSprint = null } = {}) {
   const calls = []
   let taskFailed = false
   const state = {
@@ -48,6 +56,7 @@ function adapter({ failTaskOnce = false } = {}) {
     async saveSprint(body) {
       calls.push(['saveSprint', body])
       state.sprint = { ...state.sprint, ...body, id: body.id || 10, revision: Number(body.revision || 0) + 1 }
+      if (afterSaveSprint) await afterSaveSprint()
       return state.sprint
     },
     async getSprint() {
@@ -58,7 +67,9 @@ function adapter({ failTaskOnce = false } = {}) {
       calls.push(['createTask', body])
       if (failTaskOnce && !taskFailed) {
         taskFailed = true
-        throw Object.assign(new Error('temporary task failure'), { code: 'MCP_UNAVAILABLE' })
+        throw Object.assign(new Error('temporary task failure'), {
+          code: 'MCP_UNAVAILABLE', accessToken: 'private-task-token'
+        })
       }
       const id = 20 + state.tasks.size
       state.task = { ...body, id, revision: 1, sprintId: body.currentSprintId, status: 0 }
@@ -119,6 +130,15 @@ test('persists external ids after each create and completes the journal', async 
   assert.equal(milestones.readMilestone(root, 'S1').external.sprintId, 10)
   assert.equal(requirements.readRequirement(root, 'REQ-1').externalTasks[0].taskId, 20)
   assert.equal(readMilestoneSyncJournal(root, 'S1').status, 'completed')
+  const actions = listSyncAudit(root, { syncId: result.id, limit: 100 })
+    .reverse()
+    .map((entry) => entry.action)
+  assert.deepEqual(actions, [
+    'sync.running',
+    'step.executing', 'step.completed',
+    'step.executing', 'step.completed',
+    'sync.completed'
+  ])
 })
 
 test('resumes failed work without recreating the completed sprint', async () => {
@@ -129,6 +149,11 @@ test('resumes failed work without recreating the completed sprint', async () => 
     /temporary task failure/
   )
   assert.equal(readMilestoneSyncJournal(root, 'S1').status, 'failed')
+  const failedAudit = listSyncAudit(root).find((entry) => entry.action === 'step.failed')
+  assert.equal(failedAudit.status, 'failed')
+  assert.equal(failedAudit.operationKey, plan.operations[1].key)
+  assert.equal(failedAudit.error.code, 'MCP_UNAVAILABLE')
+  assert.doesNotMatch(JSON.stringify(failedAudit), /private-task-token/)
   const result = await resumeMilestoneSync({ root, milestoneName: 'S1', adapter: remote })
   assert.equal(result.status, 'completed')
   assert.equal(remote.calls.filter(([name]) => name === 'saveSprint').length, 1)
@@ -308,5 +333,86 @@ test('rejects expired plans before creating a journal', async () => {
     }),
     (error) => error.code === 'MCP_SYNC_PLAN_EXPIRED'
   )
+  assert.equal(remote.calls.length, 0)
+})
+
+test('reads legacy journals but writes new records only to the global queue', () => {
+  const { root, plan } = fixture()
+  const legacyFile = path.join(root, '.flowlark', 'cache', 'mcp-sync', 'S1.json')
+  fs.mkdirSync(path.dirname(legacyFile), { recursive: true })
+  fs.writeFileSync(legacyFile, JSON.stringify({ milestone: 'S1', status: 'failed', planHash: plan.hash }))
+
+  assert.equal(readMilestoneSyncJournal(root, 'S1').status, 'failed')
+  const written = writeMilestoneSyncJournal(root, 'S1', newMilestoneSyncJournal(plan))
+  assert.equal(findSyncRecord(root, 'milestone', 'S1').id, written.id)
+  assert.equal(fs.readFileSync(legacyFile, 'utf8').includes('"failed"'), true)
+})
+
+test('pauses before a remote operation when the required audit append fails', async () => {
+  const { root, plan } = fixture()
+  const remote = adapter()
+  fs.mkdirSync(path.join(root, '.flowlark', 'sync-audit.ndjson'), { recursive: true })
+
+  await assert.rejects(
+    executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote }),
+    (error) => error.code === 'SYNC_AUDIT_WRITE_FAILED'
+  )
+  const journal = readMilestoneSyncJournal(root, 'S1')
+  assert.equal(journal.status, 'paused')
+  assert.equal(journal.error.code, 'SYNC_AUDIT_WRITE_FAILED')
+  assert.equal(remote.calls.length, 0)
+})
+
+test('an audit failure after one remote step prevents the next remote operation', async () => {
+  const { root, plan } = fixture()
+  const auditFile = path.join(root, '.flowlark', 'sync-audit.ndjson')
+  const remote = adapter({
+    afterSaveSprint() {
+      fs.rmSync(auditFile)
+      fs.mkdirSync(auditFile)
+    }
+  })
+
+  await assert.rejects(
+    executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote }),
+    (error) => error.code === 'SYNC_AUDIT_WRITE_FAILED'
+  )
+  const journal = readMilestoneSyncJournal(root, 'S1')
+  assert.equal(journal.status, 'paused')
+  assert.equal(journal.operations[0].status, 'completed')
+  assert.equal(remote.calls.filter(([name]) => name === 'saveSprint').length, 1)
+  assert.equal(remote.calls.filter(([name]) => name === 'createTask').length, 0)
+
+  fs.rmSync(auditFile, { recursive: true })
+  const resumed = await resumeMilestoneSync({ root, milestoneName: 'S1', adapter: remote })
+  assert.equal(resumed.status, 'completed')
+  assert.equal(remote.calls.filter(([name]) => name === 'saveSprint').length, 1)
+  assert.equal(remote.calls.filter(([name]) => name === 'createTask').length, 1)
+})
+
+test('does not replace a running record with a changed plan hash', async () => {
+  const { root, plan } = fixture()
+  const remote = adapter()
+  writeMilestoneSyncJournal(root, 'S1', newMilestoneSyncJournal(plan))
+
+  await assert.rejects(
+    executeMilestoneSync({
+      root, milestoneName: 'S1', plan: { ...plan, hash: 'sha256:changed' }, confirmed: true, adapter: remote
+    }),
+    (error) => error.code === 'MCP_SYNC_PLAN_CHANGED'
+  )
+  assert.equal(readMilestoneSyncJournal(root, 'S1').planHash, plan.hash)
+  assert.equal(remote.calls.length, 0)
+})
+
+test('returns a matching completed record without another adapter call', async () => {
+  const { root, plan } = fixture()
+  const remote = adapter()
+  const first = await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
+  remote.calls.length = 0
+
+  const repeated = await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
+  assert.equal(repeated.id, first.id)
+  assert.equal(repeated.status, 'completed')
   assert.equal(remote.calls.length, 0)
 })

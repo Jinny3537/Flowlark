@@ -1,5 +1,6 @@
 import { err } from './errors.js'
 import { transitionMilestoneStatus } from './milestone-lifecycle.js'
+import { appendSyncAudit } from './sync-audit.js'
 import {
   newMilestoneSyncJournal,
   readMilestoneSyncJournal,
@@ -35,14 +36,23 @@ export async function executeMilestoneSync({
   if (!adapter) throw err.bad('MCP_SYNC_ADAPTER_REQUIRED', '同步适配器不可用')
 
   let journal = readMilestoneSyncJournal(root, milestoneName)
+  if (journal && journal.planHash !== plan.hash && journal.status === 'running') {
+    throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+  }
   if (!journal || journal.planHash !== plan.hash) journal = newMilestoneSyncJournal(plan, reason)
   if (journal.status === 'completed') {
     finalizeLocalStatus(root, milestoneName, plan)
     return journal
   }
   journal.status = 'running'
+  journal.reason = String(reason || journal.reason || '')
+  journal.error = null
+  journal.startedAt ||= new Date().toISOString()
   journal.updatedAt = new Date().toISOString()
-  writeMilestoneSyncJournal(root, milestoneName, journal)
+  persistAuditTransition(root, milestoneName, journal, {
+    action: 'sync.running',
+    status: 'running'
+  })
 
   for (const step of journal.operations) {
     if (step.status === 'completed') {
@@ -56,7 +66,13 @@ export async function executeMilestoneSync({
     step.error = null
     step.updatedAt = new Date().toISOString()
     journal.updatedAt = step.updatedAt
-    writeMilestoneSyncJournal(root, milestoneName, journal)
+    persistAuditTransition(root, milestoneName, journal, {
+      action: 'step.executing',
+      status: 'executing',
+      operationKey: step.key,
+      before: step.operation.before ?? null,
+      after: step.operation.after ?? null
+    })
 
     try {
       const result = await runOperation({
@@ -72,14 +88,29 @@ export async function executeMilestoneSync({
       step.status = 'completed'
       step.updatedAt = new Date().toISOString()
       journal.updatedAt = step.updatedAt
-      writeMilestoneSyncJournal(root, milestoneName, journal)
+      persistAuditTransition(root, milestoneName, journal, {
+        action: 'step.completed',
+        status: 'completed',
+        operationKey: step.key,
+        before: step.operation.before ?? null,
+        after: step.operation.after ?? step.remoteResult ?? null
+      })
     } catch (error) {
+      if (error?.code === 'SYNC_AUDIT_WRITE_FAILED') throw error
       step.status = 'failed'
       step.error = { code: error?.code || 'MCP_SYNC_STEP_FAILED', message: String(error?.message || error) }
       step.updatedAt = new Date().toISOString()
       journal.status = 'failed'
+      journal.error = step.error
       journal.updatedAt = step.updatedAt
-      writeMilestoneSyncJournal(root, milestoneName, journal)
+      persistAuditTransition(root, milestoneName, journal, {
+        action: 'step.failed',
+        status: 'failed',
+        operationKey: step.key,
+        before: step.operation.before ?? null,
+        after: step.remoteResult ?? null,
+        error: step.error
+      })
       throw error
     }
   }
@@ -87,9 +118,13 @@ export async function executeMilestoneSync({
   await verifyFinalState(root, plan, adapter)
   finalizeLocalStatus(root, milestoneName, plan)
   journal.status = 'completed'
+  journal.error = null
   journal.completedAt = new Date().toISOString()
   journal.updatedAt = journal.completedAt
-  return writeMilestoneSyncJournal(root, milestoneName, journal)
+  return persistAuditTransition(root, milestoneName, journal, {
+    action: 'sync.completed',
+    status: 'completed'
+  })
 }
 
 export async function resumeMilestoneSync(options = {}) {
@@ -291,4 +326,28 @@ function safeRemoteResult(value = {}) {
     status: value.status ?? null,
     url: value.url || ''
   }
+}
+
+function persistAuditTransition(root, milestoneName, journal, audit) {
+  const persisted = writeMilestoneSyncJournal(root, milestoneName, journal)
+  journal.id = persisted.id
+  try {
+    appendSyncAudit(root, {
+      syncId: persisted.id,
+      entityType: 'milestone',
+      entityKey: milestoneName,
+      ...audit
+    })
+  } catch {
+    const failure = {
+      code: 'SYNC_AUDIT_WRITE_FAILED',
+      message: '同步审计写入失败，已暂停同步'
+    }
+    journal.status = 'paused'
+    journal.error = failure
+    journal.updatedAt = new Date().toISOString()
+    writeMilestoneSyncJournal(root, milestoneName, journal)
+    throw err.conflict(failure.code, failure.message)
+  }
+  return persisted
 }

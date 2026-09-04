@@ -688,7 +688,7 @@ git commit -m "feat: add global synchronization queue"
 - Modify: `test/milestone-sync.test.js`
 - Modify: `test/milestone-sync-api.test.js`
 
-- [ ] **Step 1: Add failing persisted-preview tests**
+- [x] **Step 1: Add failing persisted-preview tests**
 
 Extend `test/milestone-sync-api.test.js` so `POST /api/milestones/:name/sync-plan` is expected to create a global record with:
 
@@ -705,7 +705,7 @@ Extend `test/milestone-sync-api.test.js` so `POST /api/milestones/:name/sync-pla
 
 Extend `test/milestone-sync.test.js` to assert that a successful execution records `running`, `step.executing`, `step.completed`, and `completed` audit actions; a thrown adapter error records `step.failed` without secrets.
 
-- [ ] **Step 2: Run the focused tests and verify failure**
+- [x] **Step 2: Run the focused tests and verify failure**
 
 Run:
 
@@ -715,7 +715,7 @@ node --test test/milestone-sync.test.js test/milestone-sync-api.test.js
 
 Expected: FAIL because plans are not persisted and audits are absent.
 
-- [ ] **Step 3: Turn the milestone journal into a compatibility wrapper**
+- [x] **Step 3: Turn the milestone journal into a compatibility wrapper**
 
 Keep the existing exports in `src/core/milestone-sync-journal.js`, but implement them through `sync-queue.js`:
 
@@ -746,11 +746,11 @@ function readLegacyJournal(root, name) {
 
 Retain a read-only fallback for `.flowlark/cache/mcp-sync/<name>.json`; do not delete legacy cache files. New writes go only to the global queue.
 
-- [ ] **Step 4: Persist previews in the service facade**
+- [x] **Step 4: Persist previews in the service facade**
 
 Update `Hub.planMilestoneSync` to await the current planner, save the returned plan with `savePendingSync`, and return `{ ...plan, syncId, syncStatus }`. Determine the project policy conservatively: if a milestone includes several projects or policies disagree, store mode `manual`. In `v0.7.2`, `trusted-auto` is descriptive only and never starts execution by itself.
 
-- [ ] **Step 5: Emit step-level audit events**
+- [x] **Step 5: Emit step-level audit events**
 
 In `src/core/milestone-sync.js`, append audit entries immediately after every persisted transition:
 
@@ -770,11 +770,11 @@ appendSyncAudit(root, {
 
 Add corresponding `sync.running`, `step.executing`, `step.failed`, and `sync.completed` entries. Audit writes occur after the queue state write; if audit append itself fails, mark the sync record `paused` with `SYNC_AUDIT_WRITE_FAILED` and stop before the next remote operation.
 
-- [ ] **Step 6: Preserve idempotency and resume behavior**
+- [x] **Step 6: Preserve idempotency and resume behavior**
 
 Keep the existing plan-hash, expiry, impact confirmation, unknown-create-result, remote verification, and local finalization checks. A matching completed queue record must return without calling the adapter. A changed plan hash replaces the pending plan only before execution; it must not overwrite a running record.
 
-- [ ] **Step 7: Run milestone synchronization tests**
+- [x] **Step 7: Run milestone synchronization tests**
 
 Run:
 
@@ -784,7 +784,7 @@ node --test test/milestone-sync-plan.test.js test/milestone-sync.test.js test/mi
 
 Expected: PASS with existing behavior preserved and new queue/audit assertions passing.
 
-- [ ] **Step 8: Commit the milestone integration**
+- [x] **Step 8: Commit the milestone integration**
 
 ```bash
 git add src/core/milestone-sync-journal.js src/core/milestone-sync.js src/core/service.js test/milestone-sync.test.js test/milestone-sync-api.test.js

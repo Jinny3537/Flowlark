@@ -43,6 +43,7 @@ import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycl
 import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
 import { executeMilestoneSync as executeSync, resumeMilestoneSync as resumeSync } from './milestone-sync.js'
 import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
+import { savePendingSync } from './sync-queue.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -632,7 +633,21 @@ export class Hub {
   }
 
   async planMilestoneSync(name, input = {}) {
-    return this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, input, adapter, config))
+    const plan = await this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, input, adapter, config))
+    const milestone = milestones.inspectMilestone(this.root, name)
+    const scopeItems = Array.isArray(plan.scopeItems) ? plan.scopeItems : milestone.items
+    const projects = [...new Set(scopeItems.map((item) => item.project).filter(Boolean))]
+    const mode = projects.length === 1
+      ? normalizeSyncPolicy(store.readProject(this.root, projects[0]).sync).mode
+      : 'manual'
+    const sync = savePendingSync(this.root, {
+      entityType: 'milestone',
+      entityKey: name,
+      route: `/milestones/${encodeURIComponent(name)}`,
+      mode,
+      plan
+    })
+    return { ...plan, syncId: sync.id, syncStatus: sync.status }
   }
 
   async milestoneExecutionSummary(name) {

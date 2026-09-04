@@ -1,21 +1,20 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { parse, stringify } from './json.js'
+import { parse } from './json.js'
 import { assertMilestoneName } from './milestones.js'
+import { findSyncRecord, writeKnownSyncRecord } from './sync-queue.js'
 
 export function readMilestoneSyncJournal(root, name) {
-  const file = journalFile(root, name)
-  return fs.existsSync(file) ? parse(fs.readFileSync(file, 'utf8'), `迭代 ${name} 同步记录`) : null
+  return findSyncRecord(root, 'milestone', name) || readLegacyJournal(root, name)
 }
 
 export function writeMilestoneSyncJournal(root, name, input) {
-  const file = journalFile(root, name)
-  const value = sanitize(input)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  const temporary = `${file}.${process.pid}.${Date.now()}.tmp`
-  fs.writeFileSync(temporary, stringify(value), 'utf8')
-  fs.renameSync(temporary, file)
-  return value
+  return writeKnownSyncRecord(root, {
+    ...input,
+    entityType: 'milestone',
+    entityKey: name,
+    route: `/milestones/${encodeURIComponent(name)}`
+  })
 }
 
 export function newMilestoneSyncJournal(plan, reason = '') {
@@ -25,11 +24,14 @@ export function newMilestoneSyncJournal(plan, reason = '') {
     milestone: plan.milestone,
     planHash: plan.hash,
     plan,
+    mode: 'manual',
     status: 'running',
     reason: String(reason || ''),
+    createdAt: now,
     startedAt: now,
     updatedAt: now,
     completedAt: null,
+    error: null,
     operations: plan.operations.map((operation) => ({
       key: operation.key,
       kind: operation.kind,
@@ -42,16 +44,8 @@ export function newMilestoneSyncJournal(plan, reason = '') {
   }
 }
 
-function journalFile(root, name) {
+function readLegacyJournal(root, name) {
   const safe = assertMilestoneName(name)
-  return path.join(root, '.flowlark', 'cache', 'mcp-sync', `${safe}.json`)
-}
-
-function sanitize(value, key = '') {
-  if (/password|authorization|token|secret|environment|env$/i.test(key)) return '[REDACTED]'
-  if (Array.isArray(value)) return value.map((item) => sanitize(item))
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, sanitize(item, name)]))
-  }
-  return value
+  const file = path.join(root, '.flowlark', 'cache', 'mcp-sync', `${safe}.json`)
+  return fs.existsSync(file) ? parse(fs.readFileSync(file, 'utf8'), `迭代 ${name} 同步记录`) : null
 }
