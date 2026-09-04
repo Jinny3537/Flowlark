@@ -440,22 +440,22 @@ git commit -m "feat: expose requirement authority workflows"
 - Modify: `web/src/pages/RequirementDetail.tsx`
 - Modify: `web/src/styles/global.css`
 
-- [ ] Write pure model tests for lifecycle labels, separate prototype-progress labels, primary actions, external-binding states, and read-only guards.
-- [ ] Requirement list columns must show lifecycle, prototype progress, milestone membership, external binding, and synchronization status without using color alone.
-- [ ] Requirement detail must show one primary action: `draft → 确认需求`, `confirmed → 加入迭代`, `developing → 查看迭代`.
-- [ ] Add editable acceptance/specification Markdown with inline save feedback and confirmation blockers anchored on the same page.
-- [ ] Add external main-task card with current binding, remote status, last sync, drift state, preview/rebind actions, and audit link.
-- [ ] Add milestone membership list and rename the existing version area to “原型进度与关联版本”.
-- [ ] In read-only mode retain all inspection data and disable confirmation, editing, binding, and scope actions with visible reasons.
-- [ ] At 390px use a single-column detail, full-width ≥44px actions, and no page-level horizontal overflow.
-- [ ] Run:
+- [x] Write pure model tests for lifecycle labels, separate prototype-progress labels, primary actions, external-binding states, and read-only guards.
+- [x] Requirement list columns must show lifecycle, prototype progress, milestone membership, external binding, and synchronization status without using color alone.
+- [x] Requirement detail must show one primary action: `draft → 确认需求`, `confirmed → 加入迭代`, `developing → 查看迭代`.
+- [x] Add editable acceptance/specification Markdown with inline save feedback and confirmation blockers anchored on the same page.
+- [x] Add external main-task card with current binding, remote status, last sync, drift state, preview/rebind actions, and audit link.
+- [x] Add milestone membership list and rename the existing version area to “原型进度与关联版本”.
+- [x] In read-only mode retain all inspection data and disable confirmation, editing, binding, and scope actions with visible reasons.
+- [x] At 390px use a single-column detail, full-width ≥44px actions, and no page-level horizontal overflow.
+- [x] Run:
 
 ```bash
 node --test web/src/pages/requirementLifecycleModel.test.js web/src/pages/requirementsModel.test.js
 npm run build:web
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add web/src/pages/requirementLifecycleModel.js web/src/pages/requirementLifecycleModel.test.js web/src/pages/requirementsModel.js web/src/pages/requirementsModel.test.js web/src/pages/Requirements.tsx web/src/pages/RequirementDetail.tsx web/src/styles/global.css
@@ -479,23 +479,23 @@ git commit -m "feat: add requirement lifecycle workspace"
 - Modify: `web/src/pages/syncCenterModel.test.js`
 - Modify: `web/src/styles/global.css`
 
-- [ ] Add pure operation-presenter tests for create, managed update, move in/out, restore-local drift, freeze, and link-required states.
-- [ ] Replace raw operation kind/JSON summaries in milestone and active-scope dialogs with shared readable descriptions.
-- [ ] Change the reviewing-stage primary action to “预览并冻结”; direct local freeze must disappear.
-- [ ] Group freeze blockers by requirement, version, project target, and remote synchronization; each row has one repair link.
-- [ ] Project sync settings must remove the v0.7.2 preparation copy, show connection/permission state, and explain that settings now affect plans.
-- [ ] Keep `trusted-auto` visible but disabled and unsaveable; only manual mode is operational.
-- [ ] Warn and invalidate outstanding previews before changing server, project ID, or managed fields.
-- [ ] Sync Center must understand requirement/binding entities, drift, and link-required recovery while keeping high-risk actions non-batch.
-- [ ] Preserve visible text labels, keyboard focus, ≥44px touch targets, and responsive drawers/modals.
-- [ ] Run:
+- [x] Add pure operation-presenter tests for create, managed update, move in/out, restore-local drift, freeze, and link-required states.
+- [x] Replace raw operation kind/JSON summaries in milestone and active-scope dialogs with shared readable descriptions.
+- [x] Change the reviewing-stage primary action to “预览并冻结”; direct local freeze must disappear.
+- [x] Group freeze blockers by requirement, version, project target, and remote synchronization; each row has one repair link.
+- [x] Project sync settings must remove the v0.7.2 preparation copy, show connection/permission state, and explain that settings now affect plans.
+- [x] Keep `trusted-auto` visible but disabled and unsaveable; only manual mode is operational.
+- [x] Warn and invalidate outstanding previews before changing server, project ID, or managed fields.
+- [x] Sync Center must understand requirement/binding entities, drift, and link-required recovery while keeping high-risk actions non-batch.
+- [x] Preserve visible text labels, keyboard focus, ≥44px touch targets, and responsive drawers/modals.
+- [x] Run:
 
 ```bash
 node --test web/src/pages/syncOperationModel.test.js web/src/pages/projectSyncModel.test.js web/src/pages/syncCenterModel.test.js web/src/pages/milestoneSyncModel.test.js
 npm run build:web
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add web/src/pages/syncOperationModel.js web/src/pages/syncOperationModel.test.js web/src/pages/MilestoneDetail.tsx web/src/pages/MilestoneSyncPanel.tsx web/src/pages/ActiveScopeChangeDialog.tsx web/src/pages/ProjectSyncSettings.tsx web/src/pages/projectSyncModel.js web/src/pages/projectSyncModel.test.js web/src/pages/SyncCenter.tsx web/src/pages/syncCenterModel.js web/src/pages/syncCenterModel.test.js web/src/styles/global.css

@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, App, Button, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import { DeleteOutlined, EditOutlined, ExportOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -21,6 +21,7 @@ import { ActiveScopeChangeDialog } from './ActiveScopeChangeDialog';
 export default function MilestoneDetail() {
   const navigate = useNavigate();
   const { name = '' } = useParams();
+  const [searchParams] = useSearchParams();
   const { message } = App.useApp();
   const { health } = useAppRuntime();
   const writable = health?.canWrite !== false;
@@ -44,10 +45,14 @@ export default function MilestoneDetail() {
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [removing, setRemoving] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [joinNotice, setJoinNotice] = useState<{ type: 'info' | 'warning'; message: string; description: string } | null>(null);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const selectedProject = Form.useWatch('project', form);
   const versionsRequest = useRef(0);
+  const handledJoinRequest = useRef('');
+  const requestedRequirement = String(searchParams.get('requirement') || '').trim();
+  const editable = writable && ['planning', 'reviewing'].includes(item?.status || 'planning');
 
   const load = useCallback(async () => {
     if (!name) return;
@@ -115,6 +120,13 @@ export default function MilestoneDetail() {
       form.resetFields();
       setVersions([]);
       setAddOpen(false);
+      if (requestedRequirement && values.requirement === requestedRequirement) {
+        setJoinNotice({
+          type: 'info',
+          message: `${requestedRequirement} 已加入当前迭代`,
+          description: '可以继续核对版本范围和冻结前检查。',
+        });
+      }
       message.success('版本已加入迭代范围');
       await load();
     } catch (nextError) {
@@ -122,7 +134,7 @@ export default function MilestoneDetail() {
     } finally {
       setSaving(false);
     }
-  }, [form, item, load, message, name]);
+  }, [form, item, load, message, name, requestedRequirement]);
 
   const removeItem = useCallback(async (entry: any) => {
     const key = `${entry.requirement}:${entry.project}:${entry.version}`;
@@ -190,7 +202,55 @@ export default function MilestoneDetail() {
     void load();
   }, [load]);
 
-  const editable = writable && ['planning', 'reviewing'].includes(item?.status || 'planning');
+  useEffect(() => {
+    if (!requestedRequirement) {
+      handledJoinRequest.current = '';
+      setJoinNotice(null);
+      return;
+    }
+    if (loading || !item) return;
+    const requestKey = `${name}:${requestedRequirement}`;
+    if (handledJoinRequest.current === requestKey) return;
+    handledJoinRequest.current = requestKey;
+
+    const exists = (item.items || []).some((entry: any) => entry.requirement === requestedRequirement);
+    if (exists) {
+      setJoinNotice({
+        type: 'info',
+        message: `${requestedRequirement} 已在当前迭代范围中`,
+        description: '不会重复添加；可以在下方版本范围中查看现有关联。',
+      });
+      return;
+    }
+    if (!editable) {
+      setJoinNotice({
+        type: 'info',
+        message: `未打开 ${requestedRequirement} 的添加弹窗`,
+        description: writable
+          ? '当前迭代已锁定，只有“计划中”或“评审中”的迭代可以添加需求版本。'
+          : '当前为只读模式，只能查看迭代范围。',
+      });
+      return;
+    }
+    if (!requirements.some((requirement) => requirement.code === requestedRequirement)) {
+      setJoinNotice({
+        type: 'warning',
+        message: `没有找到需求 ${requestedRequirement}`,
+        description: '请返回需求列表核对需求编号。',
+      });
+      return;
+    }
+
+    form.resetFields();
+    form.setFieldValue('requirement', requestedRequirement);
+    setVersions([]);
+    setJoinNotice({
+      type: 'info',
+      message: `正在将 ${requestedRequirement} 加入当前迭代`,
+      description: '需求已预选，请继续选择项目和版本。',
+    });
+    setAddOpen(true);
+  }, [editable, form, item, loading, name, requestedRequirement, requirements, writable]);
 
   const openEdit = () => {
     editForm.setFieldsValue({ goal: item?.goal || '', owner: item?.owner || '' });
@@ -202,8 +262,10 @@ export default function MilestoneDetail() {
       <PageHeader
         eyebrow="迭代详情"
         title={item?.title || name}
-        description="查看周期、交付状态和本轮版本范围。"
-        backTo="/milestones"
+        description={item?.status === 'reviewing'
+          ? '核对冻结阻塞项，生成远端同步预览并确认后冻结。'
+          : '查看周期、交付状态和本轮版本范围。'}
+        backTo={requestedRequirement ? `/milestones?requirement=${encodeURIComponent(requestedRequirement)}` : '/milestones'}
         actions={item ? (
           <Space wrap>
             <Button icon={<EditOutlined />} disabled={!editable} onClick={openEdit}>编辑计划</Button>
@@ -213,6 +275,15 @@ export default function MilestoneDetail() {
           </Space>
         ) : null}
       />
+      {joinNotice ? (
+        <Alert
+          className="fl-dashboard-alert"
+          type={joinNotice.type}
+          showIcon
+          message={joinNotice.message}
+          description={joinNotice.description}
+        />
+      ) : null}
       <State loading={loading && !item} error={error} onRetry={load} empty={!item} emptyText="没有找到迭代">
         <div className="fl-detail-stack">
           <section className="fl-detail-summary">
@@ -374,7 +445,7 @@ export default function MilestoneDetail() {
       ) : null}
 
       <Modal
-        title="添加需求版本"
+        title={requestedRequirement ? `将 ${requestedRequirement} 加入迭代` : '添加需求版本'}
         open={addOpen}
         confirmLoading={saving}
         okButtonProps={{ disabled: !editable }}

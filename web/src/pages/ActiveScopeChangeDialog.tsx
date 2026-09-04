@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { milestoneItems } from './milestoneModel.js';
+import { presentSyncOperation } from './syncOperationModel.js';
 
 type Props = {
   open: boolean;
@@ -112,9 +113,9 @@ export function ActiveScopeChangeDialog({ open, name, item, requirements, projec
     }
   }
 
-  async function resolveConflict(operation: any, resolution: 'restore-local' | 'accept-remote') {
+  async function resolveConflict(operation: any) {
     const key = String(operation.key || '').replace(/:conflict$/, '');
-    const nextResolutions = { ...resolutions, [key]: resolution };
+    const nextResolutions = { ...resolutions, [key]: 'restore-local' };
     setBusy(true);
     setError('');
     try {
@@ -208,20 +209,18 @@ export function ActiveScopeChangeDialog({ open, name, item, requirements, projec
             pagination={false}
             dataSource={plan.operations || []}
             columns={[
-              { title: '操作', dataIndex: 'kind', render: (value) => <code>{value}</code> },
-              { title: '对象', render: (_, operation: any) => operation.requirement || operation.taskId || name },
+              { title: '操作', width: 170, render: (_, operation: any) => <strong>{presentSyncOperation(operation).title}</strong> },
+              { title: '对象', width: 150, render: (_, operation: any) => presentSyncOperation(operation).subject },
+              { title: '变更摘要', render: (_, operation: any) => <span className="fl-muted">{presentSyncOperation(operation).summary}</span> },
               { title: '风险', dataIndex: 'risk', render: (value) => <Tag color={value === 'high' ? 'error' : 'default'}>{value === 'high' ? '高风险' : '普通'}</Tag> },
               {
-                title: '处理', width: 190,
+                title: '处理', width: 140,
                 render: (_, operation: any) => operation.kind === 'conflict' ? (
-                  <Space size={4}>
-                    <Button size="small" onClick={() => void resolveConflict(operation, 'restore-local')}>保留 Flowlark</Button>
-                    <Button size="small" onClick={() => void resolveConflict(operation, 'accept-remote')}>接受平台值</Button>
-                  </Space>
+                  <Button onClick={() => void resolveConflict(operation)}>保留 Flowlark</Button>
                 ) : null,
               },
             ]}
-            scroll={{ x: 620, y: 260 }}
+            scroll={{ x: 860, y: 260 }}
           />
           <Alert className="fl-mcp-result" type="info" showIcon message={`变更原因：${reason}`} description={`计划哈希：${plan.hash}`} />
           <Checkbox checked={impactConfirmed} onChange={(event) => setImpactConfirmed(event.target.checked)}>我已审阅任务迁入、迁出和未完成任务影响</Checkbox>

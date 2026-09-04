@@ -14,7 +14,8 @@ const FIELD_LABELS = {
 
 const KNOWN_KINDS = new Set([
   'sprint.create', 'sprint.update', 'task.create', 'task.update', 'task.move',
-  'conflict', 'milestone.freeze'
+  'conflict', 'milestone.freeze', 'sprint.start', 'sprint.end', 'sprint.cancel',
+  'local.scope-change', 'task.binding.replace', 'sprint.binding.replace'
 ])
 
 export function presentSyncOperation(input = {}) {
@@ -119,6 +120,52 @@ export function presentSyncOperation(input = {}) {
     })
   }
 
+  if (kind === 'local.scope-change') {
+    const count = Array.isArray(operation.after) ? operation.after.length : 0
+    return presentation({
+      kind,
+      title: '更新迭代范围',
+      subject: operation.milestone || '当前迭代',
+      summary: `更新迭代范围，共 ${count} 项`,
+      tone: 'warning',
+      highRisk: true,
+      recovery: null
+    })
+  }
+
+  const lifecycleTitle = {
+    'sprint.start': '开始平台冲刺',
+    'sprint.end': '结束平台冲刺',
+    'sprint.cancel': '取消平台冲刺'
+  }[kind]
+  if (lifecycleTitle) {
+    return presentation({
+      kind,
+      title: lifecycleTitle,
+      subject: `冲刺 ${operation.sprintId ?? '当前'}`,
+      summary: `${lifecycleTitle} ${operation.sprintId ?? '当前冲刺'}`,
+      tone: kind === 'sprint.cancel' ? 'error' : 'warning',
+      highRisk: true,
+      recovery: null
+    })
+  }
+
+  if (kind === 'task.binding.replace' || kind === 'sprint.binding.replace') {
+    const task = kind.startsWith('task.')
+    const replacing = operation.before != null
+    const noun = task ? '平台任务' : '平台 Sprint'
+    const remoteId = task ? operation.after?.taskId : operation.after?.sprintId
+    return presentation({
+      kind,
+      title: `${replacing ? '改绑' : '绑定'}${noun}`,
+      subject: operation.requirement || operation.milestone || '当前对象',
+      summary: `${replacing ? '改绑到' : '绑定'}${noun} ${remoteId ?? '待确认'}`,
+      tone: 'warning',
+      highRisk: true,
+      recovery: null
+    })
+  }
+
   const changes = changedFields(operation)
   const entity = kind === 'sprint.update' ? '冲刺' : '任务'
   const fieldText = changes.length
@@ -168,6 +215,13 @@ export function syncOperationDiff(input = {}) {
     return {
       summary: '冲刺归属变化；平台任务会保留',
       sections: beforeAfterSections(operation, '当前冲刺', '目标冲刺'),
+      changes
+    }
+  }
+  if (kind === 'local.scope-change') {
+    return {
+      summary: '目标迭代范围',
+      sections: [{ label: '目标范围', value: operation.after, present: afterPresent, emptyText: '无目标范围' }],
       changes
     }
   }

@@ -1,5 +1,5 @@
-import { useNavigate } from 'react-router-dom';
-import { App, Button, Checkbox, DatePicker, Form, Input, Modal, Space, Table, Tag } from 'antd';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Alert, App, Button, Checkbox, DatePicker, Form, Input, Modal, Space, Table, Tag } from 'antd';
 import { PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
@@ -12,6 +12,7 @@ import { milestoneStatusMeta, syncHealth } from './milestoneSyncModel.js';
 
 export default function Milestones() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { message } = App.useApp();
   const { health } = useAppRuntime();
   const writable = health?.canWrite !== false;
@@ -22,6 +23,15 @@ export default function Milestones() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [form] = Form.useForm();
+  const requestedRequirement = String(searchParams.get('requirement') || '').trim();
+
+  const detailPath = (record: any) => {
+    const pathname = `/milestones/${encodeURIComponent(record.name)}`;
+    const editable = writable && ['planning', 'reviewing'].includes(record.status || 'planning');
+    return requestedRequirement && editable
+      ? `${pathname}?requirement=${encodeURIComponent(requestedRequirement)}`
+      : pathname;
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,7 +67,7 @@ export default function Milestones() {
         : `已创建 ${item.name}`);
       setOpen(false);
       form.resetFields();
-      navigate(`/milestones/${encodeURIComponent(item.name)}`);
+      navigate(detailPath(item));
     } catch (nextError) {
       message.error(errorText(nextError, '创建迭代失败'));
     } finally {
@@ -98,13 +108,24 @@ export default function Milestones() {
           </Space>
         )}
       />
+      {requestedRequirement ? (
+        <Alert
+          className="fl-dashboard-alert"
+          type={writable ? 'info' : 'warning'}
+          showIcon
+          message={writable ? `选择可编辑迭代以加入 ${requestedRequirement}` : `正在查看 ${requestedRequirement} 的可选迭代`}
+          description={writable
+            ? '进入“计划中”或“评审中”的迭代后，将自动打开添加需求版本，并预选该需求。'
+            : '当前为只读模式，可以查看迭代，但不会打开添加弹窗或修改范围。'}
+        />
+      ) : null}
       <State loading={loading && !items.length} error={error} onRetry={load} empty={false}>
         <Table
           rowKey="name"
           loading={loading}
           locale={{ emptyText: '还没有迭代' }}
           dataSource={items}
-          onRow={(record) => ({ className: 'fl-clickable-row', onClick: () => navigate(`/milestones/${encodeURIComponent(record.name)}`) })}
+          onRow={(record) => ({ className: 'fl-clickable-row', onClick: () => navigate(detailPath(record)) })}
           columns={[
             { title: '迭代', render: (_, record: any) => <><span className="fl-table-title">{record.title || record.name}</span><div className="fl-muted fl-mono">{record.name}</div></> },
             { title: '周期', render: (_, record: any) => `${textOf(record.startAt)} 至 ${textOf(record.endAt)}` },
@@ -113,7 +134,8 @@ export default function Milestones() {
               title: '阶段',
               render: (_, record: any) => {
                 const status = milestoneStatusMeta(record.status);
-                return <Tag color={status.color}>{status.label}</Tag>;
+                const selectable = requestedRequirement && writable && ['planning', 'reviewing'].includes(record.status || 'planning');
+                return <Space size={4} wrap><Tag color={status.color}>{status.label}</Tag>{selectable ? <Tag color="cyan">可加入</Tag> : null}</Space>;
               },
             },
             {

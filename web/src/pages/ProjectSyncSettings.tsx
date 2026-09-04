@@ -20,7 +20,9 @@ import { errorText } from '@/services/requestModel.js';
 import {
   MANAGED_FIELD_OPTIONS,
   projectSyncForm,
+  projectSyncChanged,
   projectSyncPayload,
+  projectSyncReadiness,
   trustedModeMessage,
 } from './projectSyncModel.js';
 
@@ -35,19 +37,18 @@ type McpServer = {
   id: string;
   name?: string;
   enabled?: boolean;
+  type?: string;
+  adapter?: string;
+  runtimeProfile?: string;
 };
 
 type McpInfo = {
-  config?: { servers?: McpServer[] };
+  problems?: string[];
+  config?: {
+    servers?: McpServer[];
+    capabilities?: { milestones?: { enabled?: boolean } };
+  };
 };
-
-const READINESS_REQUIREMENTS = [
-  'MCP 连接测试通过',
-  '远端写权限已验证',
-  '创建与更新行为已验证',
-  '状态回写行为已验证',
-  '重复请求的幂等行为已验证',
-];
 
 export default function ProjectSyncSettings() {
   const navigate = useNavigate();
@@ -63,10 +64,13 @@ export default function ProjectSyncSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [mcpError, setMcpError] = useState('');
+  const watched = Form.useWatch([], form) as SyncValues | undefined;
 
   const serverOptions = useMemo(() => (mcpInfo?.config?.servers || [])
     .filter((server) => server.enabled !== false)
     .map((server) => ({ value: server.id, label: server.name ? `${server.name}（${server.id}）` : server.id })), [mcpInfo]);
+  const dirty = useMemo(() => projectSyncChanged(project?.sync, watched || project?.sync), [project?.sync, watched]);
+  const readiness = useMemo(() => projectSyncReadiness(watched || project?.sync, mcpInfo || {}), [mcpInfo, project?.sync, watched]);
 
   const loadMcp = useCallback(async () => {
     setMcpLoading(true);
@@ -116,17 +120,18 @@ export default function ProjectSyncSettings() {
       return;
     }
     setSaving(true);
+    const invalidatesPreview = projectSyncChanged(project?.sync, values);
     try {
       const updated = await api.updateProject(slug, projectSyncPayload(values));
       setProject(updated);
       form.setFieldsValue(projectSyncForm(updated?.sync));
-      message.success('项目同步设置已保存');
+      message.success(invalidatesPreview ? '项目同步设置已保存；已有同步预览已失效' : '项目同步设置已保存');
     } catch (nextError) {
       message.error(errorText(nextError, '项目同步设置保存失败'));
     } finally {
       setSaving(false);
     }
-  }, [form, message, slug]);
+  }, [form, message, project?.sync, slug]);
 
   return (
     <main className="fl-page fl-project-sync-page">
@@ -142,7 +147,7 @@ export default function ProjectSyncSettings() {
             <div className="fl-section-head">
               <div>
                 <h2>同步策略</h2>
-                <p>设置会保存在当前项目数据中，不会创建新的外部连接。</p>
+                <p>这里的服务、项目 ID 与托管字段会直接决定后续同步计划。</p>
               </div>
               <Button icon={<ApiOutlined />} onClick={() => navigate('/settings/mcp')}>MCP 中心</Button>
             </div>
@@ -166,13 +171,16 @@ export default function ProjectSyncSettings() {
                 action={<Button size="small" loading={mcpLoading} onClick={() => void loadMcp()}>重试</Button>}
               />
             ) : null}
-            <Alert
-              className="fl-project-sync-version-note"
-              type="info"
-              showIcon
-              message="v0.7.2 本页只保存项目级同步准备数据"
-              description="这里保存按项目的 MCP 服务、外部项目 ID 和托管字段。当前里程碑执行仍使用 MCP 中心的“迭代能力映射”；真正按项目应用这些字段从 v0.7.3 开始。"
-            />
+            {dirty ? (
+              <Alert
+                className="fl-project-sync-version-note"
+                role="alert"
+                type="warning"
+                showIcon
+                message="保存后，已有同步预览将失效"
+                description="服务、外部项目 ID 或托管字段已经变化。请保存后回到相关迭代重新生成预览。"
+              />
+            ) : null}
 
             <Form<SyncValues>
               className="fl-project-sync-form"
@@ -184,10 +192,10 @@ export default function ProjectSyncSettings() {
               <Form.Item name="mode" label="同步模式" rules={[{ required: true, message: '请选择同步模式' }]}>
                 <Radio.Group className="fl-project-sync-modes">
                   <Radio value="manual">
-                    <span><strong>手动确认</strong><small>生成计划后，由用户确认执行。</small></span>
+                    <span><strong>手动确认</strong><small>生成计划、审阅差异，再由用户确认执行。</small></span>
                   </Radio>
-                  <Radio value="trusted-auto">
-                    <span><strong>可信自动（准备配置）</strong><small>仅保存未来自动化所需的策略。</small></span>
+                  <Radio value="trusted-auto" disabled>
+                    <span><strong>可信自动（尚未开放）</strong><small>预计 v0.7.5 提供；当前不可选择或保存。</small></span>
                   </Radio>
                 </Radio.Group>
               </Form.Item>
@@ -209,22 +217,18 @@ export default function ProjectSyncSettings() {
               <Form.Item
                 name="managedFields"
                 label="托管字段"
-                extra="为 v0.7.3 起的按项目同步声明托管范围。"
+                extra="只有选中的字段会由 Flowlark 比较并写回平台。"
               >
                 <Checkbox.Group className="fl-project-sync-managed" options={MANAGED_FIELD_OPTIONS} />
               </Form.Item>
 
-              <Form.Item noStyle shouldUpdate={(before, after) => before.mode !== after.mode}>
-                {({ getFieldValue }) => getFieldValue('mode') === 'trusted-auto' ? (
-                  <Alert
-                    className="fl-project-sync-trusted-alert"
-                    type="warning"
-                    showIcon
-                    message="v0.7.2 不会自动执行同步"
-                    description={trustedModeMessage({ ready: false })}
-                  />
-                ) : null}
-              </Form.Item>
+              <Alert
+                className="fl-project-sync-trusted-alert"
+                type="info"
+                showIcon
+                message="所有远端写入仍需人工确认"
+                description={trustedModeMessage({ ready: readiness.connection.state === 'ready' })}
+              />
 
               <div className="fl-project-sync-actions">
                 <Space wrap>
@@ -233,7 +237,7 @@ export default function ProjectSyncSettings() {
                     type="primary"
                     icon={<SaveOutlined />}
                     loading={saving}
-                    disabled={!writable}
+                    disabled={!writable || !dirty}
                     onClick={() => void save()}
                   >
                     保存设置
@@ -243,22 +247,23 @@ export default function ProjectSyncSettings() {
             </Form>
           </section>
 
-          <aside className="fl-settings-section fl-project-sync-readiness">
+          <aside className="fl-settings-section fl-project-sync-readiness" aria-live="polite">
             <div className="fl-section-head">
               <div>
-                <h2>可信自动准备条件</h2>
-                <p>这些能力必须全部通过验证，才具备未来启用自动执行的基础。</p>
+                <h2>连接与权限</h2>
+                <p>配置可用和平台授权是两件事；这里只展示当前已知事实。</p>
               </div>
             </div>
-            <ul>
-              {READINESS_REQUIREMENTS.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-            <Alert
-              type="info"
-              showIcon
-              message="激活边界：v0.7.5"
-              description="即使准备条件全部满足，v0.7.2 也只保存配置，不会自动执行同步。请前往 MCP 中心创建服务并测试能力。"
-            />
+            <div className="fl-project-sync-status-list">
+              {[{ name: '连接配置', ...readiness.connection }, { name: '平台写权限', ...readiness.permission }].map((status) => (
+                <div className={`fl-project-sync-status is-${status.state}`} key={status.name}>
+                  <span>{status.name}</span>
+                  <strong>{status.label}</strong>
+                  <small>{status.detail}</small>
+                </div>
+              ))}
+            </div>
+            <Button block icon={<ApiOutlined />} onClick={() => navigate('/settings/mcp')}>前往 MCP 中心验证</Button>
           </aside>
         </div>
       </State>

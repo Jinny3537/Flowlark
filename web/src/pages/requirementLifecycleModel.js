@@ -15,9 +15,9 @@ const PROTOTYPE_PROGRESS = Object.freeze({
 })
 
 const PRIMARY_ACTION = Object.freeze({
-  draft: { key: 'confirm', label: '确认需求', targetStatus: 'confirmed' },
-  confirmed: { key: 'join-milestone', label: '加入迭代', targetStatus: null },
-  developing: { key: 'view-milestone', label: '查看迭代', targetStatus: null },
+  draft: { key: 'confirm', label: '确认需求', targetStatus: 'confirmed', requiresWrite: true },
+  confirmed: { key: 'join-milestone', label: '加入迭代', targetStatus: null, requiresWrite: true },
+  developing: { key: 'view-milestone', label: '查看迭代', targetStatus: null, requiresWrite: false },
 })
 
 export const REQUIREMENT_STATUS_OPTIONS = Object.freeze(

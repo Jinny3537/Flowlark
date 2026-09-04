@@ -33,13 +33,13 @@ test('keeps prototype progress mapped from legacy derived status', () => {
 
 test('exposes only the three v0.7.3 primary actions', () => {
   assert.deepEqual(requirementPrimaryAction({ status: 'draft' }), {
-    key: 'confirm', label: '确认需求', targetStatus: 'confirmed',
+    key: 'confirm', label: '确认需求', targetStatus: 'confirmed', requiresWrite: true,
   })
   assert.deepEqual(requirementPrimaryAction({ status: 'confirmed' }), {
-    key: 'join-milestone', label: '加入迭代', targetStatus: null,
+    key: 'join-milestone', label: '加入迭代', targetStatus: null, requiresWrite: true,
   })
   assert.deepEqual(requirementPrimaryAction({ status: 'developing' }), {
-    key: 'view-milestone', label: '查看迭代', targetStatus: null,
+    key: 'view-milestone', label: '查看迭代', targetStatus: null, requiresWrite: false,
   })
   for (const status of ['pending-acceptance', 'completed', 'archived', 'unexpected']) {
     assert.equal(requirementPrimaryAction({ status }), null)

@@ -1,16 +1,20 @@
 import { Alert, App, Button, Checkbox, Descriptions, Input, Modal, Space, Steps, Table, Tag } from 'antd';
 import { PlayCircleOutlined, ReloadOutlined, SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import {
   allowedMilestoneActions,
+  groupFreezeBlockers,
   groupPlanOperations,
   isHighRiskAction,
+  milestonePrimaryAction,
   milestoneStatusMeta,
   syncHealth,
 } from './milestoneSyncModel.js';
+import { presentSyncOperation } from './syncOperationModel.js';
+import { linkRequiredStep } from './syncCenterModel.js';
 
 type Props = {
   name: string;
@@ -25,7 +29,7 @@ type Props = {
 const ACTION_LABELS: Record<string, string> = {
   review: '进入评审',
   back: '退回计划中',
-  freeze: '冻结迭代',
+  freeze: '预览并冻结',
   unfreeze: '解除冻结',
   start: '开始冲刺',
   end: '结束交付',
@@ -36,7 +40,6 @@ const ACTION_LABELS: Record<string, string> = {
 const LOCAL_TARGETS: Record<string, string> = {
   review: 'reviewing',
   back: 'planning',
-  freeze: 'frozen',
   unfreeze: 'reviewing',
   archive: 'archived',
 };
@@ -53,10 +56,28 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
   const [busy, setBusy] = useState('');
   const [operationError, setOperationError] = useState('');
   const [localReasonAction, setLocalReasonAction] = useState('');
+  const contextRef = useRef('');
   const groups = useMemo(() => groupPlanOperations(plan || {}), [plan]);
   const health = syncHealth({ external: item?.external, journal });
   const lifecycle = milestoneStatusMeta(item?.status);
   const actions = allowedMilestoneActions(item);
+  const primaryAction = milestonePrimaryAction(item);
+  const freezeBlockerGroups = useMemo(() => groupFreezeBlockers(preflight?.blockers || []), [preflight?.blockers]);
+  const pendingLink = linkRequiredStep(journal || {});
+
+  useEffect(() => {
+    const context = JSON.stringify({
+      updatedAt: item?.updatedAt || '',
+      external: item?.external || null,
+      sourceHash: preflight?.sourceHash || ''
+    });
+    if (contextRef.current && contextRef.current !== context && plan) {
+      setPlan(null);
+      setPlanOpen(false);
+      setOperationError('迭代或同步配置已经变化，原预览已失效，请重新生成。');
+    }
+    contextRef.current = context;
+  }, [item?.external, item?.updatedAt, plan, preflight?.sourceHash]);
 
   async function prepare(action = '', nextResolutions: Record<string, string> = {}) {
     setBusy(action ? `plan:${action}` : 'plan');
@@ -89,7 +110,7 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
         confirmUnfinished,
         resolutions,
       });
-      message.success(planAction ? `${ACTION_LABELS[planAction]}完成` : '迭代同步完成');
+      message.success(planAction === 'freeze' ? '远端范围已验证，迭代已冻结' : planAction ? `${ACTION_LABELS[planAction]}完成` : '迭代同步完成');
       setPlanOpen(false);
       setPlan(null);
       await onChanged();
@@ -114,7 +135,7 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
   }
 
   async function transition(action: string) {
-    if (['start', 'end'].includes(action) || (action === 'cancel' && item?.external?.sprintId)) {
+    if (['freeze', 'start', 'end'].includes(action) || (action === 'cancel' && item?.external?.sprintId)) {
       await prepare(action);
       return;
     }
@@ -152,12 +173,15 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
     }
   }
 
-  async function resolveConflict(operation: any, resolution: 'restore-local' | 'accept-remote') {
+  async function resolveConflict(operation: any) {
     const key = String(operation.key || '').replace(/:conflict$/, '');
-    await prepare(planAction, { ...resolutions, [key]: resolution });
+    await prepare(planAction, { ...resolutions, [key]: 'restore-local' });
   }
 
   const highRisk = isHighRiskAction(planAction) || Boolean(plan?.operations?.some((operation: any) => operation.risk === 'high'));
+  const impactConfirmationRequired = Boolean(plan?.operations?.some((operation: any) =>
+    ['sprint.start', 'sprint.end', 'sprint.cancel', 'local.scope-change'].includes(operation.kind) ||
+    (operation.kind === 'task.move' && operation.risk === 'high')));
   const blockers = plan?.blockers || [];
   return (
     <section className="fl-detail-section" aria-live="polite">
@@ -171,11 +195,11 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
           {actions.map((action) => (
             <Button
               key={action}
-              type={action === 'start' ? 'primary' : 'default'}
+              type={primaryAction?.key === action || action === 'start' ? 'primary' : 'default'}
               danger={action === 'cancel'}
               icon={action === 'start' ? <PlayCircleOutlined /> : undefined}
               loading={busy === `transition:${action}` || busy === `plan:${action}`}
-              disabled={!writable || Boolean(busy) || (action === 'freeze' && !preflight?.ready)}
+              disabled={!writable || Boolean(busy)}
               onClick={() => void transition(action)}
             >
               {ACTION_LABELS[action]}
@@ -183,6 +207,10 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
           ))}
         </Space>
       </div>
+
+      {operationError && !planOpen ? (
+        <Alert className="fl-mcp-result" role="alert" type="warning" showIcon message={operationError} />
+      ) : null}
 
       <Descriptions column={{ xs: 1, sm: 3 }} size="small">
         <Descriptions.Item label="生命周期"><Tag color={lifecycle.color}>{lifecycle.label}</Tag></Descriptions.Item>
@@ -198,20 +226,30 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
           type="warning"
           showIcon
           message="冻结前仍需处理"
-          description={(
-            <ul>
-              {preflight.blockers.map((blocker: any, index: number) => (
+          description={<div className="fl-freeze-blocker-groups">{freezeBlockerGroups.map((group) => (
+            <section key={group.key} aria-labelledby={`freeze-blocker-${group.key}`}>
+              <h3 id={`freeze-blocker-${group.key}`}>{group.label}<span>{group.items.length}</span></h3>
+              <ul>{group.items.map((blocker: any, index: number) => (
                 <li key={`${blocker.code}-${index}`}>
-                  {blocker.message}
-                  {blocker.repairTo ? <Button type="link" size="small" onClick={() => navigate(blocker.repairTo)}>前往处理</Button> : null}
+                  <span>{blocker.message}</span>
+                  {blocker.repairTo ? <Button type="link" onClick={() => navigate(blocker.repairTo)}>前往处理</Button> : null}
                 </li>
-              ))}
-            </ul>
-          )}
+              ))}</ul>
+            </section>
+          ))}</div>}
         />
       ) : null}
 
-      {journal?.status === 'failed' ? (
+      {pendingLink ? (
+        <Alert
+          className="fl-mcp-result"
+          type="warning"
+          showIcon
+          message="创建结果需要人工关联"
+          description={pendingLink.error?.message || '平台可能已经创建对象，请先在同步中心关联远端 ID，再回来重试。'}
+          action={<Button onClick={() => navigate('/sync')}>前往同步中心</Button>}
+        />
+      ) : journal?.status === 'failed' ? (
         <Alert
           className="fl-mcp-result"
           type="error"
@@ -226,9 +264,12 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
         width={900}
         title={planAction ? `${ACTION_LABELS[planAction]} · 确认计划` : '确认迭代同步计划'}
         open={planOpen}
-        okText={planAction ? ACTION_LABELS[planAction] : '确认并执行'}
+        okText={planAction === 'freeze' ? '确认同步并冻结' : planAction ? ACTION_LABELS[planAction] : '确认并执行'}
         confirmLoading={busy === 'execute'}
-        okButtonProps={{ danger: planAction === 'cancel', disabled: Boolean(blockers.length) || (highRisk && (!reason.trim() || !confirmUnfinished)) }}
+        okButtonProps={{
+          danger: planAction === 'cancel',
+          disabled: Boolean(blockers.length) || (highRisk && !reason.trim()) || (impactConfirmationRequired && !confirmUnfinished),
+        }}
         onOk={() => void execute()}
         onCancel={() => setPlanOpen(false)}
         destroyOnHidden
@@ -252,17 +293,16 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
           pagination={false}
           dataSource={plan?.operations || []}
           columns={[
-            { title: '操作', dataIndex: 'kind', width: 150, render: (value) => <code>{value}</code> },
-            { title: '对象', render: (_, operation: any) => operation.requirement || operation.taskId || operation.sprintId || name },
-            { title: '变更摘要', render: (_, operation: any) => <span className="fl-muted">{JSON.stringify(operation.after || operation.before || {}).slice(0, 180)}</span> },
+            { title: '操作', width: 170, render: (_, operation: any) => <strong>{presentSyncOperation(operation).title}</strong> },
+            { title: '对象', width: 150, render: (_, operation: any) => presentSyncOperation(operation).subject },
+            { title: '变更摘要', render: (_, operation: any) => <span className="fl-muted">{presentSyncOperation(operation).summary}</span> },
             { title: '风险', dataIndex: 'risk', width: 90, render: (value) => <Tag color={value === 'high' ? 'error' : 'default'}>{value === 'high' ? '高风险' : '普通'}</Tag> },
             {
               title: '处理',
               width: 190,
               render: (_, operation: any) => operation.kind === 'conflict' ? (
                 <Space size={4}>
-                  <Button size="small" onClick={() => void resolveConflict(operation, 'restore-local')}>保留 Flowlark</Button>
-                  <Button size="small" onClick={() => void resolveConflict(operation, 'accept-remote')}>接受平台值</Button>
+                  <Button onClick={() => void resolveConflict(operation)}>保留 Flowlark</Button>
                 </Space>
               ) : null,
             },
@@ -273,8 +313,10 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
           <>
             <label htmlFor="milestone-sync-reason">操作原因</label>
             <Input.TextArea id="milestone-sync-reason" value={reason} rows={3} maxLength={255} showCount onChange={(event) => setReason(event.target.value)} />
-            <Checkbox checked={confirmUnfinished} onChange={(event) => setConfirmUnfinished(event.target.checked)}>我已确认平台上的未完成任务处理方式</Checkbox>
           </>
+        ) : null}
+        {impactConfirmationRequired ? (
+          <Checkbox checked={confirmUnfinished} onChange={(event) => setConfirmUnfinished(event.target.checked)}>我已确认平台上的未完成任务处理方式</Checkbox>
         ) : null}
         {operationError ? <Alert className="fl-mcp-result" type="error" showIcon message={operationError} /> : null}
         <Alert className="fl-mcp-result" type="info" showIcon icon={<SafetyCertificateOutlined />} message={`计划哈希：${plan?.hash || ''}`} />

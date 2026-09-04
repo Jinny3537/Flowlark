@@ -101,6 +101,12 @@ export type RequirementTaskBindingPlan = {
   }>;
 };
 
+export type SyncLinkResultInput = {
+  operationKey: string;
+  remoteId: number;
+  reason: string;
+};
+
 const enc = encodeURIComponent;
 
 async function request<T>(method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
@@ -246,6 +252,8 @@ export const api = {
     get<any[]>(`/api/sync/audit?limit=${limit}${syncId ? `&syncId=${enc(syncId)}` : ''}`),
   executeSyncRecord: (id: string, body: unknown) => post<any>(`/api/sync/${enc(id)}/execute`, body),
   retrySyncRecord: (id: string, body: unknown) => post<any>(`/api/sync/${enc(id)}/retry`, body),
+  linkSyncResult: (id: string, body: SyncLinkResultInput) =>
+    post<any>(`/api/sync/${enc(id)}/link-result`, body),
   cancelSyncRecord: (id: string, reason: string) => post<any>(`/api/sync/${enc(id)}/cancel`, { reason }),
   listViews: () => get<any[]>('/api/views'),
   saveView: (id: string, body: unknown) => put(`/api/views/${enc(id)}`, body),

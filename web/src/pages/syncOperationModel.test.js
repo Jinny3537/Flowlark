@@ -134,3 +134,12 @@ test('uses neutral inspection-only semantics for unknown operations', () => {
   })
   assert.equal(syncOperationDiff({ kind: 'admin.delete-everything', before: 1, after: 2 }).summary, '未知操作，字段仅供核对')
 })
+
+test('describes lifecycle, scope, and controlled binding operations', () => {
+  assert.equal(presentSyncOperation({ kind: 'sprint.start', sprintId: 10 }).title, '开始平台冲刺')
+  assert.equal(presentSyncOperation({ kind: 'sprint.end', sprintId: 10 }).title, '结束平台冲刺')
+  assert.equal(presentSyncOperation({ kind: 'sprint.cancel', sprintId: 10 }).title, '取消平台冲刺')
+  assert.equal(presentSyncOperation({ kind: 'local.scope-change', after: [{ requirement: 'REQ-1' }] }).summary, '更新迭代范围，共 1 项')
+  assert.equal(presentSyncOperation({ kind: 'task.binding.replace', before: null, after: { taskId: 20 } }).title, '绑定平台任务')
+  assert.equal(presentSyncOperation({ kind: 'sprint.binding.replace', before: { sprintId: 10 }, after: { sprintId: 11 } }).title, '改绑平台 Sprint')
+})

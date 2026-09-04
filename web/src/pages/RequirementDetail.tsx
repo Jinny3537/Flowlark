@@ -56,10 +56,10 @@ export default function RequirementDetail() {
   const externalBinding = useMemo(() => externalBindingMeta(item || {}), [item]);
   const primaryAction = useMemo(() => requirementPrimaryAction(item || {}), [item]);
   const primaryGuard = useMemo(() => writeActionGuard({
-    canWrite: writable,
+    canWrite: primaryAction?.requiresWrite === false || writable,
     readonlyReason,
     blockers: primaryAction?.key === 'confirm' ? preflight.blockers : [],
-  }), [preflight.blockers, primaryAction?.key, readonlyReason, writable]);
+  }), [preflight.blockers, primaryAction?.key, primaryAction?.requiresWrite, readonlyReason, writable]);
   const memberships = useMemo(() => item?.milestones || [], [item?.milestones]);
 
   const load = useCallback(async () => {
@@ -307,7 +307,7 @@ export default function RequirementDetail() {
                   <Descriptions.Item label="任务">{textOf(externalBinding.binding.taskCode || externalBinding.binding.taskId)}</Descriptions.Item>
                   <Descriptions.Item label="远端状态">{textOf(externalBinding.binding.remoteStatus)}</Descriptions.Item>
                   <Descriptions.Item label="最近同步">{externalBinding.binding.syncedAt ? fmtTime(externalBinding.binding.syncedAt) : '尚未同步'}</Descriptions.Item>
-                  <Descriptions.Item label="差异状态">{externalBinding.state === 'drift' ? '检测到远端差异' : '未检测到待处理差异'}</Descriptions.Item>
+                  <Descriptions.Item label="差异状态">{externalBinding.state === 'drift' ? '检测到远端差异' : '尚未完成远端差异检查'}</Descriptions.Item>
                 </Descriptions>
               ) : <div className="fl-empty-note">尚未绑定任务平台主任务。</div>}
               <div className="fl-context-actions">
@@ -340,7 +340,7 @@ export default function RequirementDetail() {
         <Form form={bindingForm} layout="vertical" disabled={!writable}>
           <Form.Item name="project" label="本地项目标识" rules={[{ required: true, message: '请选择需求所属的本地项目' }]}><Input placeholder="orders" /></Form.Item>
           <Form.Item name="remoteId" label="远端任务 ID" rules={[{ required: true, message: '请输入远端任务 ID' }]}><Input className="fl-mono" placeholder="123" /></Form.Item>
-          <Form.Item name="reason" label="关联原因"><Input.TextArea rows={3} placeholder="说明首次关联或重新关联原因" /></Form.Item>
+          <Form.Item name="reason" label="关联原因" rules={[{ required: true, whitespace: true, message: '请填写关联原因' }]}><Input.TextArea rows={3} placeholder="说明首次关联或重新关联原因" /></Form.Item>
         </Form>
         {bindingPlan ? <Alert type="success" showIcon message="关联预览已进入同步中心" description={<Button type="link" onClick={() => navigate('/sync')}>打开同步中心确认执行</Button>} /> : null}
       </Modal>

@@ -26,8 +26,14 @@ export function allowedMilestoneActions(item = {}) {
   return [...(ACTIONS[item.status || 'planning'] || [])]
 }
 
+export function milestonePrimaryAction(item = {}) {
+  return item.status === 'reviewing'
+    ? { key: 'freeze', label: '预览并冻结', planAction: 'freeze' }
+    : null
+}
+
 export function isHighRiskAction(action) {
-  return ['start', 'end', 'cancel'].includes(action)
+  return ['freeze', 'start', 'end', 'cancel'].includes(action)
 }
 
 export function groupPlanOperations(plan = {}) {
@@ -37,10 +43,30 @@ export function groupPlanOperations(plan = {}) {
     else if (/\.create$/.test(operation.kind)) groups.create.push(operation)
     else if (/\.update$/.test(operation.kind)) groups.update.push(operation)
     else if (/\.move/.test(operation.kind)) groups.move.push(operation)
-    else if (['sprint.start', 'sprint.end', 'sprint.cancel'].includes(operation.kind)) groups.lifecycle.push(operation)
+    else if (['sprint.start', 'sprint.end', 'sprint.cancel', 'milestone.freeze'].includes(operation.kind)) groups.lifecycle.push(operation)
     else groups.other.push(operation)
   }
   return groups
+}
+
+export function groupFreezeBlockers(blockers = []) {
+  const definitions = [
+    { key: 'requirement', label: '需求完整性' },
+    { key: 'version', label: '版本交付' },
+    { key: 'project', label: '项目同步目标' },
+    { key: 'remote', label: '远端同步验证' }
+  ]
+  const groups = Object.fromEntries(definitions.map((item) => [item.key, { ...item, items: [] }]))
+  for (const blocker of blockers || []) groups[blockerCategory(blocker)].items.push(blocker)
+  return definitions.map(({ key }) => groups[key]).filter((group) => group.items.length)
+}
+
+function blockerCategory(blocker = {}) {
+  const code = String(blocker.code || '')
+  if (code.startsWith('PROJECT_SYNC_') || code.startsWith('MCP_SERVER_') || code.startsWith('MCP_RUNTIME_') || code.startsWith('MCP_CAPABILITY_')) return 'project'
+  if (blocker.version || ['REVIEW_NOT_CONFIRMED', 'SPEC_MISSING', 'CHANGELOG_MISSING', 'BASELINE_DRIFT', 'VERSION_VOID', 'VERSION_DRAFT', 'MILESTONE_SCOPE_EMPTY'].includes(code)) return 'version'
+  if (blocker.requirement || code.startsWith('REQUIREMENT_')) return 'requirement'
+  return 'remote'
 }
 
 export function syncHealth({ external = null, journal = null } = {}) {

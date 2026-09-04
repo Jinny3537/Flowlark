@@ -1202,6 +1202,98 @@ button:active,
   line-height: 22px;
 }
 
+.fl-project-sync-status-list {
+  display: grid;
+  gap: var(--pw-space-12);
+  margin-bottom: var(--pw-space-16);
+}
+
+.fl-project-sync-status {
+  display: grid;
+  gap: var(--pw-space-4);
+  padding: var(--pw-space-12);
+  border: 1px solid var(--pw-color-border);
+  border-left: 3px solid var(--fl-text-3);
+  border-radius: var(--pw-radius-md);
+  background: var(--pw-color-surface-muted);
+}
+
+.fl-project-sync-status.is-ready {
+  border-left-color: var(--fl-primary);
+}
+
+.fl-project-sync-status.is-blocked {
+  border-left-color: var(--fl-danger);
+}
+
+.fl-project-sync-status.is-unverified,
+.fl-project-sync-status.is-missing {
+  border-left-color: var(--fl-draft);
+}
+
+.fl-project-sync-status > span,
+.fl-project-sync-status > small {
+  color: var(--fl-text-2);
+  font-size: var(--fl-fs-2);
+}
+
+.fl-project-sync-status > strong {
+  color: var(--fl-text);
+}
+
+.fl-freeze-blocker-groups {
+  display: grid;
+  gap: var(--fl-s-3);
+}
+
+.fl-freeze-blocker-groups section {
+  padding: var(--fl-s-3);
+  border: 1px solid var(--fl-line);
+  border-radius: var(--fl-r-2);
+  background: var(--fl-surface);
+}
+
+.fl-freeze-blocker-groups h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fl-s-2);
+  margin: 0 0 var(--fl-s-2);
+  color: var(--fl-text);
+  font-size: var(--fl-fs-3);
+}
+
+.fl-freeze-blocker-groups h3 span {
+  color: var(--fl-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.fl-freeze-blocker-groups ul {
+  display: grid;
+  gap: var(--fl-s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fl-freeze-blocker-groups li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fl-s-3);
+}
+
+.fl-freeze-blocker-groups li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fl-freeze-blocker-groups .ant-btn {
+  min-height: 44px;
+  flex: 0 0 auto;
+}
+
 .fl-metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2599,6 +2691,20 @@ button:active,
   overflow-wrap: anywhere;
 }
 
+.fl-sync-operation-name {
+  display: grid;
+  gap: var(--fl-s-1);
+}
+
+.fl-sync-operation-name strong {
+  color: var(--fl-text);
+}
+
+.fl-sync-operation-name > span {
+  color: var(--fl-text-2);
+  font-size: var(--fl-fs-2);
+}
+
 .fl-sync-diff,
 .fl-sync-diff-grid {
   display: grid;
@@ -2618,6 +2724,38 @@ button:active,
 
 .fl-sync-diff-grid.is-single {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.fl-sync-field-changes {
+  display: grid;
+  gap: var(--fl-s-2);
+  margin: 0;
+}
+
+.fl-sync-field-changes > div {
+  display: grid;
+  grid-template-columns: minmax(100px, .45fr) minmax(0, 1.55fr);
+  gap: var(--fl-s-3);
+  padding: var(--fl-s-2) 0;
+  border-top: 1px solid var(--fl-line);
+}
+
+.fl-sync-field-changes dt {
+  color: var(--fl-text-2);
+  font-weight: 600;
+}
+
+.fl-sync-field-changes dd {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: var(--fl-s-2);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fl-sync-field-changes dd b {
+  color: var(--fl-text-3);
 }
 
 .fl-sync-diff-panel {
@@ -2779,6 +2917,25 @@ button:active,
 
   .fl-sync-diff-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fl-sync-field-changes > div,
+  .fl-sync-field-changes dd {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fl-sync-field-changes dd b {
+    transform: rotate(90deg);
+    transform-origin: left center;
+  }
+
+  .fl-freeze-blocker-groups li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fl-freeze-blocker-groups .ant-btn {
+    width: 100%;
   }
 
   .fl-queue-filters > * {
@@ -3014,6 +3171,7 @@ button:active,
   .fl-requirement-editor-actions .ant-btn,
   .fl-context-actions .ant-btn {
     width: 100%;
+    min-height: 44px;
   }
 
   .fl-requirement-editor-actions,

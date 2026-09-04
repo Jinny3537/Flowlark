@@ -17,6 +17,7 @@ import {
 import {
   DownOutlined,
   EyeOutlined,
+  LinkOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   RightOutlined,
@@ -33,11 +34,14 @@ import { fmtTime, textOf } from '@/utils/format';
 import {
   countSyncStatuses,
   filterSyncRecords,
+  linkRequiredStep,
+  syncEntityMeta,
   syncPrimaryAction,
   syncStatusMeta,
 } from './syncCenterModel.js';
+import { presentSyncOperation, syncOperationDiff } from './syncOperationModel.js';
 
-type SyncAction = 'execute' | 'retry' | 'cancel';
+type SyncAction = 'execute' | 'retry' | 'link' | 'cancel';
 
 const FILTERS = [
   { value: 'all', label: '全部' },
@@ -45,10 +49,6 @@ const FILTERS = [
   { value: 'running', label: '同步中' },
   { value: 'completed', label: '已完成' },
 ];
-
-const ENTITY_LABELS: Record<string, string> = {
-  milestone: '迭代',
-};
 
 const OPERATION_STATUS_LABELS: Record<string, string> = {
   pending: '待执行',
@@ -76,6 +76,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   'step.executing': '步骤执行中',
   'step.completed': '步骤完成',
   'step.failed': '步骤失败',
+  'step.linked': '已关联远端结果',
 };
 
 function recordOperations(record: any) {
@@ -107,7 +108,7 @@ function isHighImpact(record: any) {
 
 function latestError(record: any) {
   return record?.error?.message || recordOperations(record)
-    .find((operation: any) => operation.status === 'failed')?.error?.message || '';
+    .find((operation: any) => operation.error?.message)?.error?.message || '';
 }
 
 function planSummary(record: any) {
@@ -117,59 +118,27 @@ function planSummary(record: any) {
   return `${operations.length} 个步骤${highRiskCount ? ` · ${highRiskCount} 个高风险` : ''}`;
 }
 
-function operationDiff(item: any) {
-  const operation = item?.operation || item || {};
-  const hasBefore = Object.prototype.hasOwnProperty.call(operation, 'before');
-  const hasAfter = Object.prototype.hasOwnProperty.call(operation, 'after');
-  if (!hasBefore && !hasAfter) return { summary: '无字段差异', sections: [] };
-  if (operation.kind === 'local.scope-change') {
-    return {
-      summary: '目标范围',
-      sections: [{ label: '目标范围', value: operation.after, present: hasAfter, emptyText: '无目标范围' }],
-    };
-  }
-  if (operation.kind === 'local.accept-remote') {
-    return {
-      summary: '本地当前值 → 接受的外部值',
-      sections: [
-        { label: '本地当前值', value: operation.before, present: hasBefore, emptyText: '无本地当前值' },
-        { label: '接受的外部值', value: operation.after, present: hasAfter, emptyText: '无外部值' },
-      ],
-    };
-  }
-  return {
-    summary: '外部当前值 → Flowlark 目标值',
-    sections: [
-      { label: '外部当前值', value: operation.before, present: hasBefore, emptyText: '无外部当前值' },
-      { label: 'Flowlark 目标值', value: operation.after, present: hasAfter, emptyText: '无目标值' },
-    ],
-  };
-}
-
-function formattedJson(value: unknown) {
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return String(value);
-  }
+function readableValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (Array.isArray(value)) return `${value.length} 项`;
+  if (typeof value === 'object') return '详见该步骤的字段变化';
+  return String(value);
 }
 
 function OperationDiff({ item }: { item: any }) {
-  const diff = operationDiff(item);
-  if (!diff.sections.length) return <p className="fl-sync-diff-empty">无字段差异</p>;
+  const diff = syncOperationDiff(item);
+  if (!diff.changes.length) return <p className="fl-sync-diff-empty">{diff.summary}</p>;
   return (
     <div className="fl-sync-diff">
-      <p>变更数据已由后端脱敏。</p>
-      <div className={`fl-sync-diff-grid ${diff.sections.length === 1 ? 'is-single' : ''}`}>
-        {diff.sections.map((section) => (
-          <section className="fl-sync-diff-panel" key={section.label}>
-            <h4>{section.label}</h4>
-            <pre className="fl-sync-diff-json" tabIndex={0}>
-              {section.present ? formattedJson(section.value) : section.emptyText}
-            </pre>
-          </section>
+      <p>{diff.summary}；数据已由后端脱敏。</p>
+      <dl className="fl-sync-field-changes">
+        {diff.changes.map((change) => (
+          <div key={change.field}>
+            <dt>{change.label}</dt>
+            <dd><span>{readableValue(change.before)}</span><b aria-hidden="true">→</b><span>{readableValue(change.after)}</span></dd>
+          </div>
         ))}
-      </div>
+      </dl>
     </div>
   );
 }
@@ -202,6 +171,7 @@ export default function SyncCenter() {
   const [confirming, setConfirming] = useState<{ type: SyncAction; record: any } | null>(null);
   const [reason, setReason] = useState('');
   const [confirmUnfinished, setConfirmUnfinished] = useState(false);
+  const [linkRemoteId, setLinkRemoteId] = useState('');
   const [actionError, setActionError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -258,6 +228,7 @@ export default function SyncCenter() {
   const askAction = (type: SyncAction, record: any) => {
     setReason('');
     setConfirmUnfinished(false);
+    setLinkRemoteId('');
     setActionError('');
     setConfirming({ type, record });
   };
@@ -266,6 +237,7 @@ export default function SyncCenter() {
     setConfirming(null);
     setReason('');
     setConfirmUnfinished(false);
+    setLinkRemoteId('');
     setActionError('');
   };
 
@@ -282,8 +254,10 @@ export default function SyncCenter() {
     const { type, record } = confirming;
     const highRisk = isHighRisk(record);
     const highImpact = ['execute', 'retry'].includes(type) && isHighImpact(record);
+    const pendingLink = linkRequiredStep(record);
     if (type === 'execute' && !String(record.planHash || '').trim()) return;
     if ((type === 'cancel' || (type === 'execute' && highRisk)) && !reason.trim()) return;
+    if (type === 'link' && (!pendingLink || !Number.isInteger(Number(linkRemoteId)) || Number(linkRemoteId) <= 0 || !reason.trim())) return;
     if (highImpact && !confirmUnfinished) return;
     setActionLoading(true);
     setActionError('');
@@ -299,10 +273,16 @@ export default function SyncCenter() {
           reason: '从同步中心重试',
           confirmUnfinished: highImpact,
         });
+      } else if (type === 'link') {
+        await api.linkSyncResult(record.id, {
+          operationKey: pendingLink.key,
+          remoteId: Number(linkRemoteId),
+          reason: reason.trim(),
+        });
       } else {
         await api.cancelSyncRecord(record.id, reason.trim());
       }
-      message.success(type === 'execute' ? '同步已执行' : type === 'retry' ? '同步已重试' : '同步已取消');
+      message.success(type === 'execute' ? '同步已执行' : type === 'retry' ? '同步已重试' : type === 'link' ? '远端结果已关联，请点击重试继续' : '同步已取消');
       closeConfirmation();
       await refreshAfterAction(record.id);
     } catch (error) {
@@ -336,6 +316,15 @@ export default function SyncCenter() {
             重试
           </Button>
         ) : null}
+        {action === 'link' ? (
+          <Button
+            icon={<LinkOutlined />}
+            disabled={!writable}
+            onClick={() => askAction('link', record)}
+          >
+            关联结果
+          </Button>
+        ) : null}
       </Space>
     );
   };
@@ -344,8 +333,9 @@ export default function SyncCenter() {
     {
       title: '步骤',
       render: (_: unknown, item: any) => (
-        <div>
-          <code>{textOf(item.kind || item.operation?.kind)}</code>
+        <div className="fl-sync-operation-name">
+          <strong>{presentSyncOperation(item).title}</strong>
+          <span>{presentSyncOperation(item).subject}</span>
           <div className="fl-muted fl-mono">{textOf(item.key || item.operation?.key)}</div>
         </div>
       ),
@@ -370,7 +360,7 @@ export default function SyncCenter() {
     {
       title: '变更预览',
       width: 240,
-      render: (_: unknown, item: any) => <span className="fl-sync-diff-summary">{operationDiff(item).summary}</span>,
+      render: (_: unknown, item: any) => <span className="fl-sync-diff-summary">{presentSyncOperation(item).summary}</span>,
     },
     {
       title: '结果 / 错误',
@@ -389,6 +379,8 @@ export default function SyncCenter() {
     confirming && ['execute', 'retry'].includes(confirming.type) && isHighImpact(confirming.record),
   );
   const confirmNeedsReason = confirmType === 'cancel' || (confirmType === 'execute' && confirmHighRisk);
+  const confirmLinkStep = confirming ? linkRequiredStep(confirming.record) : null;
+  const confirmLinkInvalid = confirmType === 'link' && (!confirmLinkStep || !Number.isInteger(Number(linkRemoteId)) || Number(linkRemoteId) <= 0 || !reason.trim());
   const confirmMissingPlanHash = confirmType === 'execute' && !String(confirming?.record?.planHash || '').trim();
 
   return (
@@ -485,8 +477,8 @@ export default function SyncCenter() {
                 width: 220,
                 render: (_, record: any) => (
                   <div>
-                    <span className="fl-table-title">{ENTITY_LABELS[record.entityType] || '未知对象'} · {textOf(record.entityKey)}</span>
-                    <div className="fl-muted fl-mono">{textOf(record.entityType)}</div>
+                    <span className="fl-table-title">{syncEntityMeta(record).label} · {textOf(record.entityKey)}</span>
+                    <div className="fl-muted">{record.mode === 'trusted-auto' ? '可信策略记录（仍需人工确认）' : '手动确认流程'}</div>
                   </div>
                 ),
               },
@@ -499,7 +491,7 @@ export default function SyncCenter() {
                 render: (_, record: any) => (
                   <span className="fl-sync-error">
                     {latestError(record) || '—'}
-                    {latestError(record) ? <small>打开详情检查失败步骤后重试</small> : null}
+                    {latestError(record) ? <small>{linkRequiredStep(record) ? '打开详情并关联已创建的远端对象' : '打开详情检查失败步骤后重试'}</small> : null}
                   </span>
                 ),
               },
@@ -514,7 +506,7 @@ export default function SyncCenter() {
         className="fl-sync-drawer"
         width="min(100vw, 760px)"
         open={detailOpen}
-        title={detailRecord ? `${ENTITY_LABELS[detailRecord.entityType] || '同步对象'} · ${textOf(detailRecord.entityKey)}` : '同步详情'}
+        title={detailRecord ? `${syncEntityMeta(detailRecord).label} · ${textOf(detailRecord.entityKey)}` : '同步详情'}
         onClose={() => setDetailOpen(false)}
         extra={detailRecord ? (
           <Space className="fl-sync-actions" size={4} wrap>
@@ -526,6 +518,9 @@ export default function SyncCenter() {
             ) : null}
             {syncPrimaryAction(detailRecord) === 'retry' ? (
               <Button disabled={!writable} onClick={() => askAction('retry', detailRecord)}>重试</Button>
+            ) : null}
+            {syncPrimaryAction(detailRecord) === 'link' ? (
+              <Button icon={<LinkOutlined />} disabled={!writable} onClick={() => askAction('link', detailRecord)}>关联结果</Button>
             ) : null}
             {['pending-confirmation', 'failed', 'paused'].includes(detailRecord.status) ? (
               <Button danger icon={<StopOutlined />} disabled={!writable} onClick={() => askAction('cancel', detailRecord)}>取消</Button>
@@ -561,10 +556,12 @@ export default function SyncCenter() {
                   className="fl-sync-alert"
                   role="alert"
                   aria-live="polite"
-                  type="error"
+                  type={linkRequiredStep(detailRecord) ? 'warning' : 'error'}
                   showIcon
-                  message="最近一次执行失败"
-                  description={`${latestError(detailRecord)}。检查下方失败步骤后，可使用“重试”继续。`}
+                  message={linkRequiredStep(detailRecord) ? '创建结果需要人工关联' : '最近一次执行失败'}
+                  description={linkRequiredStep(detailRecord)
+                    ? `${latestError(detailRecord)}。核对平台对象 ID 后使用“关联结果”，再手动重试。`
+                    : `${latestError(detailRecord)}。检查下方失败步骤后，可使用“重试”继续。`}
                 />
               ) : null}
             </section>
@@ -582,13 +579,13 @@ export default function SyncCenter() {
                   expandable={{
                     columnTitle: '展开',
                     expandIcon: ({ expanded, onExpand, record }) => {
-                      const kind = textOf(record.kind || record.operation?.kind, '步骤');
+                      const title = presentSyncOperation(record).title;
                       return (
                         <Button
                           className="fl-sync-expand-button"
                           type="text"
                           icon={expanded ? <DownOutlined /> : <RightOutlined />}
-                          aria-label={`${expanded ? '收起' : '展开'} ${kind} 变更预览`}
+                          aria-label={`${expanded ? '收起' : '展开'} ${title} 变更预览`}
                           onClick={(event) => onExpand(record, event)}
                         />
                       );
@@ -625,12 +622,12 @@ export default function SyncCenter() {
 
       <Modal
         className="fl-sync-action-modal"
-        title={confirmType === 'execute' ? '确认执行同步计划' : confirmType === 'retry' ? '确认重试同步' : '确认取消同步'}
+        title={confirmType === 'execute' ? '确认执行同步计划' : confirmType === 'retry' ? '确认重试同步' : confirmType === 'link' ? '关联远端创建结果' : '确认取消同步'}
         open={Boolean(confirming)}
-        okText={confirmType === 'execute' ? '确认执行' : confirmType === 'retry' ? '确认重试' : '确认取消'}
+        okText={confirmType === 'execute' ? '确认执行' : confirmType === 'retry' ? '确认重试' : confirmType === 'link' ? '确认关联' : '确认取消'}
         okButtonProps={{
           danger: confirmType === 'cancel',
-          disabled: !writable || confirmMissingPlanHash || (confirmNeedsReason && !reason.trim()) || (confirmHighImpact && !confirmUnfinished),
+          disabled: !writable || confirmMissingPlanHash || confirmLinkInvalid || (confirmNeedsReason && !reason.trim()) || (confirmHighImpact && !confirmUnfinished),
         }}
         confirmLoading={actionLoading}
         onOk={() => void runAction()}
@@ -674,6 +671,15 @@ export default function SyncCenter() {
               </>
             ) : null}
             {confirmType === 'retry' ? <p>将从未完成步骤继续。已完成的远端对象不会由浏览器重复提交。</p> : null}
+            {confirmType === 'link' ? (
+              <>
+                <Alert type="warning" showIcon message="只关联已经在平台确认存在的对象" description={confirmLinkStep?.error?.message || '创建结果不明确，请先在平台核对远端 ID。关联后还需要手动点击重试。'} />
+                <label htmlFor="sync-link-remote-id">远端对象 ID</label>
+                <Input id="sync-link-remote-id" inputMode="numeric" value={linkRemoteId} placeholder="输入已核对的正整数 ID" onChange={(event) => setLinkRemoteId(event.target.value)} />
+                <label htmlFor="sync-link-reason">核对说明</label>
+                <Input.TextArea id="sync-link-reason" value={reason} rows={3} maxLength={255} showCount onChange={(event) => setReason(event.target.value)} />
+              </>
+            ) : null}
             {confirmHighImpact ? (
               <Checkbox checked={confirmUnfinished} onChange={(event) => setConfirmUnfinished(event.target.checked)}>
                 已确认未完成任务和范围变化影响

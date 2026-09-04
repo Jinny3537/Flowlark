@@ -38,7 +38,33 @@ export function countSyncStatuses(records = []) {
 }
 
 export function syncPrimaryAction(record = {}) {
+  if (linkRequiredStep(record)) return 'link'
   if (record.status === 'pending-confirmation') return 'execute'
   if (record.status === 'failed' || record.status === 'paused') return 'retry'
   return 'open'
+}
+
+export function linkRequiredStep(record = {}) {
+  if (record.status !== 'paused') return null
+  return (record.operations || []).find((step) =>
+    ['sprint.create', 'task.create'].includes(step.kind || step.operation?.kind) &&
+    step.status === 'paused' &&
+    step.error?.code === 'MCP_SYNC_LINK_REQUIRED') || null
+}
+
+export function syncEntityMeta(record = {}) {
+  const type = String(record.entityType || '')
+  const key = encodeURIComponent(String(record.entityKey || ''))
+  const definition = {
+    milestone: { label: '迭代', route: `/milestones/${key}` },
+    requirement: { label: '需求任务绑定', route: `/requirements/${key}` },
+    'milestone-binding': { label: '迭代 Sprint 绑定', route: `/milestones/${key}` }
+  }[type]
+  return definition || { label: '未知对象', route: '' }
+}
+
+export function syncRecordBatchEligible(record = {}) {
+  if (record.status !== 'pending-confirmation' || linkRequiredStep(record)) return false
+  const operations = record.plan?.operations || []
+  return operations.length > 0 && operations.every((operation) => operation.risk !== 'high')
 }
