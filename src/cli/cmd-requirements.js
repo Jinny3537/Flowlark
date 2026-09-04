@@ -1,5 +1,9 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { err } from '../core/errors.js'
-import { c, heading, ok, table } from './ui.js'
+import { c, heading, ok, table, warn } from './ui.js'
 import { hub } from './commands.js'
 
 export async function requirement(pos, values) {
@@ -20,6 +24,35 @@ export async function requirement(pos, values) {
     if (!code || !values.title) throw err.bad('REQUIREMENT_INPUT_REQUIRED', '请提供需求编号和 --title')
     const item = h.createRequirement({ code, title: values.title, description: values.desc || '', owner: values.owner || '' })
     return ok(`已创建需求 ${item.code}`)
+  }
+  if (sub === 'confirm') {
+    const code = pos[1]
+    if (!code) throw err.bad('REQUIREMENT_INPUT_REQUIRED', '请提供需求编号')
+    const item = h.transitionRequirement(code, { target: 'confirmed', reason: values.reason || '' })
+    if (values.json) return console.log(JSON.stringify(item, null, 2))
+    return ok(`已确认需求 ${item.code}`)
+  }
+  if (sub === 'spec') {
+    const code = pos[1]
+    if (!code) throw err.bad('REQUIREMENT_INPUT_REQUIRED', '请提供需求编号')
+    const current = h.readRequirementSpec(code)
+    if (!values.edit) {
+      if (values.json) return console.log(JSON.stringify({ spec: current }, null, 2))
+      return console.log(current)
+    }
+
+    const temporaryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-req-spec-'))
+    const temporaryFile = path.join(temporaryDir, 'spec.md')
+    try {
+      fs.writeFileSync(temporaryFile, current || `# ${code} 验收与规格说明\n\n`, 'utf8')
+      const editor = process.env.VISUAL || process.env.EDITOR || 'vi'
+      const result = spawnSync(editor, [temporaryFile], { stdio: 'inherit' })
+      if (result.status !== 0) return warn('编辑器异常退出，未保存')
+      h.writeRequirementSpec(code, fs.readFileSync(temporaryFile, 'utf8'))
+      return ok(`需求 ${code} 的规格书已保存`)
+    } finally {
+      fs.rmSync(temporaryDir, { recursive: true, force: true })
+    }
   }
   if (sub === 'link') {
     const [code, project, versionNo] = pos.slice(1)

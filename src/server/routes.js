@@ -1,6 +1,7 @@
 import { Router, sendJson, readJson, readBody } from './router.js'
 import * as store from '../core/store.js'
 import * as net from '../core/net.js'
+import { err } from '../core/errors.js'
 
 /**
  * REST API。每个路由都只是 Hub 方法的薄包装 ——
@@ -69,6 +70,22 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 201, hub.createRequirement(body))
   })
   r.get('/api/requirements/:code', async (req, res, p) => sendJson(res, 200, hub.getRequirement(p.code)))
+  r.get('/api/requirements/:code/confirmation-preflight', async (req, res, p) =>
+    sendJson(res, 200, hub.requirementConfirmationPreflight(p.code)))
+  r.post('/api/requirements/:code/transition', async (req, res, p) =>
+    sendJson(res, 200, hub.transitionRequirement(p.code, await readJson(req, maxBody))))
+  r.get('/api/requirements/:code/spec', async (req, res, p) =>
+    sendJson(res, 200, { code: p.code, markdown: hub.readRequirementSpec(p.code) }))
+  r.put('/api/requirements/:code/spec', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw err.bad('REQUEST_BODY_INVALID', '请求体必须是 JSON 对象')
+    }
+    if (!Object.hasOwn(body, 'markdown') || typeof body.markdown !== 'string') {
+      throw err.bad('REQUIREMENT_SPEC_MARKDOWN_REQUIRED', '规格书请求必须包含 markdown 字符串')
+    }
+    sendJson(res, 200, { code: p.code, markdown: hub.writeRequirementSpec(p.code, body.markdown) })
+  })
   r.post('/api/requirements/:code/task-binding/plan', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, await hub.planRequirementTaskBinding(p.code, {

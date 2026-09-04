@@ -499,10 +499,18 @@ export class Hub {
     return content
   }
 
+  requirementConfirmationPreflight(code) {
+    return confirmationPreflight(this.root, reqx.readRequirement(this.root, code))
+  }
+
   transitionRequirement(code, input = {}) {
     this.#assertWritable('确认需求')
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      throw err.bad('REQUEST_BODY_INVALID', '请求体必须是 JSON 对象')
+    }
     const item = reqx.readRequirement(this.root, code)
-    const target = String(input.target || '')
+    const target = String(input.target || '').trim()
+    if (!target) throw err.bad('REQUIREMENT_TARGET_REQUIRED', '请选择需求目标状态')
     const transition = transitionRequirementStatus(item.status, target)
     if (transition.changed && target === 'confirmed') {
       const check = confirmationPreflight(this.root, item)
@@ -520,9 +528,10 @@ export class Hub {
 
   transitionRequirementSystem(code, target, input = {}) {
     this.#assertWritable('系统流转需求状态')
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
     return this.#transitionRequirement(code, String(target || ''), {
       system: true,
-      reason: String(input.reason || '').trim()
+      reason: String(value.reason || '').trim()
     })
   }
 

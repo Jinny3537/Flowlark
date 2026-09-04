@@ -43,6 +43,64 @@ export type ConfigResponse = {
   problems: string[];
 };
 
+export type RequirementLifecycleStatus =
+  | 'draft'
+  | 'confirmed'
+  | 'developing'
+  | 'pending-acceptance'
+  | 'completed'
+  | 'archived';
+
+export type RequirementLifecycleRecord = {
+  code: string;
+  status: RequirementLifecycleStatus;
+  statusChangedAt?: string;
+  statusChangedBy?: string;
+  statusReason?: string;
+  [key: string]: unknown;
+};
+
+export type RequirementConfirmationBlocker = {
+  code: string;
+  message: string;
+  repairTo?: string;
+};
+
+export type RequirementConfirmationPreflight = {
+  ready: boolean;
+  blockers: RequirementConfirmationBlocker[];
+};
+
+export type RequirementSpecResponse = {
+  code?: string;
+  markdown: string;
+};
+
+export type RequirementTaskBindingInput = {
+  project: string;
+  remoteId: number | string;
+  expectedTaskId?: number | null;
+  reason: string;
+};
+
+export type RequirementTaskBindingPlan = {
+  entityType: 'requirement';
+  entityKey: string;
+  server: string;
+  projectId: number;
+  hash: string;
+  syncId: string;
+  syncStatus: string;
+  blockers: Array<{ code: string; message: string; target?: string }>;
+  operations: Array<{
+    key: string;
+    kind: 'task.binding.replace';
+    risk: 'high';
+    before: unknown;
+    after: unknown;
+  }>;
+};
+
 const enc = encodeURIComponent;
 
 async function request<T>(method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
@@ -151,14 +209,14 @@ export const api = {
   createRequirement: (body: unknown) => post<any>('/api/requirements', body),
   updateRequirement: (code: string, body: unknown) => put<any>(`/api/requirements/${enc(code)}`, body),
   requirementConfirmationPreflight: (code: string) =>
-    get<any>(`/api/requirements/${enc(code)}/confirmation-preflight`),
-  transitionRequirement: (code: string, target: string, reason = '') =>
-    post<any>(`/api/requirements/${enc(code)}/transition`, { target, reason }),
-  getRequirementSpec: (code: string) => get<any>(`/api/requirements/${enc(code)}/spec`),
+    get<RequirementConfirmationPreflight>(`/api/requirements/${enc(code)}/confirmation-preflight`),
+  transitionRequirement: (code: string, target: 'confirmed', reason = '') =>
+    post<RequirementLifecycleRecord>(`/api/requirements/${enc(code)}/transition`, { target, reason }),
+  getRequirementSpec: (code: string) => get<RequirementSpecResponse>(`/api/requirements/${enc(code)}/spec`),
   updateRequirementSpec: (code: string, markdown: string) =>
-    put<any>(`/api/requirements/${enc(code)}/spec`, { markdown }),
-  planRequirementTaskBinding: (code: string, body: unknown) =>
-    post<any>(`/api/requirements/${enc(code)}/task-binding/plan`, body),
+    put<RequirementSpecResponse>(`/api/requirements/${enc(code)}/spec`, { markdown }),
+  planRequirementTaskBinding: (code: string, body: RequirementTaskBindingInput) =>
+    post<RequirementTaskBindingPlan>(`/api/requirements/${enc(code)}/task-binding/plan`, body),
   syncRequirements: (provider = 'mcp', config = {}) => post('/api/requirements/sync', { provider, config }),
   linkRequirement: (code: string, body: unknown) => post(`/api/requirements/${enc(code)}/links`, body),
   unlinkRequirement: (code: string, slug: string, no: string) =>

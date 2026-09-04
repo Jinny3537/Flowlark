@@ -401,7 +401,7 @@ git commit -m "feat: verify remote scope before freezing"
 - Modify: `test/v04-api.test.js`
 - Modify: `test/external-binding-api.test.js`
 
-- [ ] Add fixed API routes:
+- [x] Add fixed API routes:
 
 ```text
 GET  /api/requirements/:code/confirmation-preflight
@@ -411,17 +411,17 @@ PUT  /api/requirements/:code/spec
 POST /api/requirements/:code/task-binding/plan
 ```
 
-- [ ] Route lifecycle writes through Hub methods that derive actor/time, enforce preflight, and log structured from/to/reason fields.
-- [ ] Reject non-object bodies safely and retain read-only LAN 403 behavior for all writes.
-- [ ] Add CLI commands `flowlark req confirm <code>` and `flowlark req spec <code> --edit`; both must call the same Hub methods as HTTP.
-- [ ] Add corresponding typed Web API methods; do not accept server/tool/operation fields.
-- [ ] Run:
+- [x] Route lifecycle writes through Hub methods that derive actor/time, enforce preflight, and log structured from/to/reason fields.
+- [x] Reject non-object bodies safely and retain read-only LAN 403 behavior for all writes.
+- [x] Add CLI commands `flowlark req confirm <code>` and `flowlark req spec <code> --edit`; both must call the same Hub methods as HTTP.
+- [x] Add corresponding typed Web API methods; do not accept server/tool/operation fields.
+- [x] Run:
 
 ```bash
 node --test test/v04-api.test.js test/requirements.test.js test/external-binding-api.test.js test/cli.test.js
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/core/service.js src/server/routes.js src/cli/cmd-requirements.js src/cli/help.js web/src/services/api.ts test/v04-api.test.js test/external-binding-api.test.js test/cli.test.js

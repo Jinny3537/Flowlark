@@ -20,10 +20,14 @@ function workspace() {
 }
 
 function ph(cwd, ...args) {
+  return phEnv(cwd, {}, ...args)
+}
+
+function phEnv(cwd, extraEnv, ...args) {
   const r = spawnSync(process.execPath, [CLI, ...args], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, NO_COLOR: '1', FLOWLARK_USER: '测试用户', FLOWLARK_REPO: '' }
+    env: { ...process.env, NO_COLOR: '1', FLOWLARK_USER: '测试用户', FLOWLARK_REPO: '', ...extraEnv }
   })
   return { code: r.status, out: r.stdout || '', err: r.stderr || '' }
 }
@@ -207,6 +211,70 @@ describe('CLI 全流程', () => {
     t.assert.ok(fs.existsSync(path.join(dir, 'projects/ord/versions/v1.0.spec.md')))
   })
 
+  test('req spec 通过同一需求规格接口查看、JSON 输出和安全编辑', (t) => {
+    const dir = workspace()
+    ph(dir, 'init')
+    ph(dir, 'req', 'new', 'REQ-CLI-SPEC', '--title', 'CLI 规格书')
+    const capture = path.join(dir, 'editor-path.txt')
+    const editor = path.join(dir, 'edit-spec.sh')
+    fs.writeFileSync(editor, `#!/bin/sh\nprintf '%s' "$1" > '${capture}'\nprintf '# 验收标准\\n\\n- 支持安全编辑\\n' > "$1"\n`, { mode: 0o700 })
+
+    const edited = phEnv(dir, { EDITOR: editor, VISUAL: '' }, 'req', 'spec', 'REQ-CLI-SPEC', '--edit')
+    t.assert.strictEqual(edited.code, 0, edited.err)
+    t.assert.match(ph(dir, 'req', 'spec', 'REQ-CLI-SPEC').out, /支持安全编辑/)
+    t.assert.deepStrictEqual(JSON.parse(ph(dir, 'req', 'spec', 'REQ-CLI-SPEC', '--json').out), {
+      spec: '# 验收标准\n\n- 支持安全编辑\n'
+    })
+
+    const temporary = fs.readFileSync(capture, 'utf8')
+    t.assert.ok(path.dirname(temporary).startsWith(os.tmpdir()))
+    t.assert.ok(!path.resolve(temporary).startsWith(`${path.resolve(dir)}${path.sep}`))
+    t.assert.strictEqual(fs.existsSync(path.dirname(temporary)), false)
+  })
+
+  test('req spec 编辑器非零退出时不写回并清理临时目录', (t) => {
+    const dir = workspace()
+    ph(dir, 'init')
+    ph(dir, 'req', 'new', 'REQ-CLI-FAIL', '--title', '失败保护')
+    const capture = path.join(dir, 'failed-editor-path.txt')
+    const editor = path.join(dir, 'fail-editor.sh')
+    fs.writeFileSync(editor, `#!/bin/sh\nprintf '%s' "$1" > '${capture}'\nprintf '不应保存' > "$1"\nexit 7\n`, { mode: 0o700 })
+
+    const result = phEnv(dir, { EDITOR: editor, VISUAL: '' }, 'req', 'spec', 'REQ-CLI-FAIL', '--edit')
+    t.assert.strictEqual(result.code, 0, result.err)
+    t.assert.match(result.out, /编辑器异常退出，未保存/)
+    t.assert.deepStrictEqual(JSON.parse(ph(dir, 'req', 'spec', 'REQ-CLI-FAIL', '--json').out), { spec: '' })
+    const temporary = fs.readFileSync(capture, 'utf8')
+    t.assert.strictEqual(fs.existsSync(path.dirname(temporary)), false)
+  })
+
+  test('req confirm 通过 Hub 前置检查确认需求', (t) => {
+    const dir = workspace()
+    ph(dir, 'init')
+    ph(dir, 'req', 'new', 'REQ-CLI-CONFIRM', '--title', '确认需求', '--desc', '完整描述', '--owner', 'pm')
+
+    let result = ph(dir, 'req', 'confirm', 'REQ-CLI-CONFIRM', '--reason', '评审通过')
+    t.assert.strictEqual(result.code, 1)
+    t.assert.match(result.err, /确认阻塞项/)
+
+    const editor = path.join(dir, 'confirm-spec.sh')
+    fs.writeFileSync(editor, '#!/bin/sh\nprintf "# 验收\\n" > "$1"\n', { mode: 0o700 })
+    t.assert.strictEqual(phEnv(dir, { EDITOR: editor, VISUAL: '' }, 'req', 'spec', 'REQ-CLI-CONFIRM', '--edit').code, 0)
+    result = ph(dir, 'req', 'confirm', 'REQ-CLI-CONFIRM', '--reason', '评审通过')
+    t.assert.strictEqual(result.code, 0, result.err)
+    t.assert.match(result.out, /已确认需求 REQ-CLI-CONFIRM/)
+    const item = JSON.parse(ph(dir, 'req', 'show', 'REQ-CLI-CONFIRM', '--json').out)
+    t.assert.strictEqual(item.status, 'confirmed')
+    t.assert.strictEqual(item.statusReason, '评审通过')
+  })
+
+  test('req 帮助包含确认和需求规格书命令', (t) => {
+    const result = ph(workspace(), 'help', 'req')
+    t.assert.strictEqual(result.code, 0, result.err)
+    t.assert.match(result.out, /confirm <编号>/)
+    t.assert.match(result.out, /spec <编号>/)
+  })
+
   test('status 报告缺基线的项目', (t) => {
     const dir = workspace()
     ph(dir, 'init'); ph(dir, 'new', '订单', '--code', 'ord')
@@ -230,7 +298,8 @@ describe('CLI 全流程', () => {
     let r = ph(dir, 'milestone', 'new', 'S1', '-t', '迭代一', '--start', '2026-08-01', '--end', '2026-08-21')
     t.assert.strictEqual(r.code, 0, r.err)
     const preflight = JSON.parse(ph(dir, 'milestone', 'preflight', 'S1', '--json').out)
-    t.assert.strictEqual(preflight.ready, true)
+    t.assert.strictEqual(preflight.ready, false)
+    t.assert.ok(preflight.blockers.some((item) => item.code === 'MILESTONE_SCOPE_EMPTY'))
     r = ph(dir, 'milestone', 'transition', 'S1', 'reviewing')
     t.assert.strictEqual(r.code, 0, r.err)
     r = ph(dir, 'milestone', 'transition', 'S1', 'canceled', '--reason', '范围取消')

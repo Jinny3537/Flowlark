@@ -28,7 +28,7 @@ ${c.bold('检索与组织')}
   ${c.cyan('offline')} <项目> <版本>  抓取 CDN 依赖生成自包含的离线版
   ${c.cyan('compare')} <项目> <v1> <v2>  浏览器里并排对比两个版本
   ${c.cyan('feedback')}             反馈草稿：list / export / submit / rm
-  ${c.cyan('req')}                  需求：list / show / new / link / unlink
+  ${c.cyan('req')}                  需求：list / show / new / confirm / spec / link / unlink
   ${c.cyan('milestone')}            迭代：查看、预检、同步计划、状态流转
   ${c.cyan('export')}               导出需求或迭代静态交付包
   ${c.cyan('workspace')}            工作区：list / add / clone / remove
@@ -306,6 +306,22 @@ ${c.cyan('flowlark git brief')} 就是把这些整理成一段说明，粘给助
 
 版本号从文件名推断（如 订单中心_v1.4.html → v1.4），推不出来时按日期生成。
 撞号时自动加后缀。
+`,
+
+  req: `${c.bold('flowlark req')} <子命令> [参数]
+
+  list                              列出需求
+  show <编号> [--json]              查看需求详情
+  new <编号> --title <标题>          创建需求
+  confirm <编号> [--reason <原因>]   通过完整性检查后确认需求
+  spec <编号>                       查看需求验收与规格书
+  spec <编号> --json                输出机器可读规格书
+  spec <编号> --edit                用 $EDITOR 编辑需求规格书
+  link <编号> <项目> <版本>          关联原型版本
+  unlink <编号> <项目> <版本>        取消关联原型版本
+
+需求确认要求标题、描述、负责人和规格书均完整。CLI 与网页调用同一套 Hub 规则，
+不会绕过生命周期检查。编辑器异常退出时不会写回，临时文件也会自动清理。
 `,
 
   milestone: `${c.bold('flowlark milestone')} <子命令> [参数]
