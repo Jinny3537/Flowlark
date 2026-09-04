@@ -5,12 +5,20 @@ import { err } from './errors.js'
 import { parse, stringify } from './json.js'
 import * as store from './store.js'
 import { REPO_FILE, SCHEMA_VERSION } from './repo.js'
-import { createRequirement, requirementExists } from './requirements.js'
+import {
+  createRequirement,
+  deriveRequirementStatus,
+  listRequirementCodes,
+  readRequirement,
+  requirementExists
+} from './requirements.js'
 import {
   createMetadataBackup,
-  restoreMetadataBackup
+  restoreMetadataBackup,
+  validateMetadataBackup
 } from './metadata-backup.js'
 import { normalizeSyncPolicy } from './sync-policy.js'
+import { REQUIREMENT_STATUSES } from './requirement-lifecycle.js'
 
 const MIGRATION_TRACKED_PATHS = [
   REPO_FILE,
@@ -44,6 +52,7 @@ function trackedDirty(root) {
 
 export function preflightMigration(root) {
   assertMigrationTopLevelFilesAreNotSymlinks(root)
+  assertRequirementPathsAreNotSymlinks(root)
   const config = parse(fs.readFileSync(path.join(root, REPO_FILE), 'utf8'), REPO_FILE)
   const from = Number(config.schemaVersion || 1)
   return { from, to: SCHEMA_VERSION, needed: from < SCHEMA_VERSION, dirty: trackedDirty(root) }
@@ -89,6 +98,31 @@ function assertMigrationTopLevelFilesAreNotSymlinks(root) {
       }
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error
+    }
+  }
+}
+
+function requirementSymlinkError(relative) {
+  return err.conflict(
+    'MIGRATION_REQUIREMENT_SYMLINK',
+    '迁移拒绝读取或写入符号链接：' + relative,
+    '请将 ' + relative + ' 替换为普通目录后重试'
+  )
+}
+
+function assertRequirementPathsAreNotSymlinks(root) {
+  const requirements = store.paths.requirements(root)
+  try {
+    const stat = fs.lstatSync(requirements)
+    if (stat.isSymbolicLink()) throw requirementSymlinkError('requirements/')
+    if (!stat.isDirectory()) return
+  } catch (error) {
+    if (error?.code === 'ENOENT') return
+    throw error
+  }
+  for (const entry of fs.readdirSync(requirements, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) {
+      throw requirementSymlinkError(`requirements/${entry.name}/`)
     }
   }
 }
@@ -175,6 +209,104 @@ export function migrateToSchema3(root, options = {}) {
   }
 }
 
+const LEGACY_REQUIREMENT_STATUS = new Map([
+  ['not_started', 'draft'],
+  ['designing', 'draft'],
+  ['finalized', 'confirmed'],
+  ['delivered', 'confirmed']
+])
+
+function schema4Requirement(root, code, now) {
+  const file = store.paths.requirementFile(root, code)
+  const stat = fs.lstatSync(file)
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw err.conflict(
+      'MIGRATION_REQUIREMENT_SYMLINK',
+      `迁移拒绝读取或写入符号链接：requirements/${code}/requirement.json`
+    )
+  }
+  const item = parse(fs.readFileSync(file, 'utf8'), `${code}/requirement.json`)
+  if (item.statusOverride != null) {
+    migrateLegacyRequirementStatus(item, code, item.statusOverride, now)
+  } else if (Object.hasOwn(item, 'status')) {
+    if (!REQUIREMENT_STATUSES.has(item.status)) {
+      throw invalidRequirementStatus(code, item.status)
+    }
+  } else {
+    migrateLegacyRequirementStatus(item, code, deriveRequirementStatus(root, code), now)
+  }
+  delete item.statusOverride
+  return { file, item }
+}
+
+function invalidRequirementStatus(code, status) {
+  return err.bad(
+    'MIGRATION_REQUIREMENT_STATUS_INVALID',
+    `需求 ${code} 的旧状态「${status}」无法迁移到 Schema 4`
+  )
+}
+
+function migrateLegacyRequirementStatus(item, code, legacy, now) {
+  const status = LEGACY_REQUIREMENT_STATUS.get(legacy)
+  if (!status) {
+    throw invalidRequirementStatus(code, legacy)
+  }
+  item.status = status
+  item.statusChangedAt = now
+  item.statusChangedBy = 'migration:schema4'
+  item.statusReason = `legacy-derived:${legacy}`
+}
+
+function validateSchema4Requirements(root) {
+  const bindings = new Map()
+  for (const code of listRequirementCodes(root)) {
+    const item = readRequirement(root, code)
+    for (const binding of item.externalTasks) {
+      const key = JSON.stringify([
+        binding.provider,
+        binding.server,
+        binding.projectId,
+        binding.taskId
+      ])
+      const previous = bindings.get(key)
+      if (previous) {
+        throw err.bad(
+          'MIGRATION_EXTERNAL_TASK_DUPLICATE',
+          `需求 ${previous} 与 ${code} 重复绑定同一个外部任务`
+        )
+      }
+      bindings.set(key, code)
+    }
+  }
+}
+
+export function migrateToSchema4(root, options = {}) {
+  const check = preflightMigration(root)
+  if (check.from >= 4) return { migrated: false, from: check.from, to: 4 }
+  if (check.from < 3) throw err.bad('MIGRATION_ORDER_INVALID', 'Schema 4 迁移必须先完成 Schema 3 迁移')
+  if (!options[SKIP_DIRTY_CHECK]) assertClean(check)
+
+  const now = new Date().toISOString()
+  const backup = createMetadataBackup(root, { from: 3, to: 4, now: new Date(now) })
+  try {
+    const requirements = listRequirementCodes(root).map((code) => schema4Requirement(root, code, now))
+    for (const { file, item } of requirements) {
+      fs.writeFileSync(file, stringify(item, 'requirement'), 'utf8')
+    }
+
+    options.afterRequirementWrite?.()
+    validateSchema4Requirements(root)
+
+    const config = parse(fs.readFileSync(path.join(root, REPO_FILE), 'utf8'), REPO_FILE)
+    config.schemaVersion = 4
+    fs.writeFileSync(path.join(root, REPO_FILE), stringify(config, 'repo'))
+    return { migrated: true, from: check.from, to: 4, requirementCount: requirements.length, backup }
+  } catch (error) {
+    restoreMetadataBackup(root, backup)
+    throw error
+  }
+}
+
 export function migrateToLatest(root, options = {}) {
   let from = preflightMigration(root).from
   const reports = []
@@ -186,8 +318,19 @@ export function migrateToLatest(root, options = {}) {
       initialBackup = report.backup
       from = 2
     }
-    if (from < 3) reports.push(migrateToSchema3(root, { ...options, [SKIP_DIRTY_CHECK]: reports.length > 0 }))
-    return { migrated: reports.some((item) => item.migrated), from: reports[0]?.from ?? from, to: 3, reports }
+    if (from < 3) {
+      const report = migrateToSchema3(root, { ...options, [SKIP_DIRTY_CHECK]: reports.length > 0 })
+      reports.push(report)
+      initialBackup ||= report.backup
+      from = 3
+    }
+    if (from < 4) {
+      const report = migrateToSchema4(root, { ...options, [SKIP_DIRTY_CHECK]: reports.length > 0 })
+      reports.push(report)
+      initialBackup ||= report.backup
+      from = 4
+    }
+    return { migrated: reports.some((item) => item.migrated), from: reports[0]?.from ?? from, to: 4, reports }
   } catch (error) {
     if (initialBackup) restoreMetadataBackup(root, initialBackup)
     throw error
@@ -198,13 +341,25 @@ export function rollbackMigration(root, backup) {
   let source = backup
   if (!source) {
     const base = path.join(root, '.flowlark', 'backup')
-    source = fs.existsSync(base)
-      ? fs.readdirSync(base, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory() && entry.name.startsWith('schema-1-'))
-          .map((entry) => path.join(base, entry.name)).sort().at(-1)
-      : null
+    const candidates = []
+    if (fs.existsSync(base)) {
+      for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+        const candidate = path.join(base, entry.name)
+        try {
+          const manifest = validateMetadataBackup(root, candidate)
+          const createdAt = Date.parse(manifest.createdAt)
+          if (Number.isFinite(createdAt)) candidates.push({ source: candidate, createdAt })
+        } catch {
+          // Invalid or incomplete backups are not rollback candidates.
+        }
+      }
+    }
+    source = candidates
+      .sort((a, b) => a.createdAt - b.createdAt || a.source.localeCompare(b.source))
+      .at(-1)?.source
   }
-  if (!source) throw err.notFound('Schema 1 迁移备份')
+  if (!source) throw err.notFound('有效的迁移备份')
   restoreMetadataBackup(root, source)
   return { rolledBack: true, backup: source }
 }

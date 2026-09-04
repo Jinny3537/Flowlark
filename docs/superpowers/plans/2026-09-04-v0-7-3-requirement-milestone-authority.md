@@ -165,10 +165,10 @@ git commit -m "feat: add authoritative requirement lifecycle"
 - Modify: `src/core/migrate.js`
 - Modify: `test/migrate.test.js`
 
-- [ ] Add failing tests for schema 3 → 4, schema 1 → 4, unknown legacy status, injected failure, and default rollback selection.
-- [ ] Raise `SCHEMA_VERSION` to `4`.
-- [ ] Implement `migrateToSchema4(root, options)` using the existing metadata backup and top-level symlink protection.
-- [ ] Map legacy states exactly:
+- [x] Add failing tests for schema 3 → 4, schema 1 → 4, unknown legacy status, injected failure, and default rollback selection.
+- [x] Raise `SCHEMA_VERSION` to `4`.
+- [x] Implement `migrateToSchema4(root, options)` using the existing metadata backup and top-level symlink protection.
+- [x] Map legacy states exactly:
 
 ```text
 statusOverride ?? deriveRequirementStatus()
@@ -177,17 +177,17 @@ finalized/delivered   → confirmed
 unknown               → migration failure
 ```
 
-- [ ] Set migration metadata to `statusChangedBy: "migration:schema4"`, current migration time, and `statusReason: "legacy-derived:<value>"`; remove `statusOverride`.
-- [ ] Validate every lifecycle status and reject duplicate `(provider, server, projectId, taskId)` bindings across requirements.
-- [ ] Extend `migrateToLatest` through schema 4 and retain whole-chain rollback to the initial schema.
-- [ ] Change parameterless `rollbackMigration` to select the latest valid backup by manifest timestamp, not only `schema-1-*` directories.
-- [ ] Run:
+- [x] Set migration metadata to `statusChangedBy: "migration:schema4"`, current migration time, and `statusReason: "legacy-derived:<value>"`; remove `statusOverride`.
+- [x] Validate every lifecycle status and reject duplicate `(provider, server, projectId, taskId)` bindings across requirements.
+- [x] Extend `migrateToLatest` through schema 4 and retain whole-chain rollback to the initial schema.
+- [x] Change parameterless `rollbackMigration` to select the latest valid backup by manifest timestamp, not only `schema-1-*` directories.
+- [x] Run:
 
 ```bash
 node --test test/migrate.test.js test/metadata-backup.test.js test/admin.test.js
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/core/repo.js src/core/migrate.js test/migrate.test.js
