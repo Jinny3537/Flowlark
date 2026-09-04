@@ -5,10 +5,15 @@ import { currentUser } from './repo.js'
 import { paths } from './store.js'
 
 const REDACTED = '[REDACTED]'
-const SENSITIVE_KEY = /password|authorization|token|secret|environment|env/i
+const SENSITIVE_KEY = /password|authorization|token|secret|api[-_]?key|environment|env/i
+const ASSIGNMENT = /(["']?)(\b[A-Za-z_][A-Za-z0-9_-]*\b)\1(\s*[:=]\s*)(?:(bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;)}\]&]+)/gi
+const AUTH_SCHEME_TOKEN = /(\b(?:Bearer|Basic)\s+)([A-Za-z0-9][A-Za-z0-9._~+/-]*={0,2})/gi
+const AUTH_SCHEME_TERMS = new Set(['auth', 'authentication', 'credential', 'credentials', 'header', 'scheme', 'token'])
+const SK_TOKEN = /\bsk-[A-Za-z0-9_-]{8,}/g
 
 export function sanitizeSyncValue(value, key = '') {
   if (SENSITIVE_KEY.test(String(key))) return REDACTED
+  if (typeof value === 'string') return sanitizeSyncString(value)
   if (Array.isArray(value)) return value.map((item) => sanitizeSyncValue(item))
   if (value && typeof value === 'object') {
     return Object.fromEntries(
@@ -19,6 +24,17 @@ export function sanitizeSyncValue(value, key = '') {
     )
   }
   return value
+}
+
+function sanitizeSyncString(value) {
+  return value
+    .replace(ASSIGNMENT, (match, quote, key, separator, scheme) =>
+      SENSITIVE_KEY.test(key)
+        ? `${quote}${key}${quote}${separator}${scheme ? `${scheme} ` : ''}${REDACTED}`
+        : match)
+    .replace(AUTH_SCHEME_TOKEN, (match, prefix, token) =>
+      AUTH_SCHEME_TERMS.has(token.toLowerCase()) ? match : `${prefix}${REDACTED}`)
+    .replace(SK_TOKEN, REDACTED)
 }
 
 export function appendSyncAudit(root, input, now = new Date()) {

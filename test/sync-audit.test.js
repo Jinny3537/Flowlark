@@ -58,6 +58,71 @@ test('sanitizes nested arrays without mutating the input', () => {
   assert.equal(input.items[0].token, 'one')
 })
 
+test('redacts credentials embedded in remote error messages', (t) => {
+  const root = fixture(t)
+  const message = 'Remote update failed (401): Authorization: Bearer remote-access-token'
+  const entry = appendSyncAudit(root, {
+    syncId: 'sync-1',
+    action: 'step.failed',
+    error: { message }
+  })
+
+  const raw = fs.readFileSync(path.join(root, '.flowlark', 'sync-audit.ndjson'), 'utf8')
+  assert.equal(
+    entry.error.message,
+    'Remote update failed (401): Authorization: Bearer [REDACTED]'
+  )
+  assert.doesNotMatch(raw, /remote-access-token/)
+  assert.equal(message, 'Remote update failed (401): Authorization: Bearer remote-access-token')
+})
+
+test('redacts credential assignments and provider tokens in nested strings without mutation', () => {
+  const input = {
+    message: 'PASSWORD=correct-horse-battery-staple while syncing',
+    details: [
+      'retry TOKEN: "queue-token-value"; request was rejected',
+      { debug: 'provider key sk-proj-1234567890abcdefghijklmnop' },
+      "SECRET='signing-secret'; response was invalid",
+      'standalone Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature was rejected',
+      'standalone Basic dXNlcjpwYXNz was rejected',
+      'api_key=provider-key-value while fetching',
+      'api-key: "secondary-key-value"; retry stopped'
+    ]
+  }
+
+  const sanitized = sanitizeSyncValue(input)
+
+  assert.deepEqual(sanitized, {
+    message: 'PASSWORD=[REDACTED] while syncing',
+    details: [
+      'retry TOKEN: [REDACTED]; request was rejected',
+      { debug: 'provider key [REDACTED]' },
+      'SECRET=[REDACTED]; response was invalid',
+      'standalone Bearer [REDACTED] was rejected',
+      'standalone Basic [REDACTED] was rejected',
+      'api_key=[REDACTED] while fetching',
+      'api-key: [REDACTED]; retry stopped'
+    ]
+  })
+  assert.deepEqual(input, {
+    message: 'PASSWORD=correct-horse-battery-staple while syncing',
+    details: [
+      'retry TOKEN: "queue-token-value"; request was rejected',
+      { debug: 'provider key sk-proj-1234567890abcdefghijklmnop' },
+      "SECRET='signing-secret'; response was invalid",
+      'standalone Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature was rejected',
+      'standalone Basic dXNlcjpwYXNz was rejected',
+      'api_key=provider-key-value while fetching',
+      'api-key: "secondary-key-value"; retry stopped'
+    ]
+  })
+})
+
+test('preserves ordinary diagnostic text', () => {
+  const message = 'Remote request timed out; bearer authentication and basic authentication were never attempted'
+  assert.equal(sanitizeSyncValue(message), message)
+})
+
 test('lists newest matching entries first and applies the requested limit', (t) => {
   const root = fixture(t)
   appendSyncAudit(root, { syncId: 'sync-1', action: 'queued' }, new Date('2026-09-04T00:00:00Z'))
