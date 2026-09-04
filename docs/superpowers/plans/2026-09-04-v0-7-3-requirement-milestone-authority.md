@@ -110,10 +110,10 @@ Do not implement:
 
 **Files:** inspect only.
 
-- [ ] Run `git status --short` and verify only the pre-existing `.codex-ui-regression/` and `test-results/` paths are untracked.
-- [ ] Run `npm test`; expect all current tests to pass with zero failures.
-- [ ] Run `npm run build:web`; expect success with only the existing npm-audit and bundle-size warnings.
-- [ ] Record `git rev-parse --short HEAD`; do not tag, publish, or change package versions.
+- [x] Run `git status --short` and verify only the pre-existing `.codex-ui-regression/` and `test-results/` paths are untracked.
+- [x] Run `npm test`; expect all current tests to pass with zero failures.
+- [x] Run `npm run build:web`; expect success with only the existing npm-audit and bundle-size warnings.
+- [x] Record `git rev-parse --short HEAD`; do not tag, publish, or change package versions.
 
 ## Task 1: Add Requirement Lifecycle and Specification Storage
 
@@ -126,8 +126,8 @@ Do not implement:
 - Modify: `src/core/json.js`
 - Modify: `test/requirements.test.js`
 
-- [ ] Write failing tests for default `draft`, lifecycle normalization, invalid transitions, and confirmation blockers.
-- [ ] Implement these public contracts:
+- [x] Write failing tests for default `draft`, lifecycle normalization, invalid transitions, and confirmation blockers.
+- [x] Implement these public contracts:
 
 ```js
 export const REQUIREMENT_STATUSES = new Set([
@@ -138,19 +138,19 @@ export function transitionRequirementStatus(current, target, { system = false } 
 export function confirmationPreflight(root, requirement)
 ```
 
-- [ ] `transitionRequirementStatus` must allow user `draft → confirmed`, allow system `confirmed → developing`, and reject every other v0.7.3 transition with structured errors.
-- [ ] Add `readRequirementSpec(root, code)` and `writeRequirementSpec(root, code, markdown)` to `requirements.js`; specification writes must not mutate lifecycle state.
-- [ ] Make `createRequirement` ignore/reject client-supplied `status`, `statusChanged*`, `statusOverride`, `external`, and `externalTasks`; initialize lifecycle fields from server time and `currentUser()` through the Hub.
-- [ ] Make ordinary `updateRequirement` reject lifecycle and binding fields with `REQUIREMENT_MANAGED_FIELD`.
-- [ ] Add a system-only lifecycle update helper that writes current status metadata atomically and never trusts actor/time from callers.
-- [ ] Add stable JSON key order for lifecycle fields.
-- [ ] Run:
+- [x] `transitionRequirementStatus` must allow user `draft → confirmed`, allow system `confirmed → developing`, and reject every other v0.7.3 transition with structured errors.
+- [x] Add `readRequirementSpec(root, code)` and `writeRequirementSpec(root, code, markdown)` to `requirements.js`; specification writes must not mutate lifecycle state.
+- [x] Make `createRequirement` ignore/reject client-supplied `status`, `statusChanged*`, `statusOverride`, `external`, and `externalTasks`; initialize lifecycle fields from server time and `currentUser()` through the Hub.
+- [x] Make ordinary `updateRequirement` reject lifecycle and binding fields with `REQUIREMENT_MANAGED_FIELD`.
+- [x] Add a system-only lifecycle update helper that writes current status metadata atomically and never trusts actor/time from callers.
+- [x] Add stable JSON key order for lifecycle fields.
+- [x] Run:
 
 ```bash
 node --test test/requirement-lifecycle.test.js test/requirements.test.js test/project-edit-api.test.js
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/core/requirement-lifecycle.js src/core/requirements.js src/core/service.js src/core/json.js test/requirement-lifecycle.test.js test/requirements.test.js

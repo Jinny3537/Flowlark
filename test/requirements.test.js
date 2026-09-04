@@ -31,6 +31,27 @@ describe('需求实体与反向索引', () => {
     t.assert.strictEqual(item.external, null)
   })
 
+  test('客户端不能注入外部绑定，但显式 trusted 内部导入可以保存', (t) => {
+    const { root, hub } = fixture()
+    const external = { provider: 'mcp', key: 'REMOTE-1', status: 'doing' }
+    throwsCode(t, 'REQUIREMENT_MANAGED_FIELD', () => {
+      hub.createRequirement({ code: 'REQ-CLIENT-EXTERNAL', title: '客户端注入', external, trusted: true })
+    })
+
+    let item = reqx.createRequirement(root, {
+      code: 'REQ-TRUSTED-EXTERNAL', title: '内部导入', external
+    }, { trusted: true, now: '2026-09-04T08:00:00.000Z', actor: 'system:import' })
+    t.assert.deepStrictEqual(item.external, external)
+    throwsCode(t, 'REQUIREMENT_MANAGED_FIELD', () => {
+      hub.updateRequirement(item.code, { external: { ...external, status: 'done' }, trusted: true })
+    })
+    item = reqx.updateRequirement(root, item.code, {
+      external: { ...external, status: 'done' }
+    }, { trusted: true, now: '2026-09-04T09:00:00.000Z' })
+    t.assert.strictEqual(item.external.status, 'done')
+    t.assert.strictEqual(item.updatedAt, '2026-09-04T09:00:00.000Z')
+  })
+
   test('版本落盘只保存编号，Hub 返回完整需求对象', (t) => {
     const { root, hub } = fixture()
     hub.addVersion('orders', {
@@ -82,6 +103,7 @@ describe('需求实体与反向索引', () => {
     t.assert.strictEqual(item.module, '作业票')
     t.assert.strictEqual(item.type, '功能')
     t.assert.strictEqual(item.priority, 'P1')
+    t.assert.strictEqual(item.status, 'draft')
   })
 })
 
@@ -111,6 +133,8 @@ describe('需求截止日期', () => {
     t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-25', derivedStatus: 'designing' }, '2026-08-25'), false)
     t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-26', derivedStatus: 'designing' }, '2026-08-25'), false)
     t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-24', derivedStatus: 'delivered' }, '2026-08-25'), false)
+    t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-24', status: 'completed', derivedStatus: 'designing' }, '2026-08-25'), false)
+    t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '2026-08-24', status: 'archived', derivedStatus: 'designing' }, '2026-08-25'), false)
     t.assert.strictEqual(reqx.isRequirementOverdue({ dueDate: '', derivedStatus: 'designing' }, '2026-08-25'), false)
   })
 

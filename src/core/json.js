@@ -16,7 +16,11 @@ const KEY_ORDER = {
     'createdAt', 'createdBy', 'updatedAt', 'baselineAt', 'specUpdatedAt'
   ],
   change: ['type', 'location', 'content', 'requirement'],
-  requirement: ['code', 'title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'statusOverride', 'external', 'externalTasks', 'url', 'createdAt', 'updatedAt'],
+  requirement: [
+    'code', 'title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate',
+    'status', 'statusChangedAt', 'statusChangedBy', 'statusReason',
+    'external', 'externalTasks', 'url', 'createdAt', 'updatedAt'
+  ],
   externalTask: ['provider', 'server', 'projectId', 'taskId', 'revision', 'remoteStatus', 'url', 'lastSyncHash', 'syncedAt'],
   milestone: ['name', 'title', 'goal', 'owner', 'status', 'startAt', 'endAt', 'items', 'external', 'createdAt', 'updatedAt'],
   snapshot: ['name', 'title', 'milestone', 'items', 'changesDigest', 'createdAt', 'createdBy'],

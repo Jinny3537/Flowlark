@@ -40,6 +40,7 @@ import * as mcpRuntime from './mcp-runtime.js'
 import { createMcpClientManager } from './integrations/mcp-client.js'
 import { createAssessTaskAdapter } from './integrations/assess-task/adapter.js'
 import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycle.js'
+import { confirmationPreflight, transitionRequirementStatus } from './requirement-lifecycle.js'
 import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
 import {
   executeMilestoneSync as executeSync,
@@ -468,7 +469,8 @@ export class Hub {
 
   createRequirement(input) {
     this.#assertWritable('创建需求')
-    const item = reqx.createRequirement(this.root, input)
+    const now = new Date().toISOString()
+    const item = reqx.createRequirement(this.root, input, { now, actor: currentUser() })
     this.#log(null, null, 'REQUIREMENT_CREATE', `创建需求 ${item.code}`)
     return reqx.requirementDetail(this.root, item.code)
   }
@@ -478,6 +480,44 @@ export class Hub {
     const item = reqx.updateRequirement(this.root, code, patch)
     this.#log(null, null, 'REQUIREMENT_UPDATE', `编辑需求 ${item.code}`)
     return reqx.requirementDetail(this.root, item.code)
+  }
+
+  readRequirementSpec(code) {
+    return reqx.readRequirementSpec(this.root, code)
+  }
+
+  writeRequirementSpec(code, markdown) {
+    this.#assertWritable('编辑需求规格书')
+    const content = reqx.writeRequirementSpec(this.root, code, markdown)
+    this.#log(null, null, 'REQUIREMENT_SPEC_UPDATE', `更新需求 ${code} 的规格书`, { requirement: code })
+    return content
+  }
+
+  transitionRequirement(code, input = {}) {
+    this.#assertWritable('确认需求')
+    const item = reqx.readRequirement(this.root, code)
+    const target = String(input.target || '')
+    const transition = transitionRequirementStatus(item.status, target)
+    if (transition.changed && target === 'confirmed') {
+      const check = confirmationPreflight(this.root, item)
+      if (!check.ready) {
+        const error = err.conflict('REQUIREMENT_CONFIRMATION_BLOCKED', `需求仍有 ${check.blockers.length} 个确认阻塞项`)
+        error.blockers = check.blockers
+        throw error
+      }
+    }
+    return this.#transitionRequirement(code, target, {
+      system: false,
+      reason: String(input.reason || '').trim()
+    })
+  }
+
+  transitionRequirementSystem(code, target, input = {}) {
+    this.#assertWritable('系统流转需求状态')
+    return this.#transitionRequirement(code, String(target || ''), {
+      system: true,
+      reason: String(input.reason || '').trim()
+    })
   }
 
   linkRequirement(code, slug, versionNo) {
@@ -2101,9 +2141,7 @@ export class Hub {
     this.#assertWritable('导入外部需求')
     const remote = await reqIntegration.fetchRequirement(provider, this.requirementConfig(provider, overrides), key)
     const input = this.#externalRequirementInput(provider, remote)
-    const item = reqx.requirementExists(this.root, remote.code)
-      ? reqx.updateRequirement(this.root, remote.code, input)
-      : reqx.createRequirement(this.root, input)
+    const item = this.#saveExternalRequirement(input)
     this.#log(null, null, 'REQUIREMENT_IMPORT', `导入外部需求 ${item.code}`)
     return reqx.requirementDetail(this.root, item.code)
   }
@@ -2121,7 +2159,7 @@ export class Hub {
       try {
         const key = item.external.key || item.code
         const remote = await reqIntegration.fetchRequirement(selected, this.requirementConfig(selected, overrides), key)
-        reqx.updateRequirement(this.root, item.code, this.#externalRequirementInput(selected, remote, item.external))
+        this.#saveExternalRequirement(this.#externalRequirementInput(selected, remote, item.external))
         result.updated++
       } catch (e) {
         result.failed.push({ code: item.code, message: e.message })
@@ -2393,7 +2431,10 @@ export class Hub {
       if (url && !/^https?:\/\//i.test(url)) {
         throw err.bad('REQ_URL_INVALID', `需求链接「${url}」必须以 http:// 或 https:// 开头`)
       }
-      out.push(reqx.ensureRequirement(this.root, { code, title: String(item.title || '').trim() || code, url }))
+      out.push(reqx.ensureRequirement(this.root, { code, title: String(item.title || '').trim() || code, url }, {
+        now: new Date().toISOString(),
+        actor: currentUser()
+      }))
     }
     return [...new Set(out)]
   }
@@ -2418,6 +2459,13 @@ export class Hub {
         syncedAt: new Date().toISOString()
       }
     }
+  }
+
+  #saveExternalRequirement(input) {
+    const now = new Date().toISOString()
+    return reqx.requirementExists(this.root, input.code)
+      ? reqx.updateRequirement(this.root, input.code, input, { trusted: true, now })
+      : reqx.createRequirement(this.root, input, { trusted: true, now, actor: currentUser() })
   }
 
   #externalMilestoneInput(provider, remote, previousExternal = {}) {
@@ -2446,6 +2494,26 @@ export class Hub {
       detail,
       ...extra
     })
+  }
+
+  #transitionRequirement(code, target, { system, reason }) {
+    const now = new Date().toISOString()
+    const { item, transition } = reqx.updateRequirementLifecycle(this.root, code, target, {
+      system,
+      actor: currentUser(),
+      now,
+      reason
+    })
+    if (transition.changed) {
+      this.#log(
+        null,
+        null,
+        'REQUIREMENT_STATUS_TRANSITION',
+        `需求 ${item.code} 从 ${transition.from} 流转到 ${transition.to}${reason ? `：${reason}` : ''}`,
+        { requirement: item.code, from: transition.from, to: transition.to, statusReason: reason }
+      )
+    }
+    return reqx.requirementDetail(this.root, item.code)
   }
 
   #assertWritable(action) {

@@ -5,9 +5,14 @@ import { err } from './errors.js'
 import { parse, stringify } from './json.js'
 import * as store from './store.js'
 import { INTERNAL_DIR } from './repo.js'
+import { normalizeRequirementStatus, transitionRequirementStatus } from './requirement-lifecycle.js'
 
 export const REQUIREMENT_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 export const DUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+const MANAGED_REQUIREMENT_FIELDS = new Set([
+  'status', 'statusReason', 'statusOverride', 'external', 'externalTasks'
+])
 
 export function normalizeDueDate(value) {
   const dueDate = String(value || '').trim()
@@ -29,7 +34,8 @@ export function localDate(now = new Date()) {
 }
 
 export function isRequirementOverdue(item, today = localDate()) {
-  return Boolean(item && item.dueDate && item.dueDate < today && item.derivedStatus !== 'delivered')
+  const closed = ['completed', 'archived'].includes(item?.status) || item?.derivedStatus === 'delivered'
+  return Boolean(item && item.dueDate && item.dueDate < today && !closed)
 }
 
 export function assertRequirementCode(code) {
@@ -59,7 +65,11 @@ export function listRequirementCodes(root) {
     .map((entry) => entry.name).sort()
 }
 
-export function createRequirement(root, input, now = new Date().toISOString()) {
+export function createRequirement(root, input, metadata = {}) {
+  const context = typeof metadata === 'string' ? { now: metadata } : metadata
+  assertNoManagedFields(input, { trusted: context.trusted === true })
+  const now = context.now || new Date().toISOString()
+  const actor = String(context.actor || 'system')
   const code = assertRequirementCode(input.code)
   if (requirementExists(root, code)) throw err.conflict('REQUIREMENT_EXISTS', `需求「${code}」已存在`)
   const title = String(input.title || '').trim()
@@ -74,9 +84,12 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
     priority: String(input.priority || ''),
     owner: String(input.owner || ''),
     dueDate: normalizeDueDate(input.dueDate),
-    statusOverride: input.statusOverride || null,
-    external: input.external || null,
-    externalTasks: normalizeExternalTasks(input.externalTasks),
+    status: 'draft',
+    statusChangedAt: now,
+    statusChangedBy: actor,
+    statusReason: 'created',
+    external: context.trusted ? input.external || null : null,
+    externalTasks: context.trusted ? normalizeExternalTasks(input.externalTasks) : [],
     url: String(input.url || ''),
     createdAt: now,
     updatedAt: now
@@ -87,17 +100,60 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
   return item
 }
 
-export function updateRequirement(root, code, patch) {
+export function updateRequirement(root, code, patch, { trusted = false, now = null } = {}) {
   const item = readRequirement(root, code)
-  for (const key of ['title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'statusOverride', 'external', 'url']) {
+  assertNoManagedFields(patch, { trusted })
+  for (const key of ['title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'url']) {
     if (patch[key] !== undefined) item[key] = patch[key]
   }
+  if (trusted && patch.external !== undefined) item.external = patch.external || null
+  if (trusted && patch.externalTasks !== undefined) item.externalTasks = normalizeExternalTasks(patch.externalTasks)
   if (!String(item.title || '').trim()) throw err.bad('REQUIREMENT_TITLE_REQUIRED', '请填写需求标题')
   item.title = String(item.title).trim()
   item.dueDate = normalizeDueDate(item.dueDate)
-  item.updatedAt = new Date().toISOString()
+  item.updatedAt = now || new Date().toISOString()
   fs.writeFileSync(store.paths.requirementFile(root, item.code), stringify(item, 'requirement'))
   return item
+}
+
+export function readRequirementSpec(root, code) {
+  const safe = assertRequirementCode(code)
+  if (!requirementExists(root, safe)) throw err.notFound(`需求「${safe}」`)
+  const file = store.paths.requirementSpec(root, safe)
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
+}
+
+export function writeRequirementSpec(root, code, markdown) {
+  const safe = assertRequirementCode(code)
+  if (!requirementExists(root, safe)) throw err.notFound(`需求「${safe}」`)
+  const file = store.paths.requirementSpec(root, safe)
+  const content = String(markdown || '')
+  if (!content.trim()) {
+    if (fs.existsSync(file)) fs.rmSync(file)
+    return ''
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const normalized = content.endsWith('\n') ? content : `${content}\n`
+  fs.writeFileSync(file, normalized, 'utf8')
+  return normalized
+}
+
+export function updateRequirementLifecycle(root, code, target, {
+  system = false,
+  actor = 'system',
+  now = new Date().toISOString(),
+  reason = ''
+} = {}) {
+  const item = readRequirement(root, code)
+  const transition = transitionRequirementStatus(item.status, target, { system })
+  if (!transition.changed) return { item, transition }
+  item.status = transition.to
+  item.statusChangedAt = now
+  item.statusChangedBy = String(actor || 'system')
+  item.statusReason = String(reason || '').trim()
+  item.updatedAt = now
+  writeRequirementFileAtomic(root, item)
+  return { item, transition }
 }
 
 export function upsertExternalTask(root, code, binding) {
@@ -113,10 +169,10 @@ export function upsertExternalTask(root, code, binding) {
   return item
 }
 
-export function ensureRequirement(root, raw) {
+export function ensureRequirement(root, raw, metadata = {}) {
   const input = typeof raw === 'string' ? { code: raw, title: raw } : raw
   const code = assertRequirementCode(input && input.code)
-  if (!requirementExists(root, code)) createRequirement(root, { ...input, title: input.title || code })
+  if (!requirementExists(root, code)) createRequirement(root, { ...input, title: input.title || code }, metadata)
   return code
 }
 
@@ -202,7 +258,38 @@ export function listRequirements(root) {
 }
 
 function normalizeStoredRequirement(input = {}) {
-  return { ...input, external: input.external || null, externalTasks: normalizeExternalTasks(input.externalTasks) }
+  return {
+    ...input,
+    status: normalizeRequirementStatus(input.status),
+    statusChangedAt: input.statusChangedAt || input.createdAt || '',
+    statusChangedBy: input.statusChangedBy || '',
+    statusReason: input.statusReason || '',
+    external: input.external || null,
+    externalTasks: normalizeExternalTasks(input.externalTasks)
+  }
+}
+
+function assertNoManagedFields(input = {}, { trusted = false } = {}) {
+  const field = Object.keys(input || {}).find((key) =>
+    (MANAGED_REQUIREMENT_FIELDS.has(key) && !(trusted && ['external', 'externalTasks'].includes(key))) ||
+    key.startsWith('statusChanged'))
+  if (field) {
+    throw err.bad(
+      'REQUIREMENT_MANAGED_FIELD',
+      `字段「${field}」由 Flowlark 管理，不能由普通创建或编辑请求设置`
+    )
+  }
+}
+
+function writeRequirementFileAtomic(root, item) {
+  const file = store.paths.requirementFile(root, item.code)
+  const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, stringify(item, 'requirement'))
+    fs.renameSync(temporary, file)
+  } finally {
+    if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true })
+  }
 }
 
 function normalizeExternalTasks(input) {
