@@ -60,6 +60,32 @@ describe('项目编辑与概览 API', () => {
     t.assert.strictEqual(result.body[0].latestVersion.display.key, 'DRAFT')
   })
 
+  test('项目同步策略默认手动并在更新时规范化', async (t) => {
+    let result = await send('GET', '/api/projects/hyzl')
+    t.assert.strictEqual(result.status, 200)
+    t.assert.strictEqual(result.body.sync.mode, 'manual')
+
+    result = await send('PUT', '/api/projects/hyzl', {
+      sync: {
+        mode: 'trusted-auto',
+        server: ' assess-task-local ',
+        projectId: 42,
+        managedFields: ['title', 'status', 'title', 'unknown']
+      }
+    })
+    t.assert.strictEqual(result.status, 200)
+    t.assert.deepStrictEqual(result.body.sync, {
+      mode: 'trusted-auto',
+      server: 'assess-task-local',
+      projectId: '42',
+      managedFields: ['title', 'status']
+    })
+
+    result = await send('PUT', '/api/projects/hyzl', { sync: { mode: 'automatic' } })
+    t.assert.strictEqual(result.status, 400)
+    t.assert.strictEqual(result.body.code, 'SYNC_MODE_INVALID')
+  })
+
   test('非法项目代码和截止日期返回结构化错误', async (t) => {
     let result = await send('PUT', '/api/projects/hyzl', { code: 'bad-code' })
     t.assert.strictEqual(result.status, 400)

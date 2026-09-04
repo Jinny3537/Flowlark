@@ -94,7 +94,7 @@ The existing `v0.7.1` recent-work changes remain intact. Before the first code c
 - Inspect: `CHANGELOG.md`
 - Inspect: `docs/superpowers/specs/2026-09-03-v0-7-1-recent-work-continuity-design.md`
 
-- [ ] **Step 1: Confirm the working tree boundary**
+- [x] **Step 1: Confirm the working tree boundary**
 
 Run:
 
@@ -105,7 +105,7 @@ git log --oneline --decorate -5
 
 Expected: the existing `.codex-ui-regression/` and `test-results/` paths may remain untracked; no tracked source file should be unexpectedly modified. Do not add or remove those user-owned artifacts.
 
-- [ ] **Step 2: Run the complete baseline tests**
+- [x] **Step 2: Run the complete baseline tests**
 
 Run:
 
@@ -115,7 +115,7 @@ npm test
 
 Expected: exit code `0` and a final TAP summary with zero failures. If the baseline fails, stop implementation and report the failing test before modifying code.
 
-- [ ] **Step 3: Run the baseline Web build**
+- [x] **Step 3: Run the baseline Web build**
 
 Run:
 
@@ -125,7 +125,7 @@ npm run build:web
 
 Expected: exit code `0`. Record the existing Vite bundle-size warning and npm vulnerability count as baseline warnings; do not change dependencies in this feature.
 
-- [ ] **Step 4: Record the starting commit without changing release metadata**
+- [x] **Step 4: Record the starting commit without changing release metadata**
 
 Run:
 
@@ -146,7 +146,7 @@ Expected: a short commit ID and no whitespace errors. Do not create a tag or cha
 - Modify: `src/core/service.js`
 - Modify: `test/project-edit-api.test.js`
 
-- [ ] **Step 1: Write failing policy tests**
+- [x] **Step 1: Write failing policy tests**
 
 Create `test/sync-policy.test.js` with these tests:
 
@@ -187,7 +187,7 @@ test('trusted mode remains ineligible until every required probe passes', () => 
 })
 ```
 
-- [ ] **Step 2: Run the policy tests and verify failure**
+- [x] **Step 2: Run the policy tests and verify failure**
 
 Run:
 
@@ -197,7 +197,7 @@ node --test test/sync-policy.test.js
 
 Expected: FAIL because `src/core/sync-policy.js` does not exist.
 
-- [ ] **Step 3: Implement the minimal policy module**
+- [x] **Step 3: Implement the minimal policy module**
 
 Create `src/core/sync-policy.js` with these public contracts:
 
@@ -250,7 +250,7 @@ export function trustedModeReadiness(policy, probes = {}) {
 }
 ```
 
-- [ ] **Step 4: Persist normalized policy on projects**
+- [x] **Step 4: Persist normalized policy on projects**
 
 Update `src/core/service.js` so project detail, creation, and update all use the same normalizer:
 
@@ -267,11 +267,11 @@ if (next.sync === undefined) next.sync = normalizeSyncPolicy()
 
 Add `sync` after `releaseMail` in the stable `project` key order in `src/core/json.js`.
 
-- [ ] **Step 5: Add project API regression coverage**
+- [x] **Step 5: Add project API regression coverage**
 
 Extend `test/project-edit-api.test.js` to assert that a project defaults to `manual`, accepts a normalized `trusted-auto` configuration, and rejects an invalid mode with `SYNC_MODE_INVALID`.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -281,7 +281,7 @@ node --test test/sync-policy.test.js test/project-edit-api.test.js test/projects
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit the policy domain**
+- [x] **Step 7: Commit the policy domain**
 
 ```bash
 git add src/core/sync-policy.js src/core/json.js src/core/service.js test/sync-policy.test.js test/project-edit-api.test.js

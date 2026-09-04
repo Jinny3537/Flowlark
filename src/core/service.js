@@ -29,6 +29,7 @@ import * as snapshots from './snapshots.js'
 import { suggestImpact as runImpact } from './impact.js'
 import * as notifications from './notifications.js'
 import * as releaseMail from './release-mail.js'
+import { assertSyncPolicy, normalizeSyncPolicy } from './sync-policy.js'
 import * as workspaces from './workspaces.js'
 import * as setupx from './setup.js'
 import * as updater from './updater.js'
@@ -157,6 +158,7 @@ export class Hub {
       ...project,
       priority: project.priority || '',
       archived: project.archived === true,
+      sync: normalizeSyncPolicy(project.sync),
       baselineVersionNo: baselineNo,
       versionCount: nos.length,
       latestVersion: latest ? {
@@ -193,6 +195,7 @@ export class Hub {
       priority: projectx.normalizeProjectPriority(priority),
       archived: projectx.normalizeArchived(archived),
       releaseMail: releaseMail.normalizeReleaseMail(releaseMailInput),
+      sync: normalizeSyncPolicy(),
       createdAt: now,
       createdBy: who,
       updatedAt: now,
@@ -223,9 +226,11 @@ export class Hub {
     if (patch.priority !== undefined) next.priority = projectx.normalizeProjectPriority(patch.priority)
     if (patch.archived !== undefined) next.archived = projectx.normalizeArchived(patch.archived)
     if (patch.releaseMail !== undefined) next.releaseMail = releaseMail.normalizeReleaseMail(patch.releaseMail)
+    if (patch.sync !== undefined) next.sync = assertSyncPolicy(patch.sync)
     if (next.priority === undefined) next.priority = ''
     if (next.archived === undefined) next.archived = false
     if (next.releaseMail === undefined) next.releaseMail = releaseMail.normalizeReleaseMail()
+    if (next.sync === undefined) next.sync = normalizeSyncPolicy()
 
     next.updatedAt = new Date().toISOString()
     next.updatedBy = currentUser()
