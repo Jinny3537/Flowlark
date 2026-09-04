@@ -173,6 +173,13 @@ export const api = {
   executeMilestoneSync: (name: string, body: unknown) => post<any>(`/api/milestones/${enc(name)}/sync-execute`, body),
   resumeMilestoneSync: (name: string, body: unknown = {}) => post<any>(`/api/milestones/${enc(name)}/sync-resume`, body),
   transitionMilestone: (name: string, body: unknown) => post<any>(`/api/milestones/${enc(name)}/transition`, body),
+  listSyncRecords: (status = '') => get<any>(`/api/sync${status ? `?status=${enc(status)}` : ''}`),
+  getSyncRecord: (id: string) => get<any>(`/api/sync/${enc(id)}`),
+  listSyncAudit: (syncId = '', limit = 100) =>
+    get<any[]>(`/api/sync/audit?limit=${limit}${syncId ? `&syncId=${enc(syncId)}` : ''}`),
+  executeSyncRecord: (id: string, body: unknown) => post<any>(`/api/sync/${enc(id)}/execute`, body),
+  retrySyncRecord: (id: string, body: unknown) => post<any>(`/api/sync/${enc(id)}/retry`, body),
+  cancelSyncRecord: (id: string, reason: string) => post<any>(`/api/sync/${enc(id)}/cancel`, { reason }),
   listViews: () => get<any[]>('/api/views'),
   saveView: (id: string, body: unknown) => put(`/api/views/${enc(id)}`, body),
   removeView: (id: string) => del(`/api/views/${enc(id)}`),

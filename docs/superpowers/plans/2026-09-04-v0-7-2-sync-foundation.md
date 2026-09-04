@@ -907,7 +907,7 @@ git commit -m "feat: expose synchronization center APIs"
 - Create: `web/src/pages/syncCenterModel.test.js`
 - Modify: `web/src/services/api.ts`
 
-- [ ] **Step 1: Write failing model tests**
+- [x] **Step 1: Write failing model tests**
 
 Create `web/src/pages/syncCenterModel.test.js`:
 
@@ -943,7 +943,7 @@ test('returns text labels in addition to colors', () => {
 })
 ```
 
-- [ ] **Step 2: Run the model test and verify failure**
+- [x] **Step 2: Run the model test and verify failure**
 
 Run:
 
@@ -953,11 +953,11 @@ node --test web/src/pages/syncCenterModel.test.js
 
 Expected: FAIL because the model does not exist.
 
-- [ ] **Step 3: Implement the pure model**
+- [x] **Step 3: Implement the pure model**
 
 Create `web/src/pages/syncCenterModel.js` with fixed status metadata, newest-first stable sorting, `attention` grouping for pending/failed/paused, and primary action mapping. Unknown statuses must use a neutral label and never produce execute or retry actions.
 
-- [ ] **Step 4: Add typed API calls**
+- [x] **Step 4: Add typed API calls**
 
 Add to `web/src/services/api.ts`:
 
@@ -971,7 +971,7 @@ retrySyncRecord: (id: string, body: unknown) => post<any>(`/api/sync/${enc(id)}/
 cancelSyncRecord: (id: string, reason: string) => post<any>(`/api/sync/${enc(id)}/cancel`, { reason }),
 ```
 
-- [ ] **Step 5: Run model and request tests**
+- [x] **Step 5: Run model and request tests**
 
 Run:
 
@@ -981,7 +981,7 @@ node --test web/src/pages/syncCenterModel.test.js web/src/services/requestModel.
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the frontend model**
+- [x] **Step 6: Commit the frontend model**
 
 ```bash
 git add web/src/pages/syncCenterModel.js web/src/pages/syncCenterModel.test.js web/src/services/api.ts
