@@ -150,6 +150,15 @@ export const api = {
   getRequirement: (code: string) => get<any>(`/api/requirements/${enc(code)}`),
   createRequirement: (body: unknown) => post<any>('/api/requirements', body),
   updateRequirement: (code: string, body: unknown) => put<any>(`/api/requirements/${enc(code)}`, body),
+  requirementConfirmationPreflight: (code: string) =>
+    get<any>(`/api/requirements/${enc(code)}/confirmation-preflight`),
+  transitionRequirement: (code: string, target: string, reason = '') =>
+    post<any>(`/api/requirements/${enc(code)}/transition`, { target, reason }),
+  getRequirementSpec: (code: string) => get<any>(`/api/requirements/${enc(code)}/spec`),
+  updateRequirementSpec: (code: string, markdown: string) =>
+    put<any>(`/api/requirements/${enc(code)}/spec`, { markdown }),
+  planRequirementTaskBinding: (code: string, body: unknown) =>
+    post<any>(`/api/requirements/${enc(code)}/task-binding/plan`, body),
   syncRequirements: (provider = 'mcp', config = {}) => post('/api/requirements/sync', { provider, config }),
   linkRequirement: (code: string, body: unknown) => post(`/api/requirements/${enc(code)}/links`, body),
   unlinkRequirement: (code: string, slug: string, no: string) =>

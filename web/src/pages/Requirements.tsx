@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { App, Button, Col, DatePicker, Form, Input, List, Modal, Row, Select, Space, Statistic, Table, Tag } from 'antd';
+import { Alert, App, Button, Col, DatePicker, Form, Input, List, Modal, Row, Select, Space, Statistic, Table, Tag } from 'antd';
 import { CloudDownloadOutlined, PlusOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
@@ -8,21 +8,14 @@ import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { textOf } from '@/utils/format';
-import { requirementPayload } from './requirementsModel.js';
-
-const statusLabels: Record<string, string> = {
-  not_started: '未开始',
-  designing: '设计中',
-  finalized: '已定稿',
-  delivered: '已交付',
-};
-
-const statusColors: Record<string, string> = {
-  not_started: 'default',
-  designing: 'gold',
-  finalized: 'cyan',
-  delivered: 'green',
-};
+import {
+  filterRequirements,
+  requirementPayload,
+} from './requirementsModel.js';
+import {
+  PROTOTYPE_PROGRESS_OPTIONS,
+  REQUIREMENT_STATUS_OPTIONS,
+} from './requirementLifecycleModel.js';
 
 type ExternalState = {
   provider: string;
@@ -42,7 +35,10 @@ export default function Requirements() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
+  const [lifecycle, setLifecycle] = useState('');
+  const [prototypeProgress, setPrototypeProgress] = useState('');
+  const [bindingFilter, setBindingFilter] = useState('');
+  const [milestoneFilter, setMilestoneFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [externalOpen, setExternalOpen] = useState(false);
@@ -56,20 +52,36 @@ export default function Requirements() {
     () => [...new Set(items.map((item) => item.project).filter(Boolean))].sort().map((value) => ({ value, label: value })),
     [items],
   );
+  const milestoneOptions = useMemo(
+    () => [...new Set(items.flatMap((item) => item.milestones || []).map((entry: any) => typeof entry === 'string' ? entry : entry?.name).filter(Boolean))]
+      .sort()
+      .map((value) => ({ value, label: value })),
+    [items],
+  );
 
-  const filtered = useMemo(() => items.filter((item) => {
-    const haystack = `${item.code} ${item.title} ${item.project || ''} ${item.module || ''}`.toLowerCase();
-    return (!status || item.derivedStatus === status)
-      && (!projectFilter || item.project === projectFilter)
-      && (!sourceFilter || (sourceFilter === 'pool' ? Boolean(item.external) : !item.external))
-      && (!query || haystack.includes(query.toLowerCase()));
-  }), [items, projectFilter, query, sourceFilter, status]);
+  const filtered = useMemo(() => filterRequirements(items, {
+    query,
+    lifecycle,
+    prototypeProgress,
+    project: projectFilter,
+    source: sourceFilter,
+    binding: bindingFilter,
+    milestone: milestoneFilter,
+  }), [bindingFilter, items, lifecycle, milestoneFilter, projectFilter, prototypeProgress, query, sourceFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      setItems(await api.listRequirements());
+      const [requirements, milestones] = await Promise.all([
+        api.listRequirements(),
+        api.listMilestones(),
+      ]);
+      setItems(requirements.map((requirement) => ({
+        ...requirement,
+        milestones: requirement.milestones || milestones.filter((milestone: any) =>
+          (milestone.items || []).some((entry: any) => entry.requirement === requirement.code)),
+      })));
     } catch (nextError) {
       setError(errorText(nextError, '无法读取需求'));
     } finally {
@@ -146,7 +158,7 @@ export default function Requirements() {
     setSyncing(true);
     try {
       const result: any = await api.syncRequirements(external.provider, { token: external.token });
-      setItems(result.items || []);
+      await load();
       const failed = Array.isArray(result.failed) ? result.failed.length : Number(result.failed || 0);
       message.success(`已同步 ${result.updated}/${result.total} 条${failed ? `，失败 ${failed} 条` : ''}`);
     } catch (nextError) {
@@ -154,7 +166,7 @@ export default function Requirements() {
     } finally {
       setSyncing(false);
     }
-  }, [external.provider, external.token, message]);
+  }, [external.provider, external.token, load, message]);
 
   useEffect(() => {
     void load();
@@ -174,6 +186,15 @@ export default function Requirements() {
           </Space>
         )}
       />
+      {!writable ? (
+        <Alert
+          className="fl-dashboard-alert"
+          type="info"
+          showIcon
+          message="只读模式"
+          description={health?.readonlyReason || '需求数据保持完整可见，但同步、导入和新建操作已停用。'}
+        />
+      ) : null}
       <State loading={loading && !items.length} error={error} onRetry={load} empty={false}>
         <div className="fl-section-stack">
           <section className="fl-inline-metrics" aria-label="需求指标">
@@ -194,17 +215,33 @@ export default function Requirements() {
             />
             <Select
               allowClear
-              aria-label="状态筛选"
-              value={status || undefined}
-              placeholder="全部本地状态"
-              options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
-              onChange={(value) => setStatus(value || '')}
+              aria-label="生命周期筛选"
+              value={lifecycle || undefined}
+              placeholder="全部生命周期"
+              options={REQUIREMENT_STATUS_OPTIONS}
+              onChange={(value) => setLifecycle(value || '')}
             />
+            <Select allowClear aria-label="原型进度筛选" value={prototypeProgress || undefined} placeholder="全部原型进度" options={PROTOTYPE_PROGRESS_OPTIONS} onChange={(value) => setPrototypeProgress(value || '')} />
+            <Select
+              allowClear
+              aria-label="任务平台筛选"
+              value={bindingFilter || undefined}
+              placeholder="全部任务关联"
+              options={[
+                { value: 'unbound', label: '未关联任务平台' },
+                { value: 'pending', label: '已关联，待同步' },
+                { value: 'synced', label: '已同步' },
+                { value: 'drift', label: '同步有差异' },
+                { value: 'failed', label: '同步失败' },
+              ]}
+              onChange={(value) => setBindingFilter(value || '')}
+            />
+            <Select allowClear aria-label="所属迭代筛选" value={milestoneFilter || undefined} placeholder="全部所属迭代" options={milestoneOptions} onChange={(value) => setMilestoneFilter(value || '')} />
           </div>
           <Table
             rowKey="code"
             loading={loading}
-            locale={{ emptyText: query || status || projectFilter || sourceFilter ? '没有匹配的需求' : '还没有需求' }}
+            locale={{ emptyText: query || lifecycle || prototypeProgress || projectFilter || sourceFilter || bindingFilter || milestoneFilter ? '没有匹配的需求' : '还没有需求' }}
             dataSource={filtered}
             columns={[
               {
@@ -224,7 +261,8 @@ export default function Requirements() {
                 width: 150,
                 render: (_, record: any) => <Space size="small" wrap>{record.type ? <Tag>{record.type}</Tag> : null}{record.priority ? <Tag color="gold">{record.priority}</Tag> : null}{!record.type && !record.priority ? '—' : null}</Space>,
               },
-              { title: '本地状态', width: 140, dataIndex: 'derivedStatus', render: (value) => <Tag color={statusColors[value]}>{statusLabels[value] || textOf(value, '未开始')}</Tag> },
+              { title: '生命周期', width: 120, render: (_, record: any) => <Tag color={record.lifecycle.color}>{record.lifecycle.label}</Tag> },
+              { title: '原型进度', width: 120, render: (_, record: any) => <Tag color={record.prototypeProgress.color}>{record.prototypeProgress.label}</Tag> },
               {
                 title: '截止日期', dataIndex: 'dueDate', width: 150,
                 render: (value, record: any) => (
@@ -234,15 +272,29 @@ export default function Requirements() {
                   </Space>
                 ),
               },
-              { title: '来源', width: 130, render: (_, record: any) => <Tag color={record.external ? 'success' : 'default'}>{record.external ? '需求池' : '本地'}</Tag> },
+              { title: '来源', width: 110, render: (_, record: any) => <Tag color={record.source.value === 'pool' ? 'success' : 'default'}>{record.source.label}</Tag> },
               {
-                title: '关联范围',
+                title: '原型范围',
                 width: 180,
                 render: (_, record: any) => `${record.versions?.length || 0} 个版本 · ${new Set((record.versions || []).map((version: any) => version.project)).size} 个项目`,
               },
+              {
+                title: '所属迭代', width: 180,
+                render: (_, record: any) => record.milestoneMembership.count
+                  ? <span title={record.milestoneMembership.names.join('、')}>{record.milestoneMembership.names.join('、')}</span>
+                  : <span className="fl-muted">未加入迭代</span>,
+              },
+              {
+                title: '外部主任务', width: 180,
+                render: (_, record: any) => record.externalBinding.detail || <span className="fl-muted">尚未关联</span>,
+              },
+              {
+                title: '同步状态', width: 140,
+                render: (_, record: any) => <Tag color={record.externalBinding.tone}>{record.externalBinding.label}</Tag>,
+              },
               { title: '负责人', dataIndex: 'owner', width: 130, render: (value) => textOf(value) },
             ]}
-            scroll={{ x: 1280 }}
+            scroll={{ x: 1900 }}
           />
         </div>
       </State>
