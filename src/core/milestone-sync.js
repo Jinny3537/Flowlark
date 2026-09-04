@@ -13,11 +13,20 @@ import * as milestones from './milestones.js'
 import * as requirements from './requirements.js'
 
 export async function executeMilestoneSync(options = {}) {
-  const release = acquireExecutionLock(options.root, options.milestoneName)
+  if (options.lockHeld) return executeMilestoneSyncUnlocked(options)
+  return withMilestoneSyncLock(options.root, options.milestoneName, () => executeMilestoneSyncUnlocked(options))
+}
+
+export function withMilestoneSyncLock(root, milestoneName, fn) {
+  const release = acquireExecutionLock(root, milestoneName)
   try {
-    return await executeMilestoneSyncUnlocked(options)
-  } finally {
+    const result = fn()
+    if (result && typeof result.then === 'function') return Promise.resolve(result).finally(release)
     release()
+    return result
+  } catch (error) {
+    release()
+    throw error
   }
 }
 
@@ -435,7 +444,7 @@ function safeRemoteResult(value = {}) {
 
 function isUnknownCreateResult(error) {
   return new Set([
-    'MCP_UNAVAILABLE', 'MCP_TIMEOUT', 'NETWORK', 'ETIMEDOUT', 'ECONNRESET',
+    'MCP_UNAVAILABLE', 'MCP_TIMEOUT', 'MCP_PROTOCOL_ERROR', 'NETWORK', 'ETIMEDOUT', 'ECONNRESET',
     'ECONNABORTED', 'EPIPE', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'
   ]).has(String(error?.code || '').toUpperCase())
 }

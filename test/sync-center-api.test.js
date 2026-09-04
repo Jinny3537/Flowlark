@@ -14,14 +14,23 @@ let base
 let remote
 
 function fakeAdapter() {
-  const state = { sprints: new Map(), tasks: new Map(), calls: [], failNextSave: false, unknownNextSave: false }
+  const state = {
+    sprints: new Map(), tasks: new Map(), calls: [], failNextSave: false,
+    unknownNextSave: false, protocolErrorAfterSave: false, beforeNextGetSprint: null
+  }
   return {
     state,
     async listTasks({ sprintId } = {}) {
       state.calls.push(['listTasks'])
       return [...state.tasks.values()].filter((task) => !sprintId || Number(task.sprintId) === Number(sprintId))
     },
-    async getSprint(id) { state.calls.push(['getSprint', id]); return state.sprints.get(Number(id)) || null },
+    async getSprint(id) {
+      state.calls.push(['getSprint', id])
+      const beforeRead = state.beforeNextGetSprint
+      state.beforeNextGetSprint = null
+      if (beforeRead) await beforeRead()
+      return state.sprints.get(Number(id)) || null
+    },
     async getTask(id) { state.calls.push(['getTask', id]); return state.tasks.get(Number(id)) || null },
     async saveSprint(body) {
       state.calls.push(['saveSprint', body])
@@ -35,6 +44,10 @@ function fakeAdapter() {
       }
       const sprint = { ...body, id: body.id || state.sprints.size + 10, revision: Number(body.revision || 0) + 1, status: 0 }
       state.sprints.set(Number(sprint.id), sprint)
+      if (state.protocolErrorAfterSave) {
+        state.protocolErrorAfterSave = false
+        throw Object.assign(new Error('response was not valid MCP JSON'), { code: 'MCP_PROTOCOL_ERROR' })
+      }
       return sprint
     },
     async createTask(body) {
@@ -54,6 +67,26 @@ function fakeAdapter() {
     async endSprint(body) { state.calls.push(['endSprint', body]); return { id: body.sprintId, revision: body.revision + 1, status: 'ended' } },
     async cancelSprint(body) { state.calls.push(['cancelSprint', body]); return { id: body.sprintId, revision: body.revision + 1, status: 'canceled' } }
   }
+}
+
+async function isolatedPendingUpdate(t, name) {
+  const ctx = newHub()
+  const isolatedRoot = ctx.root
+  t.after(() => cleanup(isolatedRoot))
+  ctx.hub.createMilestone({ name, title: name, startAt: '2026-09-01', endAt: '2026-09-10' })
+  const isolatedRemote = fakeAdapter()
+  const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
+    assessAdapter: isolatedRemote,
+    assessConfig: {
+      server: { id: 'assess-task-test' }, project: '123',
+      capability: { options: { ownerId: 7, taskType: 2, timezoneOffset: '+08:00' } }
+    }
+  })
+  let preview = await isolatedHub.planMilestoneSync(name)
+  await isolatedHub.executeSyncRecord(preview.syncId, { planHash: preview.hash })
+  ctx.hub.updateMilestone(name, { goal: 'pending update' })
+  preview = await isolatedHub.planMilestoneSync(name)
+  return { ctx, isolatedRoot, isolatedRemote, isolatedHub, preview }
 }
 
 async function call(method, pathname, body, origin = base) {
@@ -279,6 +312,78 @@ test('retry refuses an uncertain sprint create until a remote link is supplied',
     (error) => error.code === 'MCP_SYNC_LINK_REQUIRED' && error.causeCode === 'ETIMEDOUT'
   )
   t.assert.strictEqual(findSyncRecord(isolatedRoot, 'milestone', 'RETRY-LINK').status, 'paused')
+  t.assert.strictEqual(isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length, 1)
+})
+
+test('a cancel during execute plan rebuild wins before any stale remote write', async (t) => {
+  const { isolatedRoot, isolatedRemote, isolatedHub, preview } = await isolatedPendingUpdate(t, 'RACE-CANCEL')
+  const record = findSyncRecord(isolatedRoot, 'milestone', 'RACE-CANCEL')
+  let releaseRead
+  let markReadStarted
+  const readStarted = new Promise((resolve) => { markReadStarted = resolve })
+  const readGate = new Promise((resolve) => { releaseRead = resolve })
+  isolatedRemote.state.beforeNextGetSprint = async () => { markReadStarted(); await readGate }
+  const saveCount = isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length
+
+  const executing = isolatedHub.executeSyncRecord(record.id, { planHash: preview.hash })
+  await readStarted
+  const canceled = isolatedHub.cancelSyncRecord(record.id, 'cancel while rebuilding')
+  releaseRead()
+
+  await t.assert.rejects(executing, (error) => error.code === 'SYNC_TRANSITION_INVALID')
+  t.assert.strictEqual(canceled.status, 'canceled')
+  t.assert.strictEqual(findSyncRecord(isolatedRoot, 'milestone', 'RACE-CANCEL').status, 'canceled')
+  t.assert.strictEqual(isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length, saveCount)
+})
+
+test('a replacement preview during execute plan rebuild wins before any stale remote write', async (t) => {
+  const { ctx, isolatedRoot, isolatedRemote, isolatedHub, preview } = await isolatedPendingUpdate(t, 'RACE-PREVIEW')
+  const record = findSyncRecord(isolatedRoot, 'milestone', 'RACE-PREVIEW')
+  let releaseRead
+  let markReadStarted
+  const readStarted = new Promise((resolve) => { markReadStarted = resolve })
+  const readGate = new Promise((resolve) => { releaseRead = resolve })
+  isolatedRemote.state.beforeNextGetSprint = async () => { markReadStarted(); await readGate }
+  const saveCount = isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length
+
+  const executing = isolatedHub.executeSyncRecord(record.id, { planHash: preview.hash })
+  await readStarted
+  ctx.hub.updateMilestone('RACE-PREVIEW', { goal: 'new replacement preview' })
+  const replacement = await isolatedHub.planMilestoneSync('RACE-PREVIEW')
+  releaseRead()
+
+  await t.assert.rejects(executing, (error) => error.code === 'MCP_SYNC_PLAN_CHANGED')
+  const current = findSyncRecord(isolatedRoot, 'milestone', 'RACE-PREVIEW')
+  t.assert.strictEqual(current.status, 'pending-confirmation')
+  t.assert.strictEqual(current.planHash, replacement.hash)
+  t.assert.notStrictEqual(current.planHash, preview.hash)
+  t.assert.strictEqual(isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length, saveCount)
+})
+
+test('retry never repeats a create whose remote response failed MCP protocol parsing', async (t) => {
+  const ctx = newHub()
+  const isolatedRoot = ctx.root
+  t.after(() => cleanup(isolatedRoot))
+  ctx.hub.createMilestone({ name: 'PROTOCOL-CREATE', title: 'Protocol create', startAt: '2026-09-01', endAt: '2026-09-10' })
+  const isolatedRemote = fakeAdapter()
+  const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
+    assessAdapter: isolatedRemote,
+    assessConfig: {
+      server: { id: 'assess-task-test' }, project: '123',
+      capability: { options: { ownerId: 7, taskType: 2, timezoneOffset: '+08:00' } }
+    }
+  })
+  const preview = await isolatedHub.planMilestoneSync('PROTOCOL-CREATE')
+  isolatedRemote.state.protocolErrorAfterSave = true
+  await t.assert.rejects(
+    isolatedHub.executeSyncRecord(preview.syncId, { planHash: preview.hash }),
+    (error) => error.code === 'MCP_SYNC_LINK_REQUIRED' && error.causeCode === 'MCP_PROTOCOL_ERROR'
+  )
+  await t.assert.rejects(
+    isolatedHub.retrySyncRecord(preview.syncId, {}),
+    (error) => error.code === 'MCP_SYNC_LINK_REQUIRED' && error.causeCode === 'MCP_PROTOCOL_ERROR'
+  )
+  t.assert.strictEqual(isolatedRemote.state.sprints.size, 1)
   t.assert.strictEqual(isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length, 1)
 })
 
