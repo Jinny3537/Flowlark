@@ -46,6 +46,9 @@ import { resolveProjectSyncContext } from './project-sync-context.js'
 import * as externalBindings from './external-bindings.js'
 import {
   executeMilestoneSync as executeSync,
+  getLinkableCreateStep,
+  hasLinkedCreateResult,
+  linkMilestoneCreateResult,
   resumeMilestoneSync as resumeSync,
   withMilestoneSyncLock
 } from './milestone-sync.js'
@@ -920,29 +923,96 @@ export class Hub {
     }
     const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
     const intent = this.#syncIntent(record)
-    return this.#withAssessAdapter(record.entityKey, true, async (adapter, config) => {
-      const plan = await this.#buildMilestoneSyncPlan(record.entityKey, intent, adapter, config)
-      return withMilestoneSyncLock(this.root, record.entityKey, async () => {
-        const current = this.getSyncRecord(id)
-        if (!['failed', 'paused'].includes(current.status)) {
-          throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${current.status || 'unknown'} 变更为 running`)
-        }
-        if (current.planHash !== record.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
-        if (plan.hash !== record.planHash) {
-          this.#saveMilestoneSyncPreview(record.entityKey, plan)
-          throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
-        }
-        return resumeSync({
-          root: this.root,
-          milestoneName: record.entityKey,
-          plan,
-          reason: String(value.reason || ''),
-          confirmUnfinished: value.confirmUnfinished === true,
-          adapter,
-          lockHeld: true
+    const linkedCreate = hasLinkedCreateResult(record)
+    try {
+      return await this.#withAssessAdapter(record.entityKey, true, async (adapter, config) => {
+        const plan = linkedCreate
+          ? record.plan
+          : await this.#buildMilestoneSyncPlan(record.entityKey, intent, adapter, config)
+        return withMilestoneSyncLock(this.root, record.entityKey, async () => {
+          const current = this.getSyncRecord(id)
+          if (!['failed', 'paused'].includes(current.status)) {
+            throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${current.status || 'unknown'} 变更为 running`)
+          }
+          if (current.planHash !== record.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+          if (hasLinkedCreateResult(current) !== linkedCreate) {
+            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划的关联结果已经变化，请重新操作')
+          }
+          if (linkedCreate && (
+            config.server?.id !== current.plan?.server ||
+            Number(config.project) !== Number(current.plan?.projectId)
+          )) {
+            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '项目同步目标已经变化，请重新生成同步计划')
+          }
+          if (!linkedCreate && plan.hash !== record.planHash) {
+            this.#saveMilestoneSyncPreview(record.entityKey, plan)
+            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+          }
+          return resumeSync({
+            root: this.root,
+            milestoneName: record.entityKey,
+            plan,
+            reason: String(value.reason || ''),
+            confirmUnfinished: value.confirmUnfinished === true,
+            adapter,
+            lockHeld: true
+          })
         })
-      })
-    }, intent)
+      }, intent)
+    } catch (error) {
+      if (linkedCreate && [
+        'PROJECT_SYNC_TARGET_REQUIRED',
+        'PROJECT_SYNC_TARGET_MISMATCH',
+        'PROJECT_SYNC_MANAGED_FIELDS_MISMATCH',
+        'MILESTONE_EXTERNAL_TARGET_MISMATCH'
+      ].includes(error?.code)) {
+        throw err.conflict('MCP_SYNC_PLAN_CHANGED', '项目同步目标已经变化，请重新生成同步计划')
+      }
+      throw error
+    }
+  }
+
+  async linkSyncResult(id, input = {}) {
+    this.#assertWritable('关联远端创建结果')
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    const operationKey = String(value.operationKey || '').trim()
+    if (!operationKey) throw err.bad('MCP_SYNC_LINK_OPERATION_REQUIRED', '请选择需要关联的创建步骤')
+    const remoteId = Number(value.remoteId)
+    if (!Number.isInteger(remoteId) || remoteId <= 0) {
+      throw err.bad('MCP_SYNC_LINK_REMOTE_ID_INVALID', '远端对象 ID 必须是正整数')
+    }
+    const reason = String(value.reason || '').trim()
+    if (!reason) throw err.bad('MCP_SYNC_REASON_REQUIRED', '关联远端创建结果必须填写原因')
+    const record = this.getSyncRecord(id)
+    const step = getLinkableCreateStep(record, operationKey)
+    const bindingLock = step.kind === 'task.create' ? 'binding:external-tasks' : 'binding:external-sprints'
+    return this.#withAssessAdapter(record.entityKey, false, async (adapter, config) => {
+      if (config.server?.id !== record.plan?.server || Number(config.project) !== Number(record.plan?.projectId)) {
+        throw err.conflict('MCP_SYNC_PLAN_CHANGED', '项目同步目标已经变化，请重新生成同步计划')
+      }
+      return withMilestoneSyncLock(this.root, bindingLock, () =>
+        withMilestoneSyncLock(this.root, record.entityKey, async () => {
+          const current = this.getSyncRecord(id)
+          if (current.planHash !== record.planHash ||
+              config.server?.id !== current.plan?.server ||
+              Number(config.project) !== Number(current.plan?.projectId)) {
+            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '项目同步计划已经变化，请重新操作')
+          }
+          const currentStep = getLinkableCreateStep(current, operationKey)
+          const remote = currentStep.kind === 'sprint.create'
+            ? await adapter.getSprint(remoteId)
+            : await adapter.getTask(remoteId)
+          return linkMilestoneCreateResult({
+            root: this.root,
+            milestoneName: current.entityKey,
+            operationKey,
+            remoteId,
+            remote,
+            reason,
+            lockHeld: true
+          })
+        }))
+    }, this.#syncIntent(record))
   }
 
   cancelSyncRecord(id, reason) {

@@ -7,16 +7,20 @@ import { err } from '../src/core/errors.js'
 import { appendSyncAudit } from '../src/core/sync-audit.js'
 import { findSyncRecord, savePendingSync, writeKnownSyncRecord } from '../src/core/sync-queue.js'
 import { unavailableWecomMcp } from '../src/core/wecom-mcp-manager.js'
+import * as milestones from '../src/core/milestones.js'
+import * as requirements from '../src/core/requirements.js'
 
 let root
 let server
 let base
 let remote
+let hub
 
 function fakeAdapter() {
   const state = {
     sprints: new Map(), tasks: new Map(), calls: [], failNextSave: false,
-    unknownNextSave: false, protocolErrorAfterSave: false, beforeNextGetSprint: null
+    unknownNextSave: false, unknownNextTaskCreate: false,
+    protocolErrorAfterSave: false, beforeNextGetSprint: null
   }
   return {
     state,
@@ -52,8 +56,12 @@ function fakeAdapter() {
     },
     async createTask(body) {
       state.calls.push(['createTask', body])
-      const task = { ...body, id: 20, revision: 1, sprintId: body.currentSprintId, status: 0 }
+      const task = { ...body, id: 20 + state.tasks.size, revision: 1, sprintId: body.currentSprintId, status: 0 }
       state.tasks.set(task.id, task)
+      if (state.unknownNextTaskCreate) {
+        state.unknownNextTaskCreate = false
+        throw Object.assign(new Error('connection timed out after task send'), { code: 'ETIMEDOUT' })
+      }
       return task
     },
     async updateTask(body) {
@@ -128,8 +136,9 @@ function callFromAddress(port, address, method, pathname, body) {
 before(async () => {
   const ctx = newHub()
   root = ctx.root
-  ctx.hub.createProject({ name: '订单', code: 'orders' })
-  ctx.hub.addVersion('orders', { versionNo: 'v1', title: '一版', html: html() })
+  hub = ctx.hub
+  hub.createProject({ name: '订单', code: 'orders' })
+  hub.addVersion('orders', { versionNo: 'v1', title: '一版', html: html() })
   for (const name of ['SYNC-EXECUTE', 'SYNC-RETRY']) {
     ctx.hub.createMilestone({ name, title: name, startAt: '2026-09-01', endAt: '2026-09-10' })
   }
@@ -313,6 +322,289 @@ test('retry refuses an uncertain sprint create until a remote link is supplied',
   )
   t.assert.strictEqual(findSyncRecord(isolatedRoot, 'milestone', 'RETRY-LINK').status, 'paused')
   t.assert.strictEqual(isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length, 1)
+})
+
+test('link-result verifies a Sprint and retry never replays create', async (t) => {
+  const name = 'LINK-SPRINT'
+  hub.createMilestone({ name, title: 'Link Sprint', startAt: '2026-12-01', endAt: '2026-12-10' })
+  const preview = (await call('POST', `/api/milestones/${name}/sync-plan`, {})).body
+  remote.state.protocolErrorAfterSave = true
+  const failed = await call('POST', `/api/sync/${preview.syncId}/execute`, { planHash: preview.hash })
+  t.assert.strictEqual(failed.status, 409)
+  t.assert.strictEqual(failed.body.code, 'MCP_SYNC_LINK_REQUIRED')
+  const record = findSyncRecord(root, 'milestone', name)
+  const step = record.operations.find((item) => item.kind === 'sprint.create')
+  const remoteId = [...remote.state.sprints.keys()].at(-1)
+  const createCount = remote.state.calls.filter(([operation]) => operation === 'saveSprint').length
+
+  const linked = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key,
+    remoteId,
+    reason: '人工核对平台冲刺',
+    server: 'browser-server',
+    projectId: 999,
+    tool: 'sprint.delete'
+  })
+  t.assert.strictEqual(linked.status, 200)
+  t.assert.strictEqual(linked.body.status, 'paused')
+  t.assert.strictEqual(linked.body.operations.find((item) => item.key === step.key).status, 'remote-complete')
+  t.assert.strictEqual(linked.body.operations.find((item) => item.key === step.key).remoteResult.id, remoteId)
+
+  const repeated = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId, reason: '重复关联'
+  })
+  t.assert.strictEqual(repeated.status, 409)
+  t.assert.strictEqual(repeated.body.code, 'MCP_SYNC_LINK_NOT_REQUIRED')
+
+  const retried = await call('POST', `/api/sync/${record.id}/retry`, {})
+  t.assert.strictEqual(retried.status, 200)
+  t.assert.strictEqual(retried.body.status, 'completed')
+  t.assert.strictEqual(remote.state.calls.filter(([operation]) => operation === 'saveSprint').length, createCount)
+  const afterRetry = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId, reason: '完成后再次关联'
+  })
+  t.assert.strictEqual(afterRetry.status, 409)
+  t.assert.strictEqual(afterRetry.body.code, 'SYNC_TRANSITION_INVALID')
+  const audit = (await call('GET', `/api/sync/audit?syncId=${record.id}&limit=50`)).body
+  const linkedAudit = audit.find((item) => item.action === 'step.linked')
+  t.assert.strictEqual(linkedAudit.before.error.code, 'MCP_SYNC_LINK_REQUIRED')
+  t.assert.strictEqual(linkedAudit.after.status, 'remote-complete')
+  t.assert.strictEqual(linkedAudit.after.remoteResult.id, remoteId)
+  t.assert.strictEqual(linkedAudit.after.reason, '人工核对平台冲刺')
+})
+
+test('link-result verifies a task and retry never replays create', async (t) => {
+  const code = 'REQ-LINK-TASK'
+  const name = 'LINK-TASK'
+  hub.createRequirement({ code, title: 'Link task', description: 'Task body' })
+  hub.setRequirements('orders', 'v1', [code])
+  hub.createMilestone({
+    name, title: 'Link Task', startAt: '2026-12-11', endAt: '2026-12-20',
+    items: [{ requirement: code, project: 'orders', version: 'v1' }]
+  })
+  const preview = (await call('POST', `/api/milestones/${name}/sync-plan`, {})).body
+  remote.state.unknownNextTaskCreate = true
+  const failed = await call('POST', `/api/sync/${preview.syncId}/execute`, { planHash: preview.hash })
+  t.assert.strictEqual(failed.status, 409)
+  t.assert.strictEqual(failed.body.code, 'MCP_SYNC_LINK_REQUIRED')
+  const record = findSyncRecord(root, 'milestone', name)
+  const step = record.operations.find((item) => item.kind === 'task.create')
+  const remoteId = [...remote.state.tasks.keys()].at(-1)
+  const createCount = remote.state.calls.filter(([operation]) => operation === 'createTask').length
+
+  const linked = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId, reason: '人工核对平台任务'
+  })
+  t.assert.strictEqual(linked.status, 200)
+  t.assert.strictEqual(linked.body.operations.find((item) => item.key === step.key).status, 'remote-complete')
+  const retried = await call('POST', `/api/sync/${record.id}/retry`, {})
+  t.assert.strictEqual(retried.status, 200)
+  t.assert.strictEqual(remote.state.calls.filter(([operation]) => operation === 'createTask').length, createCount)
+})
+
+test('linked retry rejects a changed resolved target before any remote call', async (t) => {
+  const ctx = newHub()
+  const isolatedRoot = ctx.root
+  t.after(() => cleanup(isolatedRoot))
+  ctx.hub.createProject({ name: '订单', code: 'link-orders' })
+  ctx.hub.updateProject('link-orders', {
+    sync: {
+      mode: 'manual', server: 'project-task', projectId: '123',
+      managedFields: ['title', 'description', 'acceptance', 'priority', 'assignee', 'sprint']
+    }
+  })
+  for (const id of ['project-task', 'changed-task']) {
+    ctx.hub.saveMcpServer({
+      id, name: id, type: 'stdio', adapter: 'assess-task', runtimeProfile: `${id}-runtime`
+    })
+  }
+  ctx.hub.saveMcpCapability('milestones', {
+    enabled: true,
+    server: '',
+    options: { ownerId: 7, taskType: 2, timezoneOffset: '+08:00' }
+  })
+  ctx.hub.createRequirement({ code: 'REQ-LINK-TARGET', title: 'Link target requirement' })
+  ctx.hub.addVersion('link-orders', {
+    versionNo: 'v1', title: 'v1', html: html(), requirements: ['REQ-LINK-TARGET']
+  })
+  ctx.hub.createMilestone({
+    name: 'LINK-TARGET-CHANGED', title: 'Link target changed', startAt: '2027-03-01', endAt: '2027-03-10',
+    items: [{ requirement: 'REQ-LINK-TARGET', project: 'link-orders', version: 'v1' }]
+  })
+  const isolatedRemote = fakeAdapter()
+  const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
+    assessAdapter: isolatedRemote,
+    assessConfig: {
+      server: { id: 'assess-task-test' }, project: '123',
+      capability: { options: { ownerId: 7, taskType: 2, timezoneOffset: '+08:00' } }
+    }
+  })
+  const preview = await isolatedHub.planMilestoneSync('LINK-TARGET-CHANGED')
+  isolatedRemote.state.protocolErrorAfterSave = true
+  await t.assert.rejects(
+    isolatedHub.executeSyncRecord(preview.syncId, { planHash: preview.hash }),
+    (error) => error.code === 'MCP_SYNC_LINK_REQUIRED'
+  )
+  const record = findSyncRecord(isolatedRoot, 'milestone', 'LINK-TARGET-CHANGED')
+  const step = record.operations.find((item) => item.kind === 'sprint.create')
+  const remoteId = [...isolatedRemote.state.sprints.keys()][0]
+  await isolatedHub.linkSyncResult(record.id, {
+    operationKey: step.key, remoteId, reason: '人工核对平台冲刺'
+  })
+  ctx.hub.updateProject('link-orders', {
+    sync: {
+      mode: 'manual', server: 'changed-task', projectId: '456',
+      managedFields: ['title', 'description', 'acceptance', 'priority', 'assignee', 'sprint']
+    }
+  })
+  isolatedRemote.state.calls.length = 0
+
+  await t.assert.rejects(
+    isolatedHub.retrySyncRecord(record.id, {}),
+    (error) => error.code === 'MCP_SYNC_PLAN_CHANGED'
+  )
+  t.assert.strictEqual(isolatedRemote.state.calls.length, 0)
+  t.assert.strictEqual(findSyncRecord(isolatedRoot, 'milestone', 'LINK-TARGET-CHANGED').status, 'paused')
+})
+
+test('link-result rejects invalid, wrong-project, mismatched, and occupied Sprint candidates', async (t) => {
+  async function pausedSprint(name) {
+    hub.createMilestone({ name, title: name, startAt: '2027-01-01', endAt: '2027-01-10' })
+    const preview = (await call('POST', `/api/milestones/${name}/sync-plan`, {})).body
+    remote.state.protocolErrorAfterSave = true
+    await call('POST', `/api/sync/${preview.syncId}/execute`, { planHash: preview.hash })
+    const record = findSyncRecord(root, 'milestone', name)
+    return { record, step: record.operations.find((item) => item.kind === 'sprint.create') }
+  }
+
+  const missing = await pausedSprint('LINK-MISSING')
+  let result = await call('POST', `/api/sync/${missing.record.id}/link-result`, {
+    operationKey: missing.step.key, remoteId: 99901, reason: '核对不存在对象'
+  })
+  t.assert.strictEqual(result.status, 404)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_RESULT_NOT_FOUND')
+
+  const wrongProject = await pausedSprint('LINK-WRONG-PROJECT')
+  remote.state.sprints.set(99902, {
+    ...wrongProject.step.operation.after, id: 99902, projectId: 999, revision: 1, status: 0
+  })
+  result = await call('POST', `/api/sync/${wrongProject.record.id}/link-result`, {
+    operationKey: wrongProject.step.key, remoteId: 99902, reason: '核对错误项目'
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_PROJECT_MISMATCH')
+
+  const mismatch = await pausedSprint('LINK-MISMATCH')
+  remote.state.sprints.set(99903, {
+    ...mismatch.step.operation.after, sprintName: '另一个冲刺', id: 99903, projectId: 123, revision: 1, status: 0
+  })
+  result = await call('POST', `/api/sync/${mismatch.record.id}/link-result`, {
+    operationKey: mismatch.step.key, remoteId: 99903, reason: '核对错误对象'
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_IDENTITY_MISMATCH')
+
+  const occupied = await pausedSprint('LINK-OCCUPIED')
+  remote.state.sprints.set(99904, {
+    ...occupied.step.operation.after, id: 99904, projectId: 123, revision: 1, status: 0
+  })
+  hub.createMilestone({ name: 'LINK-OCCUPIER', title: '占用者' })
+  milestones.updateMilestone(root, 'LINK-OCCUPIER', {
+    external: { provider: 'assess-task', server: occupied.record.plan.server, projectId: 123, sprintId: 99904 }
+  }, { system: true })
+  result = await call('POST', `/api/sync/${occupied.record.id}/link-result`, {
+    operationKey: occupied.step.key, remoteId: 99904, reason: '核对已占用对象'
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'EXTERNAL_SPRINT_ALREADY_BOUND')
+})
+
+test('link-result rejects invalid, wrong-project, mismatched, wrong-Sprint, and occupied task candidates', async (t) => {
+  const code = 'REQ-LINK-TASK-INVALID'
+  const name = 'LINK-TASK-INVALID'
+  hub.createRequirement({ code, title: 'Link task validation', description: 'Task body' })
+  hub.setRequirements('orders', 'v1', [code])
+  hub.createMilestone({
+    name, title: 'Link Task Validation', startAt: '2027-02-01', endAt: '2027-02-10',
+    items: [{ requirement: code, project: 'orders', version: 'v1' }]
+  })
+  const preview = (await call('POST', `/api/milestones/${name}/sync-plan`, {})).body
+  remote.state.unknownNextTaskCreate = true
+  await call('POST', `/api/sync/${preview.syncId}/execute`, { planHash: preview.hash })
+  const record = findSyncRecord(root, 'milestone', name)
+  const step = record.operations.find((item) => item.kind === 'task.create')
+  const sprintId = milestones.readMilestone(root, name).external.sprintId
+  const candidate = (id, patch = {}) => ({
+    ...step.operation.after,
+    id,
+    projectId: record.plan.projectId,
+    sprintId,
+    revision: 1,
+    status: 0,
+    ...patch
+  })
+
+  let result = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId: 0, reason: '非法 ID'
+  })
+  t.assert.strictEqual(result.status, 400)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_REMOTE_ID_INVALID')
+
+  result = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: 'task:missing:create', remoteId: 91990, reason: '错误步骤'
+  })
+  t.assert.strictEqual(result.status, 404)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_OPERATION_NOT_FOUND')
+
+  result = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId: 91991, reason: '不存在任务'
+  })
+  t.assert.strictEqual(result.status, 404)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_RESULT_NOT_FOUND')
+
+  remote.state.tasks.set(91992, candidate(91992, { projectId: 999 }))
+  result = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId: 91992, reason: '错误项目'
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_PROJECT_MISMATCH')
+
+  remote.state.tasks.set(91993, candidate(91993, { title: '另一项任务' }))
+  result = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId: 91993, reason: '字段不一致'
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_IDENTITY_MISMATCH')
+
+  remote.state.tasks.set(91996, candidate(91996, { taskType: Number(step.operation.after.taskType) + 1 }))
+  result = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId: 91996, reason: '任务类型不一致'
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_IDENTITY_MISMATCH')
+
+  remote.state.tasks.set(91994, candidate(91994, { sprintId: Number(sprintId) + 1 }))
+  result = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId: 91994, reason: '冲刺不一致'
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_LINK_SPRINT_MISMATCH')
+
+  const occupiedCode = 'REQ-LINK-TASK-OCCUPIER'
+  hub.createRequirement({ code: occupiedCode, title: '占用任务' })
+  const occupied = candidate(91995)
+  remote.state.tasks.set(occupied.id, occupied)
+  requirements.upsertExternalTask(root, occupiedCode, {
+    provider: 'assess-task',
+    server: record.plan.server,
+    projectId: record.plan.projectId,
+    taskId: occupied.id
+  })
+  result = await call('POST', `/api/sync/${record.id}/link-result`, {
+    operationKey: step.key, remoteId: occupied.id, reason: '任务已占用'
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'EXTERNAL_TASK_ALREADY_BOUND')
 })
 
 test('a cancel during execute plan rebuild wins before any stale remote write', async (t) => {

@@ -5,7 +5,11 @@ import path from 'node:path'
 import { after, test } from 'node:test'
 import { cleanup, html, newHub } from './helpers.js'
 import { buildMilestoneSyncPlan } from '../src/core/milestone-sync-plan.js'
-import { executeMilestoneSync, resumeMilestoneSync } from '../src/core/milestone-sync.js'
+import {
+  executeMilestoneSync,
+  linkMilestoneCreateResult,
+  resumeMilestoneSync
+} from '../src/core/milestone-sync.js'
 import {
   newMilestoneSyncJournal,
   readMilestoneSyncJournal,
@@ -250,6 +254,103 @@ test('pauses an uncertain task create and never creates it again without an expl
     (error) => error.code === 'MCP_SYNC_LINK_REQUIRED' && error.causeCode === 'ECONNRESET'
   )
   assert.equal(remote.calls.filter(([name]) => name === 'createTask').length, 1)
+})
+
+test('links an uncertain sprint result and resumes without replaying create', async () => {
+  const { root, plan } = fixture()
+  const remote = adapter({ failSprintOnce: true, sprintFailureCode: 'MCP_TIMEOUT' })
+  await assert.rejects(
+    executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote }),
+    (error) => error.code === 'MCP_SYNC_LINK_REQUIRED'
+  )
+
+  const linked = await linkMilestoneCreateResult({
+    root,
+    milestoneName: 'S1',
+    operationKey: plan.operations[0].key,
+    remoteId: 10,
+    remote: remote.state.sprint,
+    reason: '人工核对平台冲刺'
+  })
+  assert.equal(linked.status, 'paused')
+  assert.equal(linked.operations[0].status, 'remote-complete')
+  assert.equal(linked.operations[0].remoteResult.id, 10)
+  assert.equal(milestones.readMilestone(root, 'S1').external.sprintId, 10)
+
+  const result = await resumeMilestoneSync({ root, milestoneName: 'S1', adapter: remote })
+  assert.equal(result.status, 'completed')
+  assert.equal(remote.calls.filter(([name]) => name === 'saveSprint').length, 1)
+  assert.equal(remote.calls.filter(([name]) => name === 'createTask').length, 1)
+})
+
+test('links an uncertain task result and resumes without replaying create', async () => {
+  const { root, plan } = fixture()
+  const remote = adapter({ failTaskOnce: true, taskFailureCode: 'ECONNRESET' })
+  await assert.rejects(
+    executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote }),
+    (error) => error.code === 'MCP_SYNC_LINK_REQUIRED'
+  )
+  const operation = plan.operations.find((item) => item.kind === 'task.create')
+  const candidate = {
+    ...operation.after,
+    id: 88,
+    projectId: plan.projectId,
+    sprintId: 10,
+    revision: 2,
+    status: 0
+  }
+  remote.state.task = candidate
+  remote.state.tasks.set(candidate.id, candidate)
+
+  const linked = await linkMilestoneCreateResult({
+    root,
+    milestoneName: 'S1',
+    operationKey: operation.key,
+    remoteId: candidate.id,
+    remote: candidate,
+    reason: '人工核对平台任务'
+  })
+  assert.equal(linked.status, 'paused')
+  assert.equal(linked.operations.find((item) => item.key === operation.key).status, 'remote-complete')
+  assert.equal(requirements.readRequirement(root, 'REQ-1').externalTasks[0].taskId, 88)
+
+  const result = await resumeMilestoneSync({ root, milestoneName: 'S1', adapter: remote })
+  assert.equal(result.status, 'completed')
+  assert.equal(remote.calls.filter(([name]) => name === 'createTask').length, 1)
+})
+
+test('keeps the verified binding and remote-complete step when link audit append fails', async () => {
+  const { root, plan } = fixture()
+  const remote = adapter({ failSprintOnce: true, sprintFailureCode: 'MCP_TIMEOUT' })
+  await assert.rejects(
+    executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote }),
+    (error) => error.code === 'MCP_SYNC_LINK_REQUIRED'
+  )
+  const auditFile = path.join(root, '.flowlark', 'sync-audit.ndjson')
+  fs.rmSync(auditFile)
+  fs.mkdirSync(auditFile)
+
+  await assert.rejects(
+    linkMilestoneCreateResult({
+      root,
+      milestoneName: 'S1',
+      operationKey: plan.operations[0].key,
+      remoteId: 10,
+      remote: remote.state.sprint,
+      reason: '人工核对平台冲刺'
+    }),
+    (error) => error.code === 'SYNC_AUDIT_WRITE_FAILED'
+  )
+  assert.equal(milestones.readMilestone(root, 'S1').external.sprintId, 10)
+  const paused = readMilestoneSyncJournal(root, 'S1')
+  assert.equal(paused.status, 'paused')
+  assert.equal(paused.error.code, 'SYNC_AUDIT_WRITE_FAILED')
+  assert.equal(paused.operations[0].status, 'remote-complete')
+
+  fs.rmSync(auditFile, { recursive: true })
+  const resumed = await resumeMilestoneSync({ root, milestoneName: 'S1', adapter: remote })
+  assert.equal(resumed.status, 'completed')
+  assert.equal(remote.calls.filter(([name]) => name === 'saveSprint').length, 1)
 })
 
 test('recovers a remote-complete sprint create by persisting its binding without creating again', async () => {

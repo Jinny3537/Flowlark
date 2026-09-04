@@ -196,6 +196,8 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, await hub.executeSyncRecord(p.id, await readJson(req, maxBody))))
   r.post('/api/sync/:id/retry', async (req, res, p) =>
     sendJson(res, 200, await hub.retrySyncRecord(p.id, await readJson(req, maxBody))))
+  r.post('/api/sync/:id/link-result', async (req, res, p) =>
+    sendJson(res, 200, await hub.linkSyncResult(p.id, await readJson(req, maxBody))))
   r.post('/api/sync/:id/cancel', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.cancelSyncRecord(p.id, body?.reason))

@@ -1,7 +1,8 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { err } from './errors.js'
+import { PhError, err } from './errors.js'
+import { hashProjection } from './milestone-sync-plan.js'
 import { transitionMilestoneStatus } from './milestone-lifecycle.js'
 import { appendSyncAudit } from './sync-audit.js'
 import {
@@ -249,6 +250,100 @@ export async function resumeMilestoneSync(options = {}) {
   return executeMilestoneSync({ ...options, plan, confirmed: true, reason: options.reason || journal.reason, resume: true })
 }
 
+export function getLinkableCreateStep(record, operationKey) {
+  if (record?.entityType !== 'milestone') {
+    throw err.bad('SYNC_ENTITY_UNSUPPORTED', `不支持的同步对象类型：${record?.entityType || 'unknown'}`)
+  }
+  if (record.status !== 'paused') {
+    throw err.conflict('SYNC_TRANSITION_INVALID', `同步状态不能从 ${record.status || 'unknown'} 关联远端结果`)
+  }
+  const key = String(operationKey || '').trim()
+  const matches = (record.operations || []).filter((step) => step.key === key)
+  if (matches.length !== 1) {
+    throw new PhError('MCP_SYNC_LINK_OPERATION_NOT_FOUND', `同步步骤「${key || '（空）'}」不存在`, { status: 404 })
+  }
+  const step = matches[0]
+  if (!['sprint.create', 'task.create'].includes(step.kind) ||
+      step.status !== 'paused' || step.error?.code !== 'MCP_SYNC_LINK_REQUIRED') {
+    throw err.conflict('MCP_SYNC_LINK_NOT_REQUIRED', '该同步步骤不需要关联远端创建结果')
+  }
+  return step
+}
+
+export function hasLinkedCreateResult(record) {
+  return (record?.operations || []).some((step) =>
+    ['sprint.create', 'task.create'].includes(step.kind) &&
+    step.status === 'remote-complete' &&
+    positiveId(step.remoteResult?.id))
+}
+
+export async function linkMilestoneCreateResult({
+  root,
+  milestoneName,
+  operationKey,
+  remoteId,
+  remote,
+  reason,
+  now = new Date(),
+  lockHeld = false
+} = {}) {
+  if (!lockHeld) {
+    const journal = readMilestoneSyncJournal(root, milestoneName)
+    if (!journal) throw err.notFound(`迭代「${milestoneName}」的同步记录`)
+    const step = getLinkableCreateStep(journal, operationKey)
+    const bindingLock = step.kind === 'task.create' ? 'binding:external-tasks' : 'binding:external-sprints'
+    return withMilestoneSyncLock(root, bindingLock, () =>
+      withMilestoneSyncLock(root, milestoneName, () => linkMilestoneCreateResult({
+        root, milestoneName, operationKey, remoteId, remote, reason, now, lockHeld: true
+      })))
+  }
+  const journal = readMilestoneSyncJournal(root, milestoneName)
+  if (!journal) throw err.notFound(`迭代「${milestoneName}」的同步记录`)
+  if (!journal.plan || journal.plan.hash !== journal.planHash) {
+    throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+  }
+  const linkReason = String(reason || '').trim()
+  if (!linkReason) throw err.bad('MCP_SYNC_REASON_REQUIRED', '关联远端创建结果必须填写原因')
+  const step = getLinkableCreateStep(journal, operationKey)
+  const result = validateLinkedCreateResult(root, journal.plan, step, remoteId, remote)
+  assertLinkBindingAvailable(root, milestoneName, journal.plan, step, result.id)
+
+  const before = {
+    status: step.status,
+    remoteResult: step.remoteResult ?? null,
+    error: step.error ?? null
+  }
+  // Binding 先落盘；即使随后审计失败，remote-complete 也会阻止 retry 重放 create。
+  await persistOperationResult({
+    root,
+    milestoneName,
+    plan: journal.plan,
+    operation: step.operation,
+    result,
+    adapter: null
+  })
+  const at = new Date(now).toISOString()
+  step.status = 'remote-complete'
+  step.remoteResult = result
+  step.error = null
+  step.linkReason = linkReason
+  step.updatedAt = at
+  journal.status = 'paused'
+  journal.error = null
+  journal.updatedAt = at
+  return persistAuditTransition(root, milestoneName, journal, {
+    action: 'step.linked',
+    status: 'paused',
+    operationKey: step.key,
+    before,
+    after: {
+      status: step.status,
+      remoteResult: result,
+      reason: step.linkReason
+    }
+  })
+}
+
 async function runOperation({ root, milestoneName, plan, operation, reason, confirmUnfinished, adapter }) {
   if (operation.kind === 'sprint.create') return adapter.saveSprint(operation.after)
   if (operation.kind === 'sprint.update') {
@@ -421,6 +516,63 @@ function requiredTaskBinding(root, code, plan) {
     entry.provider === 'assess-task' && entry.server === plan.server && Number(entry.projectId) === Number(plan.projectId))
   if (!positiveId(binding?.taskId)) throw err.bad('MCP_SYNC_TASK_BINDING_MISSING', `需求 ${code} 缺少平台任务绑定`)
   return binding
+}
+
+function validateLinkedCreateResult(root, plan, step, remoteId, remote) {
+  const id = positiveId(remoteId)
+  if (!id) throw err.bad('MCP_SYNC_LINK_REMOTE_ID_INVALID', '远端对象 ID 必须是正整数')
+  if (!remote) {
+    throw new PhError('MCP_SYNC_LINK_RESULT_NOT_FOUND', `远端对象 ${id} 不存在`, { status: 404 })
+  }
+  const result = safeRemoteResult(remote)
+  if (result.id !== id) throw err.conflict('MCP_SYNC_LINK_ID_MISMATCH', '读取到的远端对象 ID 与请求不一致')
+  if (Number(remote.projectId) !== Number(plan.projectId)) {
+    throw err.conflict('MCP_SYNC_LINK_PROJECT_MISMATCH', `远端对象 ${id} 不属于项目 ${plan.projectId}`)
+  }
+  const entity = step.kind === 'sprint.create' ? 'sprint' : 'task'
+  if (!step.operation?.contentHash ||
+      hashProjection(remote, entity, plan.managedFields) !== step.operation.contentHash) {
+    throw err.conflict('MCP_SYNC_LINK_IDENTITY_MISMATCH', '远端对象与待创建对象的托管字段不一致')
+  }
+  if (entity === 'task') {
+    if (Number(remote.taskType) !== Number(step.operation.after?.taskType)) {
+      throw err.conflict('MCP_SYNC_LINK_IDENTITY_MISMATCH', '远端任务类型与待创建任务不一致')
+    }
+    const sprintId = requiredSprintBinding(root, plan.milestone).sprintId
+    if (Number(remote.sprintId) !== Number(sprintId)) {
+      throw err.conflict('MCP_SYNC_LINK_SPRINT_MISMATCH', `远端任务 ${id} 不属于当前冲刺 ${sprintId}`)
+    }
+  }
+  return result
+}
+
+function assertLinkBindingAvailable(root, milestoneName, plan, step, remoteId) {
+  if (step.kind === 'sprint.create') {
+    const current = milestones.readMilestone(root, milestoneName).external
+    if (current?.sprintId && Number(current.sprintId) !== remoteId) {
+      throw err.conflict('EXTERNAL_SPRINT_CAS_MISMATCH', `迭代 ${milestoneName} 的平台 Sprint 绑定已变化`)
+    }
+    milestones.assertExternalSprintAvailable(root, milestoneName, {
+      server: plan.server,
+      projectId: plan.projectId,
+      sprintId: remoteId
+    })
+    return
+  }
+  const code = step.operation?.requirement
+  const current = requirements.readRequirement(root, code).externalTasks.find((binding) =>
+    binding.provider === 'assess-task' &&
+    binding.server === plan.server &&
+    Number(binding.projectId) === Number(plan.projectId))
+  if (current?.taskId && Number(current.taskId) !== remoteId) {
+    throw err.conflict('EXTERNAL_TASK_CAS_MISMATCH', `需求 ${code} 的平台任务绑定已变化`)
+  }
+  requirements.assertExternalTaskAvailable(root, code, {
+    provider: 'assess-task',
+    server: plan.server,
+    projectId: plan.projectId,
+    taskId: remoteId
+  })
 }
 
 function positiveId(value) {

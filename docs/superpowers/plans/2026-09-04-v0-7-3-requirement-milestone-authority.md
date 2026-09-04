@@ -328,25 +328,25 @@ git commit -m "feat: add controlled external bindings"
 - Modify: `test/sync-center-api.test.js`
 - Modify: `test/milestone-sync.test.js`
 
-- [ ] Add failing tests for paused `sprint.create` and `task.create` records linked to valid, invalid, occupied, and wrong-project remote IDs.
-- [ ] Add fixed endpoint:
+- [x] Add failing tests for paused `sprint.create` and `task.create` records linked to valid, invalid, occupied, and wrong-project remote IDs.
+- [x] Add fixed endpoint:
 
 ```text
 POST /api/sync/:id/link-result
 { "operationKey": "sprint:SYNC-42:create", "remoteId": 123, "reason": "人工核对平台结果" }
 ```
 
-- [ ] Accept only a paused milestone record and an exact step whose error is `MCP_SYNC_LINK_REQUIRED`.
-- [ ] Resolve the project context server-side, fetch the candidate object, validate project ownership and projection identity, and enforce binding uniqueness.
-- [ ] Persist the verified binding and `remoteResult`, move the step to `remote-complete`, and append before/after audit.
-- [ ] Require the user to press retry afterward; retry uses the stored remote result and never calls create again.
-- [ ] Run:
+- [x] Accept only a paused milestone record and an exact step whose error is `MCP_SYNC_LINK_REQUIRED`.
+- [x] Resolve the project context server-side, fetch the candidate object, validate project ownership and projection identity, and enforce binding uniqueness.
+- [x] Persist the verified binding and `remoteResult`, move the step to `remote-complete`, and append before/after audit.
+- [x] Require the user to press retry afterward; retry uses the stored remote result and never calls create again.
+- [x] Run:
 
 ```bash
 node --test test/sync-center-api.test.js test/milestone-sync.test.js test/external-binding-api.test.js
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/core/service.js src/core/milestone-sync.js src/server/routes.js test/sync-center-api.test.js test/milestone-sync.test.js test/external-binding-api.test.js
