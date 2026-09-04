@@ -84,8 +84,8 @@ test('schema 3 preserves regular Git config and creates missing Git config', (t)
   )
 })
 
-for (const relative of ['.gitignore', '.gitattributes']) {
-  test('schema 3 rejects ' + relative + ' symlink without changing repository or external target', (t) => {
+for (const relative of ['flowlark.json', '.gitignore', '.gitattributes']) {
+  test('migration rejects ' + relative + ' symlink without changing repository or external target', (t) => {
     const { root, hub } = newHub()
     dirs.push(root)
     hub.createProject({ name: '订单', code: 'orders' })
@@ -98,11 +98,13 @@ for (const relative of ['.gitignore', '.gitattributes']) {
 
     const config = JSON.parse(fs.readFileSync(configFile, 'utf8'))
     const project = JSON.parse(fs.readFileSync(projectFile, 'utf8'))
-    config.schemaVersion = 2
+    config.schemaVersion = relative === 'flowlark.json' ? 1 : 2
     delete project.sync
     fs.writeFileSync(configFile, JSON.stringify(config, null, 2) + '\n')
     fs.writeFileSync(projectFile, JSON.stringify(project, null, 2) + '\n')
-    const externalBytes = Buffer.from([0, 255, 10, 46, 102, 108, 111, 119, 108, 97, 114, 107])
+    const externalBytes = relative === 'flowlark.json'
+      ? fs.readFileSync(configFile)
+      : Buffer.from([0, 255, 10, 46, 102, 108, 111, 119, 108, 97, 114, 107])
     fs.writeFileSync(outside, externalBytes)
     fs.rmSync(linkedFile)
     fs.symlinkSync(outside, linkedFile)

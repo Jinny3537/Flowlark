@@ -25,7 +25,7 @@ const MIGRATION_TRACKED_PATHS = [
   '.flowlark/sync-audit.ndjson'
 ]
 const SKIP_DIRTY_CHECK = Symbol('skipDirtyCheck')
-const SCHEMA3_TOP_LEVEL_FILES = ['.gitignore', '.gitattributes']
+const MIGRATION_TOP_LEVEL_FILES = [REPO_FILE, '.gitignore', '.gitattributes']
 
 function trackedDirty(root) {
   if (!fs.existsSync(path.join(root, '.git'))) return []
@@ -43,6 +43,7 @@ function trackedDirty(root) {
 }
 
 export function preflightMigration(root) {
+  assertMigrationTopLevelFilesAreNotSymlinks(root)
   const config = parse(fs.readFileSync(path.join(root, REPO_FILE), 'utf8'), REPO_FILE)
   const from = Number(config.schemaVersion || 1)
   return { from, to: SCHEMA_VERSION, needed: from < SCHEMA_VERSION, dirty: trackedDirty(root) }
@@ -76,13 +77,13 @@ function ensureLine(file, line) {
   fs.writeFileSync(file, `${content}${line}\n`, 'utf8')
 }
 
-function assertSchema3TopLevelFilesAreNotSymlinks(root) {
-  for (const relative of SCHEMA3_TOP_LEVEL_FILES) {
+function assertMigrationTopLevelFilesAreNotSymlinks(root) {
+  for (const relative of MIGRATION_TOP_LEVEL_FILES) {
     try {
       if (fs.lstatSync(path.join(root, relative)).isSymbolicLink()) {
         throw err.conflict(
           'MIGRATION_TOP_LEVEL_SYMLINK',
-          'Schema 3 迁移拒绝写入符号链接：' + relative,
+          '迁移拒绝读取或写入符号链接：' + relative,
           '请将 ' + relative + ' 替换为普通文件后重试'
         )
       }
@@ -143,7 +144,6 @@ export function migrateToSchema3(root, options = {}) {
   if (check.from >= 3) return { migrated: false, from: check.from, to: 3 }
   if (check.from < 2) throw err.bad('MIGRATION_ORDER_INVALID', 'Schema 3 迁移必须先完成 Schema 2 迁移')
   if (!options[SKIP_DIRTY_CHECK]) assertClean(check)
-  assertSchema3TopLevelFilesAreNotSymlinks(root)
 
   const backup = createMetadataBackup(root, { from: 2, to: 3 })
   try {
