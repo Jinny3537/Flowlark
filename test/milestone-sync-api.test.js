@@ -306,6 +306,9 @@ test('execute endpoint requires confirmation and matching plan hash', async (t) 
 })
 
 test('freeze executes verified read-back and stores the current source fingerprint', async (t) => {
+  let preflight = await call('GET', '/api/milestones/S1/preflight')
+  t.assert.strictEqual(preflight.status, 200)
+  t.assert.strictEqual(preflight.body.blockers.some((item) => item.code === 'MILESTONE_SYNC_REQUIRED'), false)
   requirements.writeRequirementSpec(root, 'REQ-1', '# 验收标准')
   requirements.updateRequirementLifecycle(root, 'REQ-1', 'confirmed', { actor: 'Test PM' })
   const version = store.readVersion(root, 'orders', 'v1')
@@ -324,7 +327,7 @@ test('freeze executes verified read-back and stores the current source fingerpri
     planHash: preview.body.hash,
     reason: '冻结已验证范围'
   })
-  t.assert.strictEqual(executed.status, 200)
+  t.assert.strictEqual(executed.status, 200, JSON.stringify(executed.body))
   const stored = milestones.readMilestone(root, 'S1')
   t.assert.strictEqual(stored.status, 'frozen')
   t.assert.strictEqual(stored.external.scopeHash, preview.body.sourceHash)
@@ -441,6 +444,6 @@ test('active scope plans require a reason and carry a local scope operation', as
     confirmUnfinished: true,
     scopeItems: []
   })
-  t.assert.strictEqual(executed.status, 200)
+  t.assert.strictEqual(executed.status, 200, JSON.stringify(executed.body))
   t.assert.deepStrictEqual(milestones.readMilestone(root, 'S5').items, scopeItems)
 })

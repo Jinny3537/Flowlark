@@ -531,16 +531,32 @@ async function verifyFinalState(root, plan, adapter) {
   if (strict && expectedSprint?.contentHash && hashProjection(remoteSprint, 'sprint', plan.managedFields) !== expectedSprint.contentHash) {
     throw err.conflict('MCP_SYNC_READBACK_MISMATCH', '平台 Sprint 回读结果与同步计划不一致')
   }
+  const lifecycle = (plan.operations || []).find((operation) =>
+    ['sprint.start', 'sprint.end', 'sprint.cancel'].includes(operation.kind))
+  if (lifecycle) {
+    const before = lifecycle.before || {}
+    const unchangedStatus = before.status == null
+      ? remoteSprint.status == null
+      : String(remoteSprint.status) === String(before.status)
+    const beforeRevision = Number(before.revision)
+    const remoteRevision = Number(remoteSprint.revision)
+    const revisionRegressed = Number.isFinite(beforeRevision) &&
+      (!Number.isFinite(remoteRevision) || remoteRevision < beforeRevision)
+    if (unchangedStatus || revisionRegressed) {
+      throw err.conflict('MCP_SYNC_READBACK_MISMATCH', '平台 Sprint 状态流转未通过回读验证')
+    }
+  }
   const expectedTasks = plan.verification?.tasks || []
   for (const expected of expectedTasks) {
     const taskBinding = requiredTaskBinding(root, expected.requirement, plan)
     const remoteTask = await adapter.getTask(taskBinding.taskId)
     if (!remoteTask || Number(remoteTask.id) !== Number(taskBinding.taskId) ||
-        Number(remoteTask.id) !== Number(expected.taskId) || Number(remoteTask.projectId) !== Number(plan.projectId) ||
+        (expected.taskId && Number(remoteTask.id) !== Number(expected.taskId)) || Number(remoteTask.projectId) !== Number(plan.projectId) ||
         (strict && hashProjection(remoteTask, 'task', plan.managedFields) !== expected.contentHash)) {
       throw err.conflict('MCP_SYNC_READBACK_MISMATCH', `需求 ${expected.requirement} 的平台任务回读结果不一致`)
     }
-    if (expected.sprintId && Number(remoteTask.sprintId) !== Number(binding.sprintId)) {
+    const expectedTaskSprint = expected.sprintId === '$sprint' ? binding.sprintId : expected.sprintId
+    if (expectedTaskSprint && Number(remoteTask.sprintId) !== Number(expectedTaskSprint)) {
       throw err.conflict('MCP_SYNC_SCOPE_MISMATCH', `需求 ${expected.requirement} 的平台任务不在目标 Sprint 中`)
     }
   }

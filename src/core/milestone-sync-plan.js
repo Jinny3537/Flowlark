@@ -17,6 +17,7 @@ export function buildMilestoneSyncPlan({
   managedTaskBindings = [],
   mapping = {},
   managedFields,
+  versionSources = [],
   action = null,
   scopeItems = null,
   scopeChangeReason = '',
@@ -120,14 +121,12 @@ export function buildMilestoneSyncPlan({
     })
     validateTaskProjection(taskAfter, requirement, blockers, { create: !binding, managed })
     const taskHash = hashProjection(taskAfter, 'task', normalizedManagedFields)
-    if (binding?.taskId) {
-      verificationTasks.push({
-        requirement: code,
-        taskId: Number(binding.taskId),
-        contentHash: taskHash,
-        sprintId: targetSprintId
-      })
-    }
+    verificationTasks.push({
+      requirement: code,
+      taskId: binding?.taskId ? Number(binding.taskId) : null,
+      contentHash: taskHash,
+      sprintId: targetSprintId || '$sprint'
+    })
 
     if (!binding) {
       addOperation(operations, summary, {
@@ -162,7 +161,9 @@ export function buildMilestoneSyncPlan({
       blockers,
       summary
     })
-    if (managed.has('sprint') && targetSprintId && Number(remoteTask.sprintId) !== targetSprintId) {
+    const plannedSprintId = targetSprintId || (!sprintBinding?.sprintId ? '$sprint' : null)
+    if (managed.has('sprint') && plannedSprintId &&
+        (plannedSprintId === '$sprint' || Number(remoteTask.sprintId) !== plannedSprintId)) {
       addOperation(operations, summary, {
         key: `task:${binding.taskId}:move`,
         kind: 'task.move',
@@ -171,8 +172,8 @@ export function buildMilestoneSyncPlan({
         taskId: Number(binding.taskId),
         taskRevision: remoteTask.revision,
         before: { sprintId: remoteTask.sprintId ?? null },
-        after: { sprintId: targetSprintId },
-        dependsOn: []
+        after: { sprintId: plannedSprintId },
+        dependsOn: plannedSprintId === '$sprint' ? [`sprint:${milestone.name}:create`] : []
       })
     }
   }
@@ -206,7 +207,7 @@ export function buildMilestoneSyncPlan({
     })
   }
 
-  const source = buildMilestoneSource({ milestone, requirements, mapping, managedFields: normalizedManagedFields })
+  const source = buildMilestoneSource({ milestone, requirements, mapping, managedFields: normalizedManagedFields, versionSources })
   const sourceHash = hashSource(source)
   const verification = {
     sprint: { sprintId: targetSprintId, contentHash: sprintHash },
@@ -289,8 +290,8 @@ export function buildMilestoneSyncPlan({
   }
 }
 
-export function buildMilestoneSourceHash({ milestone = {}, requirements = [], mapping = {}, managedFields } = {}) {
-  return hashSource(buildMilestoneSource({ milestone, requirements, mapping, managedFields }))
+export function buildMilestoneSourceHash({ milestone = {}, requirements = [], mapping = {}, managedFields, versionSources = [] } = {}) {
+  return hashSource(buildMilestoneSource({ milestone, requirements, mapping, managedFields, versionSources }))
 }
 
 export function linkedMilestoneSourceHash(plan, steps = []) {
@@ -313,13 +314,15 @@ export function linkedMilestoneSourceHash(plan, steps = []) {
   return hashSource(source)
 }
 
-function buildMilestoneSource({ milestone = {}, requirements = [], mapping = {}, managedFields } = {}) {
+function buildMilestoneSource({ milestone = {}, requirements = [], mapping = {}, managedFields, versionSources = [] } = {}) {
   const fields = normalizeManagedFields(managedFields ?? mapping.managedFields)
   const byCode = new Map(requirements.map((item) => [String(item.code || ''), item]))
+  const versions = new Map(versionSources.map((item) => [`${item.project}\u0000${item.version}`, item]))
   const scope = (milestone.items || []).map((item) => ({
     requirement: String(item.requirement || ''),
     project: String(item.project || ''),
-    version: String(item.version || '')
+    version: String(item.version || ''),
+    ...versionSource(versions.get(`${item.project}\u0000${item.version}`) || item)
   })).sort((left, right) => stableStringify(left).localeCompare(stableStringify(right)))
   const codes = [...new Set(scope.map((item) => item.requirement).filter(Boolean))].sort()
   const projectId = positiveId(mapping.projectId)
@@ -332,6 +335,11 @@ function buildMilestoneSource({ milestone = {}, requirements = [], mapping = {},
       startAt: milestone.startAt || null,
       endAt: milestone.endAt || null
     },
+    sprintProjection: sprintProjection(milestone, {
+      projectId,
+      ownerId: assigneeIdFor(milestone.owner, mapping) || positiveId(mapping.ownerId),
+      timezoneOffset: mapping.timezoneOffset
+    }),
     scope,
     requirements: codes.map((code) => {
       const requirement = byCode.get(code) || { code }
@@ -365,6 +373,15 @@ function buildMilestoneSource({ milestone = {}, requirements = [], mapping = {},
     }
   }
   return source
+}
+
+function versionSource(value = {}) {
+  return {
+    versionStatus: value.versionStatus || value.status || null,
+    reviewStatus: value.reviewStatus || null,
+    currentBaseline: value.currentBaseline || value.baseline || null,
+    specHash: `sha256:${digest(String(value.spec || ''))}`
+  }
 }
 
 function hashSource(source) {

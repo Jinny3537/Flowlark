@@ -241,11 +241,25 @@ describe('CLI 全流程', () => {
     fs.writeFileSync(editor, `#!/bin/sh\nprintf '%s' "$1" > '${capture}'\nprintf '不应保存' > "$1"\nexit 7\n`, { mode: 0o700 })
 
     const result = phEnv(dir, { EDITOR: editor, VISUAL: '' }, 'req', 'spec', 'REQ-CLI-FAIL', '--edit')
-    t.assert.strictEqual(result.code, 0, result.err)
+    t.assert.strictEqual(result.code, 1, result.err)
     t.assert.match(result.out, /编辑器异常退出，未保存/)
     t.assert.deepStrictEqual(JSON.parse(ph(dir, 'req', 'spec', 'REQ-CLI-FAIL', '--json').out), { spec: '' })
     const temporary = fs.readFileSync(capture, 'utf8')
     t.assert.strictEqual(fs.existsSync(path.dirname(temporary)), false)
+  })
+
+  test('req spec 检测编辑期间的并发修改并拒绝覆盖', (t) => {
+    const dir = workspace()
+    ph(dir, 'init')
+    ph(dir, 'req', 'new', 'REQ-CLI-RACE', '--title', '并发保护')
+    const specFile = path.join(dir, 'requirements', 'REQ-CLI-RACE', 'spec.md')
+    const editor = path.join(dir, 'race-editor.sh')
+    fs.writeFileSync(editor, `#!/bin/sh\nprintf '# 另一位用户的修改\\n' > '${specFile}'\nprintf '# 当前编辑器的修改\\n' > "$1"\n`, { mode: 0o700 })
+
+    const result = phEnv(dir, { EDITOR: editor, VISUAL: '' }, 'req', 'spec', 'REQ-CLI-RACE', '--edit')
+    t.assert.strictEqual(result.code, 1)
+    t.assert.match(result.err, /编辑期间需求规格书已被其他操作修改/)
+    t.assert.strictEqual(fs.readFileSync(specFile, 'utf8'), '# 另一位用户的修改\n')
   })
 
   test('req confirm 通过 Hub 前置检查确认需求', (t) => {

@@ -268,6 +268,22 @@ test('pauses an uncertain task create and never creates it again without an expl
   assert.equal(remote.calls.filter(([name]) => name === 'createTask').length, 1)
 })
 
+test('a created task must still exist during final read-back', async () => {
+  const { root, plan } = fixture()
+  const remote = adapter()
+  const createTask = remote.createTask.bind(remote)
+  remote.createTask = async (body) => {
+    const created = await createTask(body)
+    remote.state.tasks.clear()
+    remote.state.task = null
+    return created
+  }
+  await assert.rejects(
+    executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote }),
+    (error) => error.code === 'MCP_SYNC_READBACK_MISMATCH'
+  )
+})
+
 test('links an uncertain sprint result and resumes without replaying create', async () => {
   const { root, plan } = fixture()
   const remote = adapter({ failSprintOnce: true, sprintFailureCode: 'MCP_TIMEOUT' })
@@ -398,6 +414,15 @@ test('recovers a remote-complete task create by persisting its binding without c
   journal.operations[1].remoteResult = { id: 88, revision: 2, status: 0, url: 'https://tasks.test/tasks/88' }
   writeMilestoneSyncJournal(root, 'S1', journal)
   const remote = adapter()
+  remote.state.task = {
+    ...journal.operations[1].operation.after,
+    id: 88,
+    projectId: plan.projectId,
+    revision: 2,
+    sprintId: 10,
+    status: 0
+  }
+  remote.state.tasks.set(88, remote.state.task)
 
   const result = await resumeMilestoneSync({ root, milestoneName: 'S1', adapter: remote })
 
@@ -942,6 +967,28 @@ test('verified Sprint start advances confirmed requirements only after final rea
     reason: '启动 Sprint', confirmUnfinished: true, adapter: failure.remote
   }), /start failed/)
   assert.equal(requirements.readRequirement(failure.root, 'REQ-1').status, 'confirmed')
+
+  const noOp = await verifiedFixture()
+  milestones.updateMilestone(noOp.root, 'S1', { status: 'frozen' }, { system: true })
+  const noOpPlan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(noOp.root, 'S1'),
+    requirements: [noOp.requirement],
+    remoteSprint: await noOp.remote.getSprint(10),
+    remoteTasks: [await noOp.remote.getTask(20)],
+    mapping: noOp.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'start'
+  })
+  noOp.remote.startSprint = async (body) => {
+    noOp.remote.calls.push(['startSprint', body])
+    return noOp.remote.state.sprint
+  }
+  await assert.rejects(executeMilestoneSync({
+    root: noOp.root, milestoneName: 'S1', plan: noOpPlan, confirmed: true,
+    reason: '启动 Sprint', confirmUnfinished: true, adapter: noOp.remote
+  }), (error) => error.code === 'MCP_SYNC_READBACK_MISMATCH')
+  assert.equal(milestones.readMilestone(noOp.root, 'S1').status, 'frozen')
+  assert.equal(requirements.readRequirement(noOp.root, 'REQ-1').status, 'confirmed')
 })
 
 test('repeating a completed start plan is idempotent after lifecycle advancement', async () => {

@@ -103,7 +103,14 @@ function fakeAdapter() {
       state.tasks.set(Number(task.id), task)
       return task
     },
-    async moveTasks(body) { state.calls.push(['moveTasks', body]); return { ok: true } },
+    async moveTasks(body) {
+      state.calls.push(['moveTasks', body])
+      for (const item of body.tasks || []) {
+        const task = state.tasks.get(Number(item.taskId))
+        if (task) state.tasks.set(Number(item.taskId), { ...task, sprintId: body.toSprintId, revision: task.revision + 1 })
+      }
+      return { ok: true }
+    },
     async startSprint(body) { state.calls.push(['startSprint', body]); return { id: body.sprintId, revision: body.revision + 1, status: 'active' } },
     async endSprint(body) { state.calls.push(['endSprint', body]); return { id: body.sprintId, revision: body.revision + 1, status: 'ended' } },
     async cancelSprint(body) { state.calls.push(['cancelSprint', body]); return { id: body.sprintId, revision: body.revision + 1, status: 'canceled' } }
@@ -269,7 +276,9 @@ test('execute accepts only pending milestone records and ignores browser-selecte
   t.assert.strictEqual(result.status, 200)
   t.assert.strictEqual(result.body.status, 'completed')
   t.assert.strictEqual(result.body.planHash, plan.hash)
-  t.assert.deepStrictEqual(remote.state.calls.map(([name]) => name), ['getTask', 'saveSprint', 'getSprint', 'getTask'])
+  t.assert.deepStrictEqual(remote.state.calls.map(([name]) => name), [
+    'getTask', 'saveSprint', 'getTask', 'moveTasks', 'getTask', 'getSprint', 'getTask'
+  ])
   t.assert.doesNotMatch(JSON.stringify(remote.state.calls), /sprint_delete|admin_shell|browser-selected|delete everything/)
 
   const repeated = await call('POST', `/api/sync/${record.id}/execute`, { planHash: record.planHash })

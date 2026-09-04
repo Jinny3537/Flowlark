@@ -1,5 +1,6 @@
 import { after, describe, test } from 'node:test'
 import fs from 'node:fs'
+import path from 'node:path'
 import {
   REQUIREMENT_STATUSES,
   confirmationPreflight,
@@ -175,5 +176,33 @@ describe('需求生命周期持久化', () => {
     reqx.writeRequirementSpec(root, 'REQ-CORE-SPEC', '正文')
     t.assert.strictEqual(reqx.readRequirementSpec(root, 'REQ-CORE-SPEC'), '正文\n')
     throwsCode(t, 'NOT_FOUND', () => reqx.writeRequirementSpec(root, 'REQ-NOT-FOUND', '正文'))
+  })
+
+  test('需求规格书拒绝文件和父目录符号链接且不触碰外部目标', (t) => {
+    const { root, hub } = fixture()
+    hub.createRequirement({ code: 'REQ-SPEC-LINK', title: '规格书链接保护' })
+    const specFile = store.paths.requirementSpec(root, 'REQ-SPEC-LINK')
+    const outside = `${root}-outside-spec.md`
+    fs.writeFileSync(outside, 'external-safe\n')
+    t.after(() => fs.rmSync(outside, { force: true }))
+    fs.symlinkSync(outside, specFile)
+
+    throwsCode(t, 'REQUIREMENT_SPEC_SYMLINK', () => reqx.readRequirementSpec(root, 'REQ-SPEC-LINK'))
+    throwsCode(t, 'REQUIREMENT_SPEC_SYMLINK', () => reqx.writeRequirementSpec(root, 'REQ-SPEC-LINK', 'overwrite'))
+    t.assert.strictEqual(fs.readFileSync(outside, 'utf8'), 'external-safe\n')
+
+    fs.rmSync(specFile)
+    const requirementDir = store.paths.requirement(root, 'REQ-SPEC-LINK')
+    const outsideDir = `${root}-outside-requirement`
+    fs.mkdirSync(outsideDir)
+    fs.writeFileSync(path.join(outsideDir, 'requirement.json'), JSON.stringify({ code: 'REQ-SPEC-LINK', title: 'outside' }))
+    fs.writeFileSync(path.join(outsideDir, 'spec.md'), 'outside-parent\n')
+    t.after(() => fs.rmSync(outsideDir, { recursive: true, force: true }))
+    fs.rmSync(requirementDir, { recursive: true })
+    fs.symlinkSync(outsideDir, requirementDir)
+
+    throwsCode(t, 'REQUIREMENT_SPEC_SYMLINK', () => reqx.readRequirementSpec(root, 'REQ-SPEC-LINK'))
+    throwsCode(t, 'REQUIREMENT_SPEC_SYMLINK', () => reqx.writeRequirementSpec(root, 'REQ-SPEC-LINK', 'overwrite-parent'))
+    t.assert.strictEqual(fs.readFileSync(path.join(outsideDir, 'spec.md'), 'utf8'), 'outside-parent\n')
   })
 })

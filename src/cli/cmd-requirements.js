@@ -41,13 +41,24 @@ export async function requirement(pos, values) {
       return console.log(current)
     }
 
+    const permission = h.writePermission()
+    if (!permission.canWrite) {
+      throw err.forbidden('GIT_READONLY', '当前仓库是 Git 只读模式，不能编辑需求规格书', permission.reason)
+    }
+
     const temporaryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-req-spec-'))
     const temporaryFile = path.join(temporaryDir, 'spec.md')
     try {
       fs.writeFileSync(temporaryFile, current || `# ${code} 验收与规格说明\n\n`, 'utf8')
       const editor = process.env.VISUAL || process.env.EDITOR || 'vi'
       const result = spawnSync(editor, [temporaryFile], { stdio: 'inherit' })
-      if (result.status !== 0) return warn('编辑器异常退出，未保存')
+      if (result.status !== 0) {
+        process.exitCode = 1
+        return warn('编辑器异常退出，未保存')
+      }
+      if (h.readRequirementSpec(code) !== current) {
+        throw err.conflict('REQUIREMENT_SPEC_CHANGED', '编辑期间需求规格书已被其他操作修改，请重新打开后合并')
+      }
       h.writeRequirementSpec(code, fs.readFileSync(temporaryFile, 'utf8'))
       return ok(`需求 ${code} 的规格书已保存`)
     } finally {

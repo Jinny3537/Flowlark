@@ -118,24 +118,61 @@ export function updateRequirement(root, code, patch, { trusted = false, now = nu
 
 export function readRequirementSpec(root, code) {
   const safe = assertRequirementCode(code)
-  if (!requirementExists(root, safe)) throw err.notFound(`需求「${safe}」`)
-  const file = store.paths.requirementSpec(root, safe)
+  const file = safeRequirementSpecFile(root, safe)
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
 }
 
 export function writeRequirementSpec(root, code, markdown) {
   const safe = assertRequirementCode(code)
-  if (!requirementExists(root, safe)) throw err.notFound(`需求「${safe}」`)
-  const file = store.paths.requirementSpec(root, safe)
+  const file = safeRequirementSpecFile(root, safe)
   const content = String(markdown || '')
   if (!content.trim()) {
     if (fs.existsSync(file)) fs.rmSync(file)
     return ''
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true })
   const normalized = content.endsWith('\n') ? content : `${content}\n`
-  fs.writeFileSync(file, normalized, 'utf8')
+  const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, normalized, 'utf8')
+    fs.renameSync(temporary, file)
+  } finally {
+    if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true })
+  }
   return normalized
+}
+
+function safeRequirementSpecFile(root, code) {
+  const requirementsDir = store.paths.requirements(root)
+  const requirementDir = store.paths.requirement(root, code)
+  for (const [target, label] of [[requirementsDir, 'requirements/'], [requirementDir, `requirements/${code}/`]]) {
+    try {
+      const stat = fs.lstatSync(target)
+      if (stat.isSymbolicLink()) throw specSymlinkError(label)
+      if (!stat.isDirectory()) throw err.conflict('REQUIREMENT_SPEC_PATH_INVALID', `${label} 必须是普通目录`)
+    } catch (error) {
+      if (error?.code === 'ENOENT') throw err.notFound(`需求「${code}」`)
+      throw error
+    }
+  }
+  const rootReal = fs.realpathSync(requirementsDir)
+  const parentReal = fs.realpathSync(requirementDir)
+  if (parentReal !== rootReal && !parentReal.startsWith(`${rootReal}${path.sep}`)) {
+    throw specSymlinkError(`requirements/${code}/`)
+  }
+  if (!requirementExists(root, code)) throw err.notFound(`需求「${code}」`)
+  const file = store.paths.requirementSpec(root, code)
+  try {
+    const stat = fs.lstatSync(file)
+    if (stat.isSymbolicLink()) throw specSymlinkError(`requirements/${code}/spec.md`)
+    if (!stat.isFile()) throw err.conflict('REQUIREMENT_SPEC_PATH_INVALID', `requirements/${code}/spec.md 必须是普通文件`)
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  return file
+}
+
+function specSymlinkError(relative) {
+  return err.conflict('REQUIREMENT_SPEC_SYMLINK', `拒绝通过符号链接读取或写入需求规格书：${relative}`)
 }
 
 export function updateRequirementLifecycle(root, code, target, {

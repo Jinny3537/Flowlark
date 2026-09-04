@@ -358,7 +358,14 @@ test('source hash is deterministic and covers only local milestone authority', (
     ...structuredClone(baseMilestone),
     external: { provider: 'assess-task', server: mapping.server, projectId: 123, sprintId: 10 }
   }
-  const input = { milestone, requirements: [localRequirement], mapping, managedFields: ['title', 'sprint'] }
+  const versionSources = [{
+    project: 'orders', version: 'v1', versionStatus: 'READY', reviewStatus: 'confirmed',
+    currentBaseline: 'v1', spec: '# 版本规格'
+  }, {
+    project: 'marketing', version: 'v2', versionStatus: 'READY', reviewStatus: 'confirmed',
+    currentBaseline: 'v2', spec: '# 营销规格'
+  }]
+  const input = { milestone, requirements: [localRequirement], mapping, managedFields: ['title', 'sprint'], versionSources }
   const first = buildMilestoneSourceHash(input)
   assert.equal(first, buildMilestoneSourceHash({
     ...input,
@@ -369,7 +376,20 @@ test('source hash is deterministic and covers only local milestone authority', (
   assert.notEqual(first, buildMilestoneSourceHash({ ...input, requirements: [{ ...localRequirement, status: 'developing' }] }))
   assert.notEqual(first, buildMilestoneSourceHash({ ...input, requirements: [{ ...localRequirement, spec: '# 新规格' }] }))
   assert.notEqual(first, buildMilestoneSourceHash({ ...input, mapping: { ...mapping, projectId: 456 } }))
+  assert.notEqual(first, buildMilestoneSourceHash({ ...input, mapping: { ...mapping, ownerId: 99 } }))
   assert.notEqual(first, buildMilestoneSourceHash({ ...input, managedFields: ['title'] }))
+  assert.notEqual(first, buildMilestoneSourceHash({
+    ...input,
+    versionSources: [{ ...versionSources[0], reviewStatus: 'pending' }, versionSources[1]]
+  }))
+  assert.notEqual(first, buildMilestoneSourceHash({
+    ...input,
+    versionSources: [{ ...versionSources[0], spec: '# 已修改版本规格' }, versionSources[1]]
+  }))
+  assert.notEqual(first, buildMilestoneSourceHash({
+    ...input,
+    versionSources: [{ ...versionSources[0], currentBaseline: 'v0' }, versionSources[1]]
+  }))
   assert.notEqual(first, buildMilestoneSourceHash({
     ...input,
     milestone: { ...milestone, external: { ...milestone.external, sprintId: 11 } }

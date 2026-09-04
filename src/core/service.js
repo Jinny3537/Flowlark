@@ -466,11 +466,12 @@ export class Hub {
   // ==================== 需求 ====================
 
   listRequirements() {
-    return reqx.listRequirements(this.root)
+    const records = readSyncRecords(this.root)
+    return reqx.listRequirements(this.root).map((item) => this.#requirementSyncView(item, records))
   }
 
   getRequirement(code) {
-    return reqx.requirementDetail(this.root, code)
+    return this.#requirementSyncView(reqx.requirementDetail(this.root, code), readSyncRecords(this.root))
   }
 
   createRequirement(input) {
@@ -694,7 +695,8 @@ export class Hub {
         milestone: item,
         requirements: requirementItems,
         mapping: { ...options, server: syncContext.server, projectId: Number(syncContext.projectId) },
-        managedFields: syncContext.managedFields
+        managedFields: syncContext.managedFields,
+        versionSources: this.#milestoneVersionSources(item)
       })
     }
     const journal = this.milestoneSyncJournal(name)
@@ -702,7 +704,9 @@ export class Hub {
       integrationProblems,
       syncContext,
       currentSourceHash,
-      verifiedSourceHash: journal.status === 'completed' ? journal.plan?.sourceHash || '' : ''
+      verifiedSourceHash: journal.status === 'completed'
+        ? linkedMilestoneSourceHash(journal.plan, journal.operations) || journal.plan?.sourceHash || ''
+        : ''
     })
   }
 
@@ -2670,6 +2674,7 @@ export class Hub {
       managedTaskBindings,
       mapping,
       managedFields: config.managedFields,
+      versionSources: this.#milestoneVersionSources(milestone),
       action: input.action || null,
       scopeItems,
       scopeChangeReason: scopeItems ? String(input.reason).trim() : '',
@@ -2698,7 +2703,43 @@ export class Hub {
       milestone,
       requirements: requirementItems,
       mapping: { ...options, server: context.server, projectId: Number(context.projectId) },
-      managedFields: context.managedFields
+      managedFields: context.managedFields,
+      versionSources: this.#milestoneVersionSources(milestone)
+    })
+  }
+
+  #requirementSyncView(item, records) {
+    return {
+      ...item,
+      externalTasks: (item.externalTasks || []).map((binding) => {
+        const relevant = records.filter((record) =>
+          record.plan?.server === binding.server && Number(record.plan?.projectId) === Number(binding.projectId) &&
+          (record.entityType === 'requirement' && record.entityKey === item.code ||
+            (record.plan?.source?.requirements || []).some((entry) => entry.code === item.code) ||
+            (record.plan?.operations || []).some((operation) => operation.requirement === item.code)))
+        const failed = relevant.some((record) => record.status === 'failed')
+        const conflict = relevant.some((record) => (record.plan?.operations || []).some((operation) =>
+          operation.kind === 'conflict' && (!operation.requirement || operation.requirement === item.code)))
+        return {
+          ...binding,
+          ...(failed ? { syncStatus: 'failed' } : {}),
+          ...(conflict ? { driftState: 'conflict' } : {})
+        }
+      })
+    }
+  }
+
+  #milestoneVersionSources(milestone) {
+    return (milestone.items || []).map((entry) => {
+      const version = store.readVersion(this.root, entry.project, entry.version)
+      return {
+        project: entry.project,
+        version: entry.version,
+        versionStatus: version.status,
+        reviewStatus: version.reviewStatus,
+        currentBaseline: store.readBaseline(this.root, entry.project),
+        spec: store.readSpec(this.root, entry.project, entry.version)
+      }
     })
   }
 

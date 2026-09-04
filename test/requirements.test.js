@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import { cleanup, html, newHub, throwsCode } from './helpers.js'
 import * as reqx from '../src/core/requirements.js'
 import * as store from '../src/core/store.js'
+import { writeKnownSyncRecord } from '../src/core/sync-queue.js'
 
 const dirs = []
 after(() => dirs.forEach(cleanup))
@@ -16,6 +17,30 @@ function fixture() {
 }
 
 describe('需求实体与反向索引', () => {
+  test('Hub 只在响应层派生外部任务同步失败与冲突状态', (t) => {
+    const { root, hub } = fixture()
+    hub.createRequirement({ code: 'REQ-SYNC-VIEW', title: '同步视图' })
+    reqx.upsertExternalTask(root, 'REQ-SYNC-VIEW', {
+      provider: 'assess-task', server: 'task-server', projectId: 123, taskId: 77
+    })
+    writeKnownSyncRecord(root, {
+      entityType: 'milestone', entityKey: 'S-VIEW', status: 'failed', planHash: 'sha256:view',
+      plan: {
+        hash: 'sha256:view', server: 'task-server', projectId: 123,
+        source: { requirements: [{ code: 'REQ-SYNC-VIEW' }] },
+        operations: [{ key: 'task:77:conflict', kind: 'conflict', requirement: 'REQ-SYNC-VIEW' }]
+      },
+      operations: []
+    })
+
+    const binding = hub.getRequirement('REQ-SYNC-VIEW').externalTasks[0]
+    t.assert.strictEqual(binding.syncStatus, 'failed')
+    t.assert.strictEqual(binding.driftState, 'conflict')
+    const stored = reqx.readRequirement(root, 'REQ-SYNC-VIEW').externalTasks[0]
+    t.assert.strictEqual(Object.hasOwn(stored, 'syncStatus'), false)
+    t.assert.strictEqual(Object.hasOwn(stored, 'driftState'), false)
+  })
+
   test('外部执行任务绑定独立存储并按平台项目唯一更新', (t) => {
     const { root, hub } = fixture()
     hub.createRequirement({ code: 'REQ-TASK', title: '任务绑定' })
