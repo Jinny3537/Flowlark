@@ -40,6 +40,8 @@ async function executeMilestoneSyncUnlocked({
   confirmUnfinished = false,
   adapter,
   now = new Date(),
+  actor = 'milestone-sync',
+  assertCurrentSource = () => {},
   resume = false
 } = {}) {
   if (!confirmed) throw err.bad('MCP_SYNC_CONFIRMATION_REQUIRED', '请先确认同步计划')
@@ -63,7 +65,21 @@ async function executeMilestoneSyncUnlocked({
   }
   if (!journal || journal.planHash !== plan.hash) journal = newMilestoneSyncJournal(plan, reason)
   if (journal.status === 'completed') {
-    finalizeLocalStatus(root, milestoneName, plan)
+    const item = milestones.readMilestone(root, milestoneName)
+    if ((plan.operations || []).some((operation) => operation.kind === 'milestone.freeze')) {
+      if (item.status !== 'frozen' || item.external?.scopeHash !== plan.sourceHash) {
+        await verifyFinalState(root, plan, adapter)
+        assertCurrentSource()
+        milestones.markMilestoneFrozen(root, milestoneName, { scopeHash: plan.sourceHash, verifiedAt: new Date(now).toISOString() })
+      }
+    } else {
+      const target = plannedLocalStatus(plan)
+      if (target && item.status !== target) {
+        await verifyFinalState(root, plan, adapter)
+        assertCurrentSource()
+        finalizeLocalStatus(root, milestoneName, plan, { actor, at: new Date(now).toISOString() })
+      }
+    }
     return journal
   }
   const unresolvedCreate = journal.operations.find((step) =>
@@ -173,7 +189,8 @@ async function executeMilestoneSyncUnlocked({
 
     try {
       const result = await runOperation({
-        root, milestoneName, plan, operation: step.operation, reason, confirmUnfinished, adapter
+        root, milestoneName, plan, operation: step.operation, reason, confirmUnfinished, adapter,
+        assertCurrentSource
       })
       step.status = 'remote-complete'
       step.remoteResult = safeRemoteResult(result)
@@ -230,8 +247,21 @@ async function executeMilestoneSyncUnlocked({
     }
   }
 
-  await verifyFinalState(root, plan, adapter)
-  finalizeLocalStatus(root, milestoneName, plan)
+  try {
+    if (!(plan.operations || []).some((operation) => operation.kind === 'milestone.freeze')) {
+      await verifyFinalState(root, plan, adapter)
+      assertCurrentSource()
+      finalizeLocalStatus(root, milestoneName, plan, { actor, at: new Date(now).toISOString() })
+    }
+  } catch (error) {
+    journal.status = 'failed'
+    journal.error = { code: error?.code || 'MCP_SYNC_VERIFICATION_FAILED', message: String(error?.message || error) }
+    journal.updatedAt = new Date().toISOString()
+    persistAuditTransition(root, milestoneName, journal, {
+      action: 'sync.failed', status: 'failed', error: journal.error
+    })
+    throw error
+  }
   journal.status = 'completed'
   journal.error = null
   journal.completedAt = new Date().toISOString()
@@ -344,7 +374,7 @@ export async function linkMilestoneCreateResult({
   })
 }
 
-async function runOperation({ root, milestoneName, plan, operation, reason, confirmUnfinished, adapter }) {
+async function runOperation({ root, milestoneName, plan, operation, reason, confirmUnfinished, adapter, assertCurrentSource }) {
   if (operation.kind === 'sprint.create') return adapter.saveSprint(operation.after)
   if (operation.kind === 'sprint.update') {
     const binding = requiredSprintBinding(root, milestoneName)
@@ -395,6 +425,14 @@ async function runOperation({ root, milestoneName, plan, operation, reason, conf
     if (operation.kind === 'sprint.end') await adapter.endSprint(body)
     if (operation.kind === 'sprint.cancel') await adapter.cancelSprint(body)
     return adapter.getSprint(binding.sprintId)
+  }
+  if (operation.kind === 'milestone.freeze') {
+    await verifyFinalState(root, plan, adapter)
+    assertCurrentSource()
+    return milestones.markMilestoneFrozen(root, milestoneName, {
+      scopeHash: plan.sourceHash,
+      verifiedAt: new Date().toISOString()
+    })
   }
   if (operation.kind === 'local.scope-change') return { local: true, entity: 'scope' }
   if (operation.kind === 'conflict') throw err.conflict('MCP_SYNC_CONFLICT', '同步计划包含未解决冲突')
@@ -482,26 +520,60 @@ async function verifyCompletedStep(root, plan, step, adapter) {
 }
 
 async function verifyFinalState(root, plan, adapter) {
-  const sprint = requiredSprintBinding(root, plan.milestone)
-  await adapter.getSprint(sprint.sprintId)
-  const codes = [...new Set(plan.operations.map((operation) => operation.requirement).filter(Boolean))]
-  for (const code of codes) {
-    const binding = requiredTaskBinding(root, code, plan)
-    await adapter.getTask(binding.taskId)
+  const binding = requiredSprintBinding(root, plan.milestone)
+  const remoteSprint = await adapter.getSprint(binding.sprintId)
+  if (!remoteSprint) throw err.conflict('MCP_SYNC_READBACK_MISSING', '平台 Sprint 回读结果为空')
+  if (Number(remoteSprint.id) !== Number(binding.sprintId) || Number(remoteSprint.projectId) !== Number(plan.projectId)) {
+    throw err.conflict('MCP_SYNC_READBACK_MISMATCH', '平台 Sprint 回读对象不属于计划目标')
+  }
+  const expectedSprint = plan.verification?.sprint
+  const strict = (plan.operations || []).some((operation) => operation.kind === 'milestone.freeze')
+  if (strict && expectedSprint?.contentHash && hashProjection(remoteSprint, 'sprint', plan.managedFields) !== expectedSprint.contentHash) {
+    throw err.conflict('MCP_SYNC_READBACK_MISMATCH', '平台 Sprint 回读结果与同步计划不一致')
+  }
+  const expectedTasks = plan.verification?.tasks || []
+  for (const expected of expectedTasks) {
+    const taskBinding = requiredTaskBinding(root, expected.requirement, plan)
+    const remoteTask = await adapter.getTask(taskBinding.taskId)
+    if (!remoteTask || Number(remoteTask.id) !== Number(taskBinding.taskId) ||
+        Number(remoteTask.id) !== Number(expected.taskId) || Number(remoteTask.projectId) !== Number(plan.projectId) ||
+        (strict && hashProjection(remoteTask, 'task', plan.managedFields) !== expected.contentHash)) {
+      throw err.conflict('MCP_SYNC_READBACK_MISMATCH', `需求 ${expected.requirement} 的平台任务回读结果不一致`)
+    }
+    if (expected.sprintId && Number(remoteTask.sprintId) !== Number(binding.sprintId)) {
+      throw err.conflict('MCP_SYNC_SCOPE_MISMATCH', `需求 ${expected.requirement} 的平台任务不在目标 Sprint 中`)
+    }
   }
 }
 
-function finalizeLocalStatus(root, milestoneName, plan) {
+function finalizeLocalStatus(root, milestoneName, plan, { actor = 'milestone-sync', at = new Date().toISOString() } = {}) {
   if (Array.isArray(plan.scopeItems)) {
     milestones.updateMilestone(root, milestoneName, { items: plan.scopeItems }, { system: true })
   }
-  const target = { start: 'active', end: 'delivered', cancel: 'canceled' }[
-    plan.operations.find((operation) => operation.kind.startsWith('sprint.') && ['sprint.start', 'sprint.end', 'sprint.cancel'].includes(operation.kind))?.kind.split('.')[1]
-  ]
+  const target = plannedLocalStatus(plan)
   if (!target) return
   const item = milestones.readMilestone(root, milestoneName)
   const transition = transitionMilestoneStatus(item.status, target, { remoteExists: true })
   if (transition.changed) milestones.updateMilestone(root, milestoneName, { status: target }, { system: true })
+  if (target === 'active') {
+    for (const code of new Set(item.items.map((entry) => entry.requirement))) {
+      const requirement = requirements.readRequirement(root, code)
+      if (requirement.status !== 'confirmed') continue
+      requirements.updateRequirementLifecycle(root, code, 'developing', {
+        system: true,
+        actor,
+        now: at,
+        reason: `Sprint ${milestoneName} 已验证启动`
+      })
+    }
+  }
+}
+
+function plannedLocalStatus(plan) {
+  return { start: 'active', end: 'delivered', cancel: 'canceled' }[
+    (plan.operations || []).find((operation) =>
+      ['sprint.start', 'sprint.end', 'sprint.cancel'].includes(operation.kind))?.kind.split('.')[1]
+  ] || null
 }
 
 function requiredSprintBinding(root, milestoneName) {

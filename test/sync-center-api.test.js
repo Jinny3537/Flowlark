@@ -15,6 +15,39 @@ let server
 let base
 let remote
 let hub
+let sharedScope
+
+function configureSyncScope(targetHub, {
+  slug = 'orders', code = 'REQ-SYNC-SCOPE', projectId = '123'
+} = {}) {
+  if (!targetHub.listProjects().some((project) => project.slug === slug)) {
+    targetHub.createProject({ name: slug, code: slug })
+  }
+  targetHub.updateProject(slug, {
+    sync: {
+      mode: 'manual', server: 'project-task', projectId,
+      managedFields: ['title', 'description', 'acceptance', 'priority', 'assignee', 'sprint']
+    }
+  })
+  targetHub.saveMcpServer({
+    id: 'project-task', name: 'project-task', type: 'stdio',
+    adapter: 'assess-task', runtimeProfile: 'project-task-runtime'
+  })
+  targetHub.saveMcpCapability('milestones', {
+    enabled: true,
+    server: '',
+    options: { ownerId: 7, taskType: 2, timezoneOffset: '+08:00' }
+  })
+  if (!targetHub.listRequirements().some((requirement) => requirement.code === code)) {
+    targetHub.createRequirement({ code, title: code, description: 'scope' })
+  }
+  if (!targetHub.listVersions(slug).some((version) => version.versionNo === 'v1')) {
+    targetHub.addVersion(slug, { versionNo: 'v1', title: 'v1', html: html(), requirements: [code] })
+  } else {
+    targetHub.setRequirements(slug, 'v1', [code])
+  }
+  return [{ requirement: code, project: slug, version: 'v1' }]
+}
 
 function fakeAdapter() {
   const state = {
@@ -81,7 +114,8 @@ async function isolatedPendingUpdate(t, name) {
   const ctx = newHub()
   const isolatedRoot = ctx.root
   t.after(() => cleanup(isolatedRoot))
-  ctx.hub.createMilestone({ name, title: name, startAt: '2026-09-01', endAt: '2026-09-10' })
+  const items = configureSyncScope(ctx.hub, { slug: `scope-${name.toLowerCase()}`, code: `REQ-${name}` })
+  ctx.hub.createMilestone({ name, title: name, startAt: '2026-09-01', endAt: '2026-09-10', items })
   const isolatedRemote = fakeAdapter()
   const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
     assessAdapter: isolatedRemote,
@@ -139,10 +173,30 @@ before(async () => {
   hub = ctx.hub
   hub.createProject({ name: '订单', code: 'orders' })
   hub.addVersion('orders', { versionNo: 'v1', title: '一版', html: html() })
+  sharedScope = configureSyncScope(hub)
   for (const name of ['SYNC-EXECUTE', 'SYNC-RETRY']) {
-    ctx.hub.createMilestone({ name, title: name, startAt: '2026-09-01', endAt: '2026-09-10' })
+    ctx.hub.createMilestone({ name, title: name, startAt: '2026-09-01', endAt: '2026-09-10', items: sharedScope })
   }
   remote = fakeAdapter()
+  remote.state.tasks.set(20, {
+    id: 20,
+    projectId: 123,
+    taskType: 2,
+    title: '[REQ-SYNC-SCOPE] REQ-SYNC-SCOPE',
+    descriptionDoc: 'scope\n\n关联原型：\n- orders/v1',
+    acceptanceDoc: '',
+    priority: null,
+    assigneeId: null,
+    planStartDate: '2026-09-01T00:00:00+08:00',
+    planEndDate: '2026-09-10T00:00:00+08:00',
+    revision: 1,
+    sprintId: null,
+    status: 0
+  })
+  requirements.upsertExternalTask(root, 'REQ-SYNC-SCOPE', {
+    provider: 'assess-task', server: 'project-task', projectId: 123,
+    taskId: 20, revision: 1, remoteStatus: 0, lastSyncHash: '', syncedAt: null
+  })
   server = await startServer(root, {
     port: 0,
     previewPort: 0,
@@ -215,7 +269,7 @@ test('execute accepts only pending milestone records and ignores browser-selecte
   t.assert.strictEqual(result.status, 200)
   t.assert.strictEqual(result.body.status, 'completed')
   t.assert.strictEqual(result.body.planHash, plan.hash)
-  t.assert.deepStrictEqual(remote.state.calls.map(([name]) => name), ['saveSprint', 'getSprint'])
+  t.assert.deepStrictEqual(remote.state.calls.map(([name]) => name), ['getTask', 'saveSprint', 'getSprint', 'getTask'])
   t.assert.doesNotMatch(JSON.stringify(remote.state.calls), /sprint_delete|admin_shell|browser-selected|delete everything/)
 
   const repeated = await call('POST', `/api/sync/${record.id}/execute`, { planHash: record.planHash })
@@ -271,7 +325,8 @@ test('retry replaces a stale failed plan with a fresh pending preview', async (t
   const ctx = newHub()
   const isolatedRoot = ctx.root
   t.after(() => cleanup(isolatedRoot))
-  ctx.hub.createMilestone({ name: 'RETRY-STALE', title: 'Before', startAt: '2026-09-01', endAt: '2026-09-10' })
+  const items = configureSyncScope(ctx.hub, { slug: 'retry-stale', code: 'REQ-RETRY-STALE' })
+  ctx.hub.createMilestone({ name: 'RETRY-STALE', title: 'Before', startAt: '2026-09-01', endAt: '2026-09-10', items })
   const isolatedRemote = fakeAdapter()
   const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
     assessAdapter: isolatedRemote,
@@ -301,7 +356,8 @@ test('retry refuses an uncertain sprint create until a remote link is supplied',
   const ctx = newHub()
   const isolatedRoot = ctx.root
   t.after(() => cleanup(isolatedRoot))
-  ctx.hub.createMilestone({ name: 'RETRY-LINK', title: 'Retry link', startAt: '2026-09-01', endAt: '2026-09-10' })
+  const items = configureSyncScope(ctx.hub, { slug: 'retry-link', code: 'REQ-RETRY-LINK' })
+  ctx.hub.createMilestone({ name: 'RETRY-LINK', title: 'Retry link', startAt: '2026-09-01', endAt: '2026-09-10', items })
   const isolatedRemote = fakeAdapter()
   const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
     assessAdapter: isolatedRemote,
@@ -326,7 +382,8 @@ test('retry refuses an uncertain sprint create until a remote link is supplied',
 
 test('link-result verifies a Sprint and retry never replays create', async (t) => {
   const name = 'LINK-SPRINT'
-  hub.createMilestone({ name, title: 'Link Sprint', startAt: '2026-12-01', endAt: '2026-12-10' })
+  const items = configureSyncScope(hub, { slug: 'link-sprint', code: 'REQ-LINK-SPRINT', projectId: '223' })
+  hub.createMilestone({ name, title: 'Link Sprint', startAt: '2026-12-01', endAt: '2026-12-10', items })
   const preview = (await call('POST', `/api/milestones/${name}/sync-plan`, {})).body
   remote.state.protocolErrorAfterSave = true
   const failed = await call('POST', `/api/sync/${preview.syncId}/execute`, { planHash: preview.hash })
@@ -469,7 +526,9 @@ test('linked retry rejects a changed resolved target before any remote call', as
 
 test('link-result rejects invalid, wrong-project, mismatched, and occupied Sprint candidates', async (t) => {
   async function pausedSprint(name) {
-    hub.createMilestone({ name, title: name, startAt: '2027-01-01', endAt: '2027-01-10' })
+    const slug = `scope-${name.toLowerCase()}`
+    const items = configureSyncScope(hub, { slug, code: `REQ-${name}` })
+    hub.createMilestone({ name, title: name, startAt: '2027-01-01', endAt: '2027-01-10', items })
     const preview = (await call('POST', `/api/milestones/${name}/sync-plan`, {})).body
     remote.state.protocolErrorAfterSave = true
     await call('POST', `/api/sync/${preview.syncId}/execute`, { planHash: preview.hash })
@@ -656,7 +715,8 @@ test('retry never repeats a create whose remote response failed MCP protocol par
   const ctx = newHub()
   const isolatedRoot = ctx.root
   t.after(() => cleanup(isolatedRoot))
-  ctx.hub.createMilestone({ name: 'PROTOCOL-CREATE', title: 'Protocol create', startAt: '2026-09-01', endAt: '2026-09-10' })
+  const items = configureSyncScope(ctx.hub, { slug: 'protocol-create', code: 'REQ-PROTOCOL-CREATE' })
+  ctx.hub.createMilestone({ name: 'PROTOCOL-CREATE', title: 'Protocol create', startAt: '2026-09-01', endAt: '2026-09-10', items })
   const isolatedRemote = fakeAdapter()
   const isolatedHub = new ctx.hub.constructor(isolatedRoot, {
     assessAdapter: isolatedRemote,
@@ -686,6 +746,7 @@ test('sync center keeps Flowlark authoritative and ignores browser resolution po
   ctx.hub.createProject({ name: 'Drift', code: 'drift' })
   ctx.hub.createRequirement({ code: 'REQ-DRIFT', title: 'Local title', description: 'Local body' })
   ctx.hub.addVersion('drift', { versionNo: 'v1', title: 'v1', html: html(), requirements: ['REQ-DRIFT'] })
+  configureSyncScope(ctx.hub, { slug: 'drift', code: 'REQ-DRIFT' })
   ctx.hub.createMilestone({
     name: 'DRIFT', title: 'Drift', startAt: '2026-09-01', endAt: '2026-09-10',
     items: [{ requirement: 'REQ-DRIFT', project: 'drift', version: 'v1' }]

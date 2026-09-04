@@ -367,22 +367,22 @@ git commit -m "feat: link uncertain remote create results"
 - Modify: `test/milestone-sync.test.js`
 - Modify: `test/milestone-sync-api.test.js`
 
-- [ ] Add failing tests for empty milestone, unconfirmed requirement, missing requirement spec, missing project target, mismatched targets, missing task/Sprint binding, stale local scope, remote drift, and direct freeze rejection.
-- [ ] Add deterministic `sourceHash` covering milestone business fields, sorted scope, requirement lifecycle/projections, stable bindings, project targets, managed fields, and Sprint ID.
-- [ ] Add `freeze` to normalized plan actions and append a local `milestone.freeze` operation after remote work.
-- [ ] Rebuild and revalidate the freeze plan under the existing milestone lock before execution.
-- [ ] After all remote operations and final remote read-back succeed, atomically write `external.scopeHash`, `external.verifiedAt`, and local `status: "frozen"`.
-- [ ] Reject direct `reviewing → frozen` with `MILESTONE_FREEZE_REQUIRES_SYNC_PLAN`.
-- [ ] Make freeze preflight use current source hash and project context; a historical completed journal alone is insufficient.
-- [ ] Give every blocker a precise repair route: requirement, version workbench, project sync settings, MCP settings, sync center, or milestone scope.
-- [ ] On verified Sprint start, transition included `confirmed` requirements to `developing`; failures or unknown results leave them unchanged.
-- [ ] Run:
+- [x] Add failing tests for empty milestone, unconfirmed requirement, missing requirement spec, missing project target, mismatched targets, missing task/Sprint binding, stale local scope, remote drift, and direct freeze rejection.
+- [x] Add deterministic `sourceHash` covering milestone business fields, sorted scope, requirement lifecycle/projections, stable bindings, project targets, managed fields, and Sprint ID.
+- [x] Add `freeze` to normalized plan actions and append a local `milestone.freeze` operation after remote work.
+- [x] Rebuild and revalidate the freeze plan under the existing milestone lock before execution.
+- [x] After all remote operations and final remote read-back succeed, atomically write `external.scopeHash`, `external.verifiedAt`, and local `status: "frozen"`.
+- [x] Reject direct `reviewing → frozen` with `MILESTONE_FREEZE_REQUIRES_SYNC_PLAN`.
+- [x] Make freeze preflight use current source hash and project context; a historical completed journal alone is insufficient.
+- [x] Give every blocker a precise repair route: requirement, version workbench, project sync settings, MCP settings, sync center, or milestone scope.
+- [x] On verified Sprint start, transition included `confirmed` requirements to `developing`; failures or unknown results leave them unchanged.
+- [x] Run:
 
 ```bash
 node --test test/milestone-lifecycle.test.js test/milestone-sync-plan.test.js test/milestone-sync.test.js test/milestone-sync-api.test.js
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/core/milestone-sync-plan.js src/core/milestone-sync.js src/core/milestone-lifecycle.js src/core/milestones.js src/core/service.js test/milestone-lifecycle.test.js test/milestone-sync-plan.test.js test/milestone-sync.test.js test/milestone-sync-api.test.js

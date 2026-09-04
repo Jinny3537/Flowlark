@@ -8,6 +8,8 @@ import { err } from '../src/core/errors.js'
 import { findSyncRecord } from '../src/core/sync-queue.js'
 import { listSyncAudit } from '../src/core/sync-audit.js'
 import * as milestones from '../src/core/milestones.js'
+import * as requirements from '../src/core/requirements.js'
+import * as store from '../src/core/store.js'
 
 let root
 let server
@@ -77,6 +79,17 @@ before(async () => {
   ctx.hub.createRequirement({ code: 'REQ-2', title: '需求二', description: '说明', priority: 'P1', owner: 'dev' })
   ctx.hub.addVersion('orders', { versionNo: 'v1', title: '一版', html: html(), requirements: ['REQ-1'] })
   ctx.hub.addVersion('inventory', { versionNo: 'v1', title: '一版', html: html(), requirements: ['REQ-2'] })
+  for (const [slug, code, projectId] of [
+    ['start-scope', 'REQ-START', '808'],
+    ['legacy-scope', 'REQ-LEGACY', '909'],
+    ['null-scope', 'REQ-NULL', '1111'],
+    ['resume-scope', 'REQ-RESUME', '1212']
+  ]) {
+    ctx.hub.createProject({ name: slug, code: slug })
+    ctx.hub.updateProject(slug, { sync: { server: 'project-task', projectId, managedFields } })
+    ctx.hub.createRequirement({ code, title: code, description: '说明', owner: 'dev' })
+    ctx.hub.addVersion(slug, { versionNo: 'v1', title: '一版', html: html(), requirements: [code] })
+  }
   ctx.hub.createMilestone({
     name: 'S1', title: '迭代一', goal: '完成联调', owner: 'pm',
     startAt: '2026-08-01', endAt: '2026-08-21',
@@ -94,11 +107,11 @@ before(async () => {
   ctx.hub.createMilestone({ name: 'S5', title: '进行中迭代', goal: '验证范围变更', owner: 'pm', startAt: '2026-09-21', endAt: '2026-09-30', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
   ctx.hub.createMilestone({ name: 'S6', title: '可信策略迭代', startAt: '2026-10-01', endAt: '2026-10-10', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }] })
   ctx.hub.createMilestone({ name: 'S7', title: '跨项目迭代', startAt: '2026-10-11', endAt: '2026-10-20', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }, { requirement: 'REQ-2', project: 'inventory', version: 'v1' }] })
-  ctx.hub.createMilestone({ name: 'S8', title: '待开始迭代', startAt: '2026-10-21', endAt: '2026-10-30' })
-  ctx.hub.createMilestone({ name: 'S9', title: '旧路由旁路保护', startAt: '2026-11-01', endAt: '2026-11-10' })
+  ctx.hub.createMilestone({ name: 'S8', title: '待开始迭代', startAt: '2026-10-21', endAt: '2026-10-30', items: [{ requirement: 'REQ-START', project: 'start-scope', version: 'v1' }] })
+  ctx.hub.createMilestone({ name: 'S9', title: '旧路由旁路保护', startAt: '2026-11-01', endAt: '2026-11-10', items: [{ requirement: 'REQ-LEGACY', project: 'legacy-scope', version: 'v1' }] })
   ctx.hub.createMilestone({ name: 'S10', title: '无预览保护', startAt: '2026-11-11', endAt: '2026-11-20' })
-  ctx.hub.createMilestone({ name: 'S11', title: '空输入预览', startAt: '2026-11-21', endAt: '2026-11-30' })
-  ctx.hub.createMilestone({ name: 'S12', title: '空输入恢复', startAt: '2026-12-01', endAt: '2026-12-10' })
+  ctx.hub.createMilestone({ name: 'S11', title: '空输入预览', startAt: '2026-11-21', endAt: '2026-11-30', items: [{ requirement: 'REQ-NULL', project: 'null-scope', version: 'v1' }] })
+  ctx.hub.createMilestone({ name: 'S12', title: '空输入恢复', startAt: '2026-12-01', endAt: '2026-12-10', items: [{ requirement: 'REQ-RESUME', project: 'resume-scope', version: 'v1' }] })
   milestones.updateMilestone(root, 'S5', { status: 'active' }, { system: true })
   milestones.updateMilestone(root, 'S8', { status: 'frozen' }, { system: true })
   remote = fakeAdapter()
@@ -258,6 +271,19 @@ test('plan and resume APIs normalize null bodies without a server error', async 
   t.assert.strictEqual(result.body.status, 'completed')
 })
 
+test('a local source change invalidates a queued plan before any remote mutation', async (t) => {
+  const record = findSyncRecord(root, 'milestone', 'S11')
+  requirements.updateRequirement(root, 'REQ-NULL', { description: '预览后修改的说明' })
+  remote.state.calls.length = 0
+  const result = await call('POST', `/api/sync/${record.id}/execute`, {
+    planHash: record.planHash
+  })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MCP_SYNC_PLAN_CHANGED')
+  t.assert.strictEqual(remote.state.calls.includes('saveSprint'), false)
+  t.assert.strictEqual(remote.state.calls.includes('createTask'), false)
+})
+
 test('execute endpoint requires confirmation and matching plan hash', async (t) => {
   const plan = (await call('POST', '/api/milestones/S1/sync-plan', {})).body
   let result = await call('POST', '/api/milestones/S1/sync-execute', { planHash: plan.hash })
@@ -277,6 +303,32 @@ test('execute endpoint requires confirmation and matching plan hash', async (t) 
   t.assert.strictEqual(execution.status, 200)
   t.assert.strictEqual(execution.body.sprint.id, milestone.body.external.sprintId)
   t.assert.strictEqual(execution.body.tasks.total, 1)
+})
+
+test('freeze executes verified read-back and stores the current source fingerprint', async (t) => {
+  requirements.writeRequirementSpec(root, 'REQ-1', '# 验收标准')
+  requirements.updateRequirementLifecycle(root, 'REQ-1', 'confirmed', { actor: 'Test PM' })
+  const version = store.readVersion(root, 'orders', 'v1')
+  version.status = 'READY'
+  version.reviewStatus = 'confirmed'
+  store.writeVersion(root, 'orders', version)
+  store.writeBaseline(root, 'orders', 'v1')
+  store.writeSpec(root, 'orders', 'v1', '# 版本规格')
+  milestones.updateMilestone(root, 'S1', { status: 'reviewing' }, { system: true })
+
+  const preview = await call('POST', '/api/milestones/S1/sync-plan', { action: 'freeze' })
+  t.assert.strictEqual(preview.status, 200)
+  t.assert.strictEqual(preview.body.blockers.length, 0, JSON.stringify(preview.body.blockers))
+  t.assert.strictEqual(preview.body.operations.at(-1).kind, 'milestone.freeze')
+  const executed = await call('POST', `/api/sync/${preview.body.syncId}/execute`, {
+    planHash: preview.body.hash,
+    reason: '冻结已验证范围'
+  })
+  t.assert.strictEqual(executed.status, 200)
+  const stored = milestones.readMilestone(root, 'S1')
+  t.assert.strictEqual(stored.status, 'frozen')
+  t.assert.strictEqual(stored.external.scopeHash, preview.body.sourceHash)
+  t.assert.ok(stored.external.verifiedAt)
 })
 
 test('trusted-auto remains descriptive and cross-project target mismatches are blocked', async (t) => {
@@ -323,9 +375,12 @@ test('trusted-auto remains descriptive and cross-project target mismatches are b
 })
 
 test('local lifecycle transitions remain explicit', async (t) => {
-  const result = await call('POST', '/api/milestones/S2/transition', { target: 'reviewing' })
+  let result = await call('POST', '/api/milestones/S2/transition', { target: 'reviewing' })
   t.assert.strictEqual(result.status, 200)
   t.assert.strictEqual(result.body.status, 'reviewing')
+  result = await call('POST', '/api/milestones/S2/transition', { target: 'frozen' })
+  t.assert.strictEqual(result.status, 409)
+  t.assert.strictEqual(result.body.code, 'MILESTONE_FREEZE_REQUIRES_SYNC_PLAN')
 })
 
 test('runtime profile API stores no password and returns executable diagnostics', async (t) => {

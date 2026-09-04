@@ -1,10 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { err } from './errors.js'
 import { parse, stringify } from './json.js'
 import * as store from './store.js'
 import { requirementExists } from './requirements.js'
-import { MILESTONE_STATUSES, normalizeMilestoneStatus } from './milestone-lifecycle.js'
+import { MILESTONE_STATUSES, normalizeMilestoneStatus, transitionMilestoneStatus } from './milestone-lifecycle.js'
 
 export const MILESTONE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
@@ -132,6 +133,19 @@ export function replaceExternalSprint(root, milestoneName, binding, { expectedSp
   return inspectMilestone(root, item)
 }
 
+export function markMilestoneFrozen(root, name, { scopeHash, verifiedAt = new Date().toISOString() } = {}) {
+  const item = readMilestone(root, name)
+  transitionMilestoneStatus(item.status, 'frozen', { remoteExists: true, verifiedFreeze: true })
+  if (!item.external?.sprintId) throw err.bad('MCP_SYNC_SPRINT_BINDING_MISSING', '迭代缺少平台 Sprint 绑定')
+  const hash = String(scopeHash || '').trim()
+  if (!hash) throw err.bad('MILESTONE_SOURCE_HASH_REQUIRED', '冻结迭代缺少来源哈希')
+  item.status = 'frozen'
+  item.external = { ...item.external, scopeHash: hash, verifiedAt }
+  item.updatedAt = verifiedAt
+  writeMilestoneFileAtomic(root, item)
+  return inspectMilestone(root, item)
+}
+
 export function assertExternalSprintAvailable(root, milestoneName, binding) {
   const server = String(binding?.server || '').trim()
   const projectId = positiveId(binding?.projectId, '平台项目 ID')
@@ -203,4 +217,15 @@ function finiteOrNull(value) {
   if (value == null || value === '') return null
   const number = Number(value)
   return Number.isFinite(number) ? number : null
+}
+
+function writeMilestoneFileAtomic(root, item) {
+  const file = store.paths.milestoneFile(root, item.name)
+  const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, stringify(item, 'milestone'))
+    fs.renameSync(temporary, file)
+  } finally {
+    if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true })
+  }
 }

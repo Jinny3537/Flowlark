@@ -128,6 +128,18 @@ function adapter({
   }
 }
 
+async function verifiedFixture() {
+  const ctx = fixture({ managedFields: ['description', 'title', 'sprint'] })
+  const remote = adapter()
+  await executeMilestoneSync({ root: ctx.root, milestoneName: 'S1', plan: ctx.plan, confirmed: true, adapter: remote })
+  ctx.hub.writeRequirementSpec('REQ-1', '# 验收')
+  ctx.hub.transitionRequirement('REQ-1', { target: 'confirmed' })
+  milestones.updateMilestone(ctx.root, 'S1', { status: 'reviewing' }, { system: true })
+  const milestone = milestones.inspectMilestone(ctx.root, 'S1')
+  const requirement = { ...requirements.requirementDetail(ctx.root, 'REQ-1'), spec: '# 验收\n' }
+  return { ...ctx, remote, milestone, requirement }
+}
+
 test('requires confirmation before any remote mutation', async () => {
   const { root, plan } = fixture()
   const remote = adapter()
@@ -361,6 +373,7 @@ test('recovers a remote-complete sprint create by persisting its binding without
   journal.operations[0].remoteResult = { id: 77, revision: 4, status: 0, url: 'https://tasks.test/sprints/77' }
   writeMilestoneSyncJournal(root, 'S1', journal)
   const remote = adapter()
+  remote.state.sprint = { ...remote.state.sprint, id: 77, projectId: plan.projectId, revision: 4 }
 
   const result = await resumeMilestoneSync({ root, milestoneName: 'S1', adapter: remote })
 
@@ -741,4 +754,282 @@ test('returns a matching completed record without another adapter call', async (
   assert.equal(repeated.id, first.id)
   assert.equal(repeated.status, 'completed')
   assert.equal(remote.calls.length, 0)
+})
+
+test('freezes only after full-scope remote read-back and stores the verified source hash atomically', async () => {
+  const { root, mapping, remote, milestone, requirement } = await verifiedFixture()
+  const plan = buildMilestoneSyncPlan({
+    milestone,
+    requirements: [requirement],
+    remoteSprint: await remote.getSprint(10),
+    remoteTasks: [await remote.getTask(20)],
+    mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'freeze'
+  })
+  remote.calls.length = 0
+
+  await executeMilestoneSync({
+    root, milestoneName: 'S1', plan, confirmed: true,
+    reason: '冻结已验证范围', adapter: remote
+  })
+
+  const stored = milestones.readMilestone(root, 'S1')
+  assert.equal(stored.status, 'frozen')
+  assert.equal(stored.external.scopeHash, plan.sourceHash)
+  assert.match(stored.external.verifiedAt, /^\d{4}-\d{2}-\d{2}T/)
+  assert.ok(remote.calls.some(([name]) => name === 'getSprint'))
+  assert.ok(remote.calls.some(([name]) => name === 'getTask'))
+})
+
+test('freeze read-back rejects missing or changed scope without writing frozen state', async () => {
+  const { root, mapping, remote, milestone, requirement } = await verifiedFixture()
+  const plan = buildMilestoneSyncPlan({
+    milestone,
+    requirements: [requirement],
+    remoteSprint: await remote.getSprint(10),
+    remoteTasks: [await remote.getTask(20)],
+    mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'freeze'
+  })
+  remote.state.tasks.delete(20)
+  remote.state.task = null
+
+  await assert.rejects(
+    executeMilestoneSync({
+      root, milestoneName: 'S1', plan, confirmed: true,
+      reason: '冻结已验证范围', adapter: remote
+    }),
+    (error) => error.code === 'MCP_SYNC_READBACK_MISMATCH'
+  )
+  const stored = milestones.readMilestone(root, 'S1')
+  assert.equal(stored.status, 'reviewing')
+  assert.equal(stored.external.scopeHash, undefined)
+
+  const sprintFailure = await verifiedFixture()
+  const sprintPlan = buildMilestoneSyncPlan({
+    milestone: sprintFailure.milestone,
+    requirements: [sprintFailure.requirement],
+    remoteSprint: await sprintFailure.remote.getSprint(10),
+    remoteTasks: [await sprintFailure.remote.getTask(20)],
+    mapping: sprintFailure.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'freeze'
+  })
+  sprintFailure.remote.state.sprint = null
+  await assert.rejects(
+    executeMilestoneSync({
+      root: sprintFailure.root, milestoneName: 'S1', plan: sprintPlan, confirmed: true,
+      reason: '冻结已验证范围', adapter: sprintFailure.remote
+    }),
+    (error) => error.code === 'MCP_SYNC_READBACK_MISSING'
+  )
+  assert.equal(milestones.readMilestone(sprintFailure.root, 'S1').status, 'reviewing')
+})
+
+test('freeze read-back rejects a matching projection from the wrong remote identity', async () => {
+  const wrongTask = await verifiedFixture()
+  const taskPlan = buildMilestoneSyncPlan({
+    milestone: wrongTask.milestone,
+    requirements: [wrongTask.requirement],
+    remoteSprint: await wrongTask.remote.getSprint(10),
+    remoteTasks: [await wrongTask.remote.getTask(20)],
+    mapping: wrongTask.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'freeze'
+  })
+  const getTask = wrongTask.remote.getTask.bind(wrongTask.remote)
+  wrongTask.remote.getTask = async (taskId) => ({ ...(await getTask(taskId)), id: 999 })
+  await assert.rejects(executeMilestoneSync({
+    root: wrongTask.root, milestoneName: 'S1', plan: taskPlan, confirmed: true,
+    reason: '冻结范围', adapter: wrongTask.remote
+  }), (error) => error.code === 'MCP_SYNC_READBACK_MISMATCH')
+  assert.equal(milestones.readMilestone(wrongTask.root, 'S1').status, 'reviewing')
+
+  const wrongSprint = await verifiedFixture()
+  const sprintPlan = buildMilestoneSyncPlan({
+    milestone: wrongSprint.milestone,
+    requirements: [wrongSprint.requirement],
+    remoteSprint: await wrongSprint.remote.getSprint(10),
+    remoteTasks: [await wrongSprint.remote.getTask(20)],
+    mapping: wrongSprint.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'freeze'
+  })
+  const getSprint = wrongSprint.remote.getSprint.bind(wrongSprint.remote)
+  wrongSprint.remote.getSprint = async (sprintId) => ({ ...(await getSprint(sprintId)), projectId: 456 })
+  await assert.rejects(executeMilestoneSync({
+    root: wrongSprint.root, milestoneName: 'S1', plan: sprintPlan, confirmed: true,
+    reason: '冻结范围', adapter: wrongSprint.remote
+  }), (error) => error.code === 'MCP_SYNC_READBACK_MISMATCH')
+  assert.equal(milestones.readMilestone(wrongSprint.root, 'S1').status, 'reviewing')
+})
+
+test('a freeze audit failure after the atomic write remains recoverable without repeating remote work', async () => {
+  const { root, mapping, remote, milestone, requirement } = await verifiedFixture()
+  const plan = buildMilestoneSyncPlan({
+    milestone,
+    requirements: [requirement],
+    remoteSprint: await remote.getSprint(10),
+    remoteTasks: [await remote.getTask(20)],
+    mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'freeze'
+  })
+  const auditFile = path.join(root, '.flowlark', 'sync-audit.ndjson')
+  const getTask = remote.getTask.bind(remote)
+  let breakAudit = true
+  remote.getTask = async (taskId) => {
+    const result = await getTask(taskId)
+    if (breakAudit) {
+      breakAudit = false
+      fs.rmSync(auditFile, { force: true })
+      fs.mkdirSync(auditFile)
+    }
+    return result
+  }
+
+  await assert.rejects(
+    executeMilestoneSync({
+      root, milestoneName: 'S1', plan, confirmed: true,
+      reason: '冻结已验证范围', adapter: remote
+    }),
+    (error) => error.code === 'SYNC_AUDIT_WRITE_FAILED'
+  )
+  assert.equal(milestones.readMilestone(root, 'S1').status, 'frozen')
+  assert.equal(readMilestoneSyncJournal(root, 'S1').status, 'paused')
+
+  fs.rmSync(auditFile, { recursive: true })
+  const resumed = await resumeMilestoneSync({ root, milestoneName: 'S1', plan, adapter: remote })
+  assert.equal(resumed.status, 'completed')
+  assert.equal(milestones.readMilestone(root, 'S1').external.scopeHash, plan.sourceHash)
+})
+
+test('verified Sprint start advances confirmed requirements only after final read-back', async () => {
+  const success = await verifiedFixture()
+  milestones.updateMilestone(success.root, 'S1', { status: 'frozen' }, { system: true })
+  const successPlan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(success.root, 'S1'),
+    requirements: [success.requirement],
+    remoteSprint: await success.remote.getSprint(10),
+    remoteTasks: [await success.remote.getTask(20)],
+    mapping: success.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'start'
+  })
+  await executeMilestoneSync({
+    root: success.root, milestoneName: 'S1', plan: successPlan, confirmed: true,
+    reason: '启动 Sprint', confirmUnfinished: true, adapter: success.remote, actor: 'Sprint Runner'
+  })
+  assert.equal(requirements.readRequirement(success.root, 'REQ-1').status, 'developing')
+  assert.equal(requirements.readRequirement(success.root, 'REQ-1').statusChangedBy, 'Sprint Runner')
+
+  const failure = await verifiedFixture()
+  milestones.updateMilestone(failure.root, 'S1', { status: 'frozen' }, { system: true })
+  const failurePlan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(failure.root, 'S1'),
+    requirements: [failure.requirement],
+    remoteSprint: await failure.remote.getSprint(10),
+    remoteTasks: [await failure.remote.getTask(20)],
+    mapping: failure.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'start'
+  })
+  failure.remote.startSprint = async () => { throw Object.assign(new Error('start failed'), { code: 'REMOTE_START_FAILED' }) }
+  await assert.rejects(executeMilestoneSync({
+    root: failure.root, milestoneName: 'S1', plan: failurePlan, confirmed: true,
+    reason: '启动 Sprint', confirmUnfinished: true, adapter: failure.remote
+  }), /start failed/)
+  assert.equal(requirements.readRequirement(failure.root, 'REQ-1').status, 'confirmed')
+})
+
+test('repeating a completed start plan is idempotent after lifecycle advancement', async () => {
+  const ctx = await verifiedFixture()
+  milestones.updateMilestone(ctx.root, 'S1', { status: 'frozen' }, { system: true })
+  const plan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(ctx.root, 'S1'),
+    requirements: [ctx.requirement],
+    remoteSprint: await ctx.remote.getSprint(10),
+    remoteTasks: [await ctx.remote.getTask(20)],
+    mapping: ctx.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'start'
+  })
+  const first = await executeMilestoneSync({
+    root: ctx.root, milestoneName: 'S1', plan, confirmed: true,
+    reason: '启动 Sprint', confirmUnfinished: true, adapter: ctx.remote
+  })
+  ctx.remote.calls.length = 0
+  const repeated = await executeMilestoneSync({
+    root: ctx.root, milestoneName: 'S1', plan, confirmed: true,
+    reason: '启动 Sprint', confirmUnfinished: true, adapter: ctx.remote,
+    assertCurrentSource: () => { throw Object.assign(new Error('must not revalidate advanced source'), { code: 'MCP_SYNC_PLAN_CHANGED' }) }
+  })
+  assert.equal(repeated.id, first.id)
+  assert.equal(repeated.status, 'completed')
+  assert.equal(ctx.remote.calls.length, 0)
+  assert.equal(milestones.readMilestone(ctx.root, 'S1').status, 'active')
+  assert.equal(requirements.readRequirement(ctx.root, 'REQ-1').status, 'developing')
+})
+
+test('a synchronous source assertion closes the race after final remote read-back', async () => {
+  const freeze = await verifiedFixture()
+  const freezePlan = buildMilestoneSyncPlan({
+    milestone: freeze.milestone,
+    requirements: [freeze.requirement],
+    remoteSprint: await freeze.remote.getSprint(10),
+    remoteTasks: [await freeze.remote.getTask(20)],
+    mapping: freeze.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'freeze'
+  })
+  const freezeGetTask = freeze.remote.getTask.bind(freeze.remote)
+  freeze.remote.getTask = async (taskId) => {
+    const result = await freezeGetTask(taskId)
+    freeze.hub.writeRequirementSpec('REQ-1', '# 回读期间被修改')
+    return result
+  }
+  const assertUnchangedSpec = () => {
+    if (freeze.hub.readRequirementSpec('REQ-1') !== '# 验收\n') {
+      throw Object.assign(new Error('source changed'), { code: 'MCP_SYNC_PLAN_CHANGED' })
+    }
+  }
+  await assert.rejects(
+    executeMilestoneSync({
+      root: freeze.root, milestoneName: 'S1', plan: freezePlan, confirmed: true,
+      reason: '冻结范围', adapter: freeze.remote, assertCurrentSource: assertUnchangedSpec
+    }),
+    (error) => error.code === 'MCP_SYNC_PLAN_CHANGED'
+  )
+  assert.equal(milestones.readMilestone(freeze.root, 'S1').status, 'reviewing')
+
+  const start = await verifiedFixture()
+  milestones.updateMilestone(start.root, 'S1', { status: 'frozen' }, { system: true })
+  const startPlan = buildMilestoneSyncPlan({
+    milestone: milestones.inspectMilestone(start.root, 'S1'),
+    requirements: [start.requirement],
+    remoteSprint: await start.remote.getSprint(10),
+    remoteTasks: [await start.remote.getTask(20)],
+    mapping: start.mapping,
+    managedFields: ['description', 'title', 'sprint'],
+    action: 'start'
+  })
+  const startGetTask = start.remote.getTask.bind(start.remote)
+  start.remote.getTask = async (taskId) => {
+    const result = await startGetTask(taskId)
+    requirements.updateRequirement(start.root, 'REQ-1', { title: '回读期间被修改' })
+    return result
+  }
+  const assertUnchangedRequirement = () => {
+    if (requirements.readRequirement(start.root, 'REQ-1').title !== '需求一') {
+      throw Object.assign(new Error('source changed'), { code: 'MCP_SYNC_PLAN_CHANGED' })
+    }
+  }
+  await assert.rejects(executeMilestoneSync({
+    root: start.root, milestoneName: 'S1', plan: startPlan, confirmed: true,
+    reason: '启动 Sprint', confirmUnfinished: true, adapter: start.remote,
+    assertCurrentSource: assertUnchangedRequirement
+  }), (error) => error.code === 'MCP_SYNC_PLAN_CHANGED')
+  assert.equal(requirements.readRequirement(start.root, 'REQ-1').status, 'confirmed')
 })

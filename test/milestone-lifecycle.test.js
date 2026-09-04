@@ -40,6 +40,11 @@ test('enforces the lifecycle graph and terminal states', () => {
   assert.equal(transitionMilestoneStatus('frozen', 'active', { remoteExists: true }).requiresRemote, true)
   assert.equal(transitionMilestoneStatus('active', 'canceled', { remoteExists: true }).highRisk, true)
   assert.throws(
+    () => transitionMilestoneStatus('reviewing', 'frozen'),
+    (error) => error.code === 'MILESTONE_FREEZE_REQUIRES_SYNC_PLAN'
+  )
+  assert.equal(transitionMilestoneStatus('reviewing', 'frozen', { verifiedFreeze: true }).to, 'frozen')
+  assert.throws(
     () => transitionMilestoneStatus('planning', 'active'),
     (error) => error.code === 'MILESTONE_TRANSITION_INVALID'
   )
@@ -58,21 +63,45 @@ test('locks business edits after freeze but permits system metadata updates', ()
     (error) => error.code === 'MILESTONE_LOCKED'
   )
   const updated = milestones.updateMilestone(root, 'S1', {
-    external: { provider: 'assess-task', sprintId: 9, revision: 1 }
+    external: { provider: 'assess-task', server: 'task-server', projectId: 123, sprintId: 9, revision: 1 }
   }, { system: true })
   assert.equal(updated.external.sprintId, 9)
 })
 
 test('requires an audit reason when unfreezing', () => {
-  const { hub } = fixture()
+  const { root, hub } = fixture()
   hub.createMilestone({ name: 'S2', title: '迭代二', items: [] })
   hub.transitionMilestone('S2', { target: 'reviewing' })
-  hub.transitionMilestone('S2', { target: 'frozen' })
+  milestones.updateMilestone(root, 'S2', { status: 'frozen' }, { system: true })
   assert.throws(
     () => hub.transitionMilestone('S2', { target: 'reviewing' }),
     (error) => error.code === 'MILESTONE_REASON_REQUIRED'
   )
   assert.equal(hub.transitionMilestone('S2', { target: 'reviewing', reason: '范围需要调整' }).status, 'reviewing')
+})
+
+test('freeze preflight covers scope, requirement authority, bindings, and precise repair routes', () => {
+  const { root, hub } = fixture()
+  const empty = hub.createMilestone({ name: 'EMPTY', title: '空迭代', items: [] })
+  let result = freezePreflight(root, empty)
+  assert.deepEqual(result.blockers[0], {
+    code: 'MILESTONE_SCOPE_EMPTY', message: '迭代至少需要包含一个需求版本', repairTo: '/milestones/EMPTY'
+  })
+  assert.ok(result.blockers.some((entry) =>
+    entry.code === 'MILESTONE_FREEZE_STATUS_INVALID' && entry.repairTo === '/milestones/EMPTY'))
+
+  const item = hub.createMilestone({
+    name: 'AUTH', title: '权威检查', items: [{ requirement: 'REQ-1', project: 'orders', version: 'v1' }]
+  })
+  result = freezePreflight(root, item, {
+    syncContext: { ready: true, server: 'task-server', projectId: '123' },
+    integrationProblems: [{ code: 'MCP_RUNTIME_BLOCKED', message: '运行配置不可用', repairTo: '/settings/mcp/runtime' }]
+  })
+  assert.ok(result.blockers.some((entry) => entry.code === 'REQUIREMENT_NOT_CONFIRMED' && entry.repairTo === '/requirements/REQ-1'))
+  assert.ok(result.blockers.some((entry) => entry.code === 'REQUIREMENT_SPEC_REQUIRED' && entry.repairTo === '/requirements/REQ-1'))
+  assert.ok(result.blockers.some((entry) => entry.code === 'MILESTONE_SPRINT_BINDING_REQUIRED' && entry.repairTo === '/milestones/AUTH'))
+  assert.ok(result.blockers.some((entry) => entry.code === 'REQUIREMENT_TASK_BINDING_REQUIRED' && entry.repairTo === '/requirements/REQ-1'))
+  assert.ok(result.blockers.some((entry) => entry.code === 'MCP_RUNTIME_BLOCKED' && entry.repairTo === '/settings/mcp/runtime'))
 })
 
 test('freeze preflight reports review and specification blockers with repair targets', () => {

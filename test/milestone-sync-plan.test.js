@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildMilestoneSyncPlan, hashProjection } from '../src/core/milestone-sync-plan.js'
+import { buildMilestoneSourceHash, buildMilestoneSyncPlan, hashProjection, linkedMilestoneSourceHash } from '../src/core/milestone-sync-plan.js'
 
 const baseMilestone = {
   name: 'S12',
@@ -346,4 +346,89 @@ test('create bodies stay complete while sprint ownership follows managed field m
     'acceptanceDoc', 'assigneeId', 'currentSprintId', 'descriptionDoc', 'planEndDate',
     'planStartDate', 'priority', 'projectId', 'taskType', 'title'
   ])
+})
+
+test('source hash is deterministic and covers only local milestone authority', () => {
+  const localRequirement = {
+    ...structuredClone(requirement),
+    status: 'confirmed',
+    externalTasks: [{ provider: 'assess-task', server: mapping.server, projectId: 123, taskId: 20 }]
+  }
+  const milestone = {
+    ...structuredClone(baseMilestone),
+    external: { provider: 'assess-task', server: mapping.server, projectId: 123, sprintId: 10 }
+  }
+  const input = { milestone, requirements: [localRequirement], mapping, managedFields: ['title', 'sprint'] }
+  const first = buildMilestoneSourceHash(input)
+  assert.equal(first, buildMilestoneSourceHash({
+    ...input,
+    milestone: { ...milestone, items: [...milestone.items].reverse() },
+    managedFields: ['sprint', 'title', 'title']
+  }))
+  assert.notEqual(first, buildMilestoneSourceHash({ ...input, milestone: { ...milestone, goal: '新目标' } }))
+  assert.notEqual(first, buildMilestoneSourceHash({ ...input, requirements: [{ ...localRequirement, status: 'developing' }] }))
+  assert.notEqual(first, buildMilestoneSourceHash({ ...input, requirements: [{ ...localRequirement, spec: '# 新规格' }] }))
+  assert.notEqual(first, buildMilestoneSourceHash({ ...input, mapping: { ...mapping, projectId: 456 } }))
+  assert.notEqual(first, buildMilestoneSourceHash({ ...input, managedFields: ['title'] }))
+  assert.notEqual(first, buildMilestoneSourceHash({
+    ...input,
+    milestone: { ...milestone, external: { ...milestone.external, sprintId: 11 } }
+  }))
+})
+
+test('freeze is a final high-risk local operation and requires stable bindings', () => {
+  const missing = buildMilestoneSyncPlan(context({ action: 'freeze' }))
+  assert.ok(missing.blockers.some((entry) => entry.code === 'MILESTONE_SPRINT_BINDING_REQUIRED'))
+  assert.ok(missing.blockers.some((entry) => entry.code === 'REQUIREMENT_TASK_BINDING_REQUIRED'))
+
+  const initial = buildMilestoneSyncPlan(context())
+  const sprintCreate = initial.operations.find((operation) => operation.kind === 'sprint.create')
+  const taskCreate = initial.operations.find((operation) => operation.kind === 'task.create')
+  const milestone = {
+    ...structuredClone(baseMilestone),
+    external: { provider: 'assess-task', server: mapping.server, projectId: 123, sprintId: 10, lastSyncHash: sprintCreate.contentHash }
+  }
+  const localRequirement = {
+    ...structuredClone(requirement), status: 'confirmed',
+    externalTasks: [{ provider: 'assess-task', server: mapping.server, projectId: 123, taskId: 20, lastSyncHash: taskCreate.contentHash }]
+  }
+  const plan = buildMilestoneSyncPlan(context({
+    milestone,
+    requirements: [localRequirement],
+    remoteSprint: { id: 10, revision: 2, status: 0, ...sprintCreate.after },
+    remoteTasks: [{ id: 20, revision: 2, status: 0, sprintId: 10, ...taskCreate.after }],
+    action: 'freeze'
+  }))
+  const freeze = plan.operations.at(-1)
+  assert.equal(freeze.kind, 'milestone.freeze')
+  assert.equal(freeze.risk, 'high')
+  assert.equal(freeze.after.scopeHash, plan.sourceHash)
+  assert.deepEqual(freeze.dependsOn, plan.operations.slice(0, -1).filter((operation) => operation.kind !== 'conflict').map((operation) => operation.key))
+  assert.deepEqual(plan.verification.tasks.map((entry) => entry.requirement), ['REQ-1'])
+})
+
+test('linked create source validation permits only the verified binding delta', () => {
+  const plan = buildMilestoneSyncPlan(context())
+  const linkedSteps = plan.operations.map((operation) => ({
+    key: operation.key,
+    kind: operation.kind,
+    operation,
+    status: 'remote-complete',
+    remoteResult: { id: operation.kind === 'sprint.create' ? 10 : 20 }
+  }))
+  const milestone = {
+    ...structuredClone(baseMilestone),
+    external: { provider: 'assess-task', server: mapping.server, projectId: 123, sprintId: 10 }
+  }
+  const linkedRequirement = {
+    ...structuredClone(requirement),
+    externalTasks: [{ provider: 'assess-task', server: mapping.server, projectId: 123, taskId: 20 }]
+  }
+  const current = buildMilestoneSourceHash({ milestone, requirements: [linkedRequirement], mapping })
+  assert.equal(linkedMilestoneSourceHash(plan, linkedSteps), current)
+  assert.notEqual(linkedMilestoneSourceHash(plan, linkedSteps), buildMilestoneSourceHash({
+    milestone,
+    requirements: [{ ...linkedRequirement, title: '预览后被修改' }],
+    mapping
+  }))
 })

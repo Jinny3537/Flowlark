@@ -41,7 +41,7 @@ import { createMcpClientManager } from './integrations/mcp-client.js'
 import { createAssessTaskAdapter } from './integrations/assess-task/adapter.js'
 import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycle.js'
 import { confirmationPreflight, transitionRequirementStatus } from './requirement-lifecycle.js'
-import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
+import { buildMilestoneSourceHash, buildMilestoneSyncPlan, linkedMilestoneSourceHash } from './milestone-sync-plan.js'
 import { resolveProjectSyncContext } from './project-sync-context.js'
 import * as externalBindings from './external-bindings.js'
 import {
@@ -666,6 +666,7 @@ export class Hub {
     const capability = info.config.capabilities.milestones
     const syncContext = resolveProjectSyncContext(this.root, item, info)
     integrationProblems.push(...syncContext.blockers)
+    let currentSourceHash = ''
     if (syncContext.ready) {
       const options = capability.options || {}
       if (!Number(options.ownerId)) integrationProblems.push({ code: 'SPRINT_OWNER_REQUIRED', message: '尚未配置平台冲刺负责人' })
@@ -676,11 +677,24 @@ export class Hub {
           integrationProblems.push({ code: 'TASK_PRIORITY_UNMAPPED', message: `${code} 的优先级 ${requirement.priority} 尚未映射` })
         }
       }
-      if (this.milestoneSyncJournal(name).status !== 'completed') {
-        integrationProblems.push({ code: 'MILESTONE_SYNC_REQUIRED', message: '冻结前需要完成一次已验证的平台同步' })
-      }
+      const requirementItems = [...new Set(item.items.map((entry) => entry.requirement))].map((code) => ({
+        ...reqx.requirementDetail(this.root, code),
+        spec: reqx.readRequirementSpec(this.root, code)
+      }))
+      currentSourceHash = buildMilestoneSourceHash({
+        milestone: item,
+        requirements: requirementItems,
+        mapping: { ...options, server: syncContext.server, projectId: Number(syncContext.projectId) },
+        managedFields: syncContext.managedFields
+      })
     }
-    return freezePreflight(this.root, item, { integrationProblems })
+    const journal = this.milestoneSyncJournal(name)
+    return freezePreflight(this.root, item, {
+      integrationProblems,
+      syncContext,
+      currentSourceHash,
+      verifiedSourceHash: journal.status === 'completed' ? journal.plan?.sourceHash || '' : ''
+    })
   }
 
   async planMilestoneSync(name, input = {}) {
@@ -778,9 +792,16 @@ export class Hub {
     }
     const intent = record && planHash === record.planHash ? this.#syncIntent(record) : value
     return this.#withAssessAdapter(name, true, async (adapter, config) => {
-      const plan = await this.#buildMilestoneSyncPlan(name, intent, adapter, config)
+      let plan = await this.#buildMilestoneSyncPlan(name, intent, adapter, config)
       if (planHash && planHash !== plan.hash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
       const result = await withMilestoneSyncLock(this.root, name, async () => {
+        if (this.#currentMilestoneSourceHash(name, intent) !== plan.sourceHash) {
+          throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代来源或项目同步目标已经变化，请重新确认')
+        }
+        if (intent.action === 'freeze') {
+          plan = await this.#buildMilestoneSyncPlan(name, intent, adapter, config)
+          if (planHash && plan.hash !== planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+        }
         if (value.confirmed) {
           const current = findSyncRecord(this.root, 'milestone', name)
           if (!current) throw err.conflict('MCP_SYNC_PREVIEW_REQUIRED', '执行同步前必须先生成同步预览')
@@ -797,6 +818,8 @@ export class Hub {
           reason: value.reason || '',
           confirmUnfinished: value.confirmUnfinished === true,
           adapter,
+          actor: currentUser(),
+          assertCurrentSource: () => this.#assertCurrentMilestoneSource(name, intent, this.#executedSourceHash(name, plan)),
           lockHeld: true
         })
       })
@@ -827,6 +850,9 @@ export class Hub {
           this.#saveMilestoneSyncPreview(name, plan)
           throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
         }
+        if (this.#currentMilestoneSourceHash(name, intent) !== plan.sourceHash) {
+          throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代来源或项目同步目标已经变化，请重新确认')
+        }
         return resumeSync({
           root: this.root,
           milestoneName: name,
@@ -834,6 +860,8 @@ export class Hub {
           reason: value.reason || '',
           confirmUnfinished: value.confirmUnfinished === true,
           adapter,
+          actor: currentUser(),
+          assertCurrentSource: () => this.#assertCurrentMilestoneSource(name, intent, this.#executedSourceHash(name, plan)),
           lockHeld: true
         })
       })
@@ -884,7 +912,7 @@ export class Hub {
     if (planHash !== record.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
     const intent = this.#syncIntent(record)
     return this.#withAssessAdapter(record.entityKey, true, async (adapter, config) => {
-      const plan = await this.#buildMilestoneSyncPlan(record.entityKey, intent, adapter, config)
+      let plan = await this.#buildMilestoneSyncPlan(record.entityKey, intent, adapter, config)
       return withMilestoneSyncLock(this.root, record.entityKey, async () => {
         const current = this.getSyncRecord(id)
         if (current.status !== 'pending-confirmation') {
@@ -893,6 +921,10 @@ export class Hub {
         if (current.planHash !== record.planHash || current.planHash !== planHash) {
           throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
         }
+        if (this.#currentMilestoneSourceHash(record.entityKey, intent) !== plan.sourceHash) {
+          throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代来源或项目同步目标已经变化，请重新确认')
+        }
+        if (intent.action === 'freeze') plan = await this.#buildMilestoneSyncPlan(record.entityKey, intent, adapter, config)
         if (plan.hash !== record.planHash) {
           this.#saveMilestoneSyncPreview(record.entityKey, plan)
           throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
@@ -905,6 +937,8 @@ export class Hub {
           reason: String(value.reason || ''),
           confirmUnfinished: value.confirmUnfinished === true,
           adapter,
+          actor: currentUser(),
+          assertCurrentSource: () => this.#assertCurrentMilestoneSource(record.entityKey, intent, this.#executedSourceHash(record.entityKey, plan)),
           lockHeld: true
         })
       })
@@ -938,11 +972,12 @@ export class Hub {
           if (hasLinkedCreateResult(current) !== linkedCreate) {
             throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划的关联结果已经变化，请重新操作')
           }
-          if (linkedCreate && (
-            config.server?.id !== current.plan?.server ||
-            Number(config.project) !== Number(current.plan?.projectId)
-          )) {
-            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '项目同步目标已经变化，请重新生成同步计划')
+          const currentSourceHash = this.#currentMilestoneSourceHash(record.entityKey, intent)
+          const expectedSourceHash = linkedCreate
+            ? linkedMilestoneSourceHash(current.plan, current.operations)
+            : plan.sourceHash
+          if (!expectedSourceHash || currentSourceHash !== expectedSourceHash) {
+            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代来源或项目同步目标已经变化，请重新生成同步计划')
           }
           if (!linkedCreate && plan.hash !== record.planHash) {
             this.#saveMilestoneSyncPreview(record.entityKey, plan)
@@ -955,6 +990,8 @@ export class Hub {
             reason: String(value.reason || ''),
             confirmUnfinished: value.confirmUnfinished === true,
             adapter,
+            actor: currentUser(),
+            assertCurrentSource: () => this.#assertCurrentMilestoneSource(record.entityKey, intent, this.#executedSourceHash(record.entityKey, plan)),
             lockHeld: true
           })
         })
@@ -997,6 +1034,10 @@ export class Hub {
               config.server?.id !== current.plan?.server ||
               Number(config.project) !== Number(current.plan?.projectId)) {
             throw err.conflict('MCP_SYNC_PLAN_CHANGED', '项目同步计划已经变化，请重新操作')
+          }
+          const expectedSourceHash = linkedMilestoneSourceHash(current.plan, current.operations) || current.plan.sourceHash
+          if (this.#currentMilestoneSourceHash(current.entityKey, this.#syncIntent(current)) !== expectedSourceHash) {
+            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代来源或项目同步目标已经变化，请重新操作')
           }
           const currentStep = getLinkableCreateStep(current, operationKey)
           const remote = currentStep.kind === 'sprint.create'
@@ -1057,8 +1098,7 @@ export class Hub {
       throw err.conflict('MILESTONE_REMOTE_TRANSITION_REQUIRES_SYNC', '该状态流转需要生成并执行平台同步计划')
     }
     if (target === 'frozen') {
-      const check = this.inspectMilestonePreflight(name)
-      if (!check.ready) throw err.conflict('MILESTONE_FREEZE_BLOCKED', `迭代仍有 ${check.blockers.length} 个冻结阻塞项`)
+      throw err.conflict('MILESTONE_FREEZE_REQUIRES_SYNC_PLAN', '冻结迭代必须生成并执行已验证的同步计划')
     }
     const updated = transition.changed
       ? milestones.updateMilestone(this.root, name, { status: target }, { system: true })
@@ -2383,8 +2423,6 @@ export class Hub {
           }),
           managedFields: context.managedFields
         }
-      } else if (this.assessAdapter && this.assessConfig && context.blockers.every((item) => item.code === 'PROJECT_SYNC_TARGET_REQUIRED')) {
-        config = this.assessConfig
       } else {
         const blocker = context.blockers[0]
         throw err.conflict(blocker.code, blocker.message, blocker.repairTo)
@@ -2605,6 +2643,16 @@ export class Hub {
       (requirement.externalTasks || [])
         .filter((item) => item.provider === 'assess-task' && item.server === mapping.server && Number(item.projectId) === mapping.projectId)
         .map((item) => ({ requirement: requirement.code, taskId: item.taskId })))
+    const freezeCheck = input.action === 'freeze'
+      ? freezePreflight(this.root, milestone, {
+          syncContext: {
+            ready: true,
+            server: mapping.server,
+            projectId: mapping.projectId,
+            managedFields: config.managedFields
+          }
+        })
+      : { blockers: [] }
     return buildMilestoneSyncPlan({
       milestone,
       requirements: requirementItems,
@@ -2616,8 +2664,44 @@ export class Hub {
       action: input.action || null,
       scopeItems,
       scopeChangeReason: scopeItems ? String(input.reason).trim() : '',
+      preflightBlockers: freezeCheck.blockers,
       resolutions: input.resolutions || {}
     })
+  }
+
+  #currentMilestoneSourceHash(name, input = {}) {
+    const stored = milestones.inspectMilestone(this.root, name)
+    const scopeItems = Array.isArray(input?.scopeItems)
+      ? milestones.normalizeMilestoneItems(this.root, input.scopeItems)
+      : null
+    const milestone = scopeItems ? { ...stored, items: scopeItems } : stored
+    const context = resolveProjectSyncContext(this.root, milestone, mcpConfig.inspect(this.root))
+    if (!context.ready) {
+      const blocker = context.blockers[0]
+      throw err.conflict(blocker.code, blocker.message, blocker.repairTo)
+    }
+    const options = context.capability?.options || {}
+    const requirementItems = [...new Set(milestone.items.map((item) => item.requirement))].map((code) => ({
+      ...reqx.requirementDetail(this.root, code),
+      spec: reqx.readRequirementSpec(this.root, code)
+    }))
+    return buildMilestoneSourceHash({
+      milestone,
+      requirements: requirementItems,
+      mapping: { ...options, server: context.server, projectId: Number(context.projectId) },
+      managedFields: context.managedFields
+    })
+  }
+
+  #assertCurrentMilestoneSource(name, input, expectedSourceHash) {
+    if (!expectedSourceHash || this.#currentMilestoneSourceHash(name, input) !== expectedSourceHash) {
+      throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代来源或项目同步目标已经变化，请重新确认')
+    }
+  }
+
+  #executedSourceHash(name, plan) {
+    const current = findSyncRecord(this.root, 'milestone', name)
+    return linkedMilestoneSourceHash(plan, current?.operations || []) || plan.sourceHash
   }
 
   #saveMilestoneSyncPreview(name, plan) {

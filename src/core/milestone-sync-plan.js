@@ -20,14 +20,15 @@ export function buildMilestoneSyncPlan({
   action = null,
   scopeItems = null,
   scopeChangeReason = '',
+  preflightBlockers = [],
   resolutions = {},
   now = new Date()
 } = {}) {
-  const normalizedAction = ['start', 'end', 'cancel'].includes(String(action || '')) ? String(action) : null
+  const normalizedAction = ['freeze', 'start', 'end', 'cancel'].includes(String(action || '')) ? String(action) : null
   const normalizedResolutions = normalizeResolutions(resolutions)
   const normalizedManagedFields = normalizeManagedFields(managedFields ?? mapping.managedFields)
   const managed = new Set(normalizedManagedFields)
-  const blockers = []
+  const blockers = (preflightBlockers || []).map((item) => ({ ...item }))
   const warnings = []
   const operations = []
   const summary = {
@@ -87,6 +88,13 @@ export function buildMilestoneSyncPlan({
   const remoteTasksById = new Map(remoteTasks.map((item) => [Number(item.id), item]))
   const currentTaskIds = new Set()
   const targetSprintId = positiveId(sprintBinding?.sprintId || remoteSprint?.id)
+  const verificationTasks = []
+
+  if (normalizedAction === 'freeze') {
+    if (milestone.status !== 'reviewing') blockers.push(repairProblem('MILESTONE_FREEZE_STATUS_INVALID', '只有评审中的迭代可以冻结', `/milestones/${encodeURIComponent(milestone.name)}`))
+    if (!requirementCodes.length) blockers.push(repairProblem('MILESTONE_SCOPE_EMPTY', '迭代至少需要包含一个需求版本', `/milestones/${encodeURIComponent(milestone.name)}`))
+    if (!sprintBinding?.sprintId) blockers.push(repairProblem('MILESTONE_SPRINT_BINDING_REQUIRED', '冻结前必须先绑定平台 Sprint', `/milestones/${encodeURIComponent(milestone.name)}`))
+  }
 
   for (const code of requirementCodes) {
     const requirement = requirementsByCode.get(code)
@@ -96,6 +104,11 @@ export function buildMilestoneSyncPlan({
     }
     const binding = (requirement.externalTasks || []).find((item) =>
       item.provider === PROVIDER && item.server === mapping.server && Number(item.projectId) === projectId)
+    if (normalizedAction === 'freeze') {
+      if (requirement.status !== 'confirmed') blockers.push(repairProblem('REQUIREMENT_NOT_CONFIRMED', `${code} 尚未确认`, `/requirements/${encodeURIComponent(code)}`))
+      if (!String(requirement.spec || '').trim()) blockers.push(repairProblem('REQUIREMENT_SPEC_REQUIRED', `${code} 缺少规格书`, `/requirements/${encodeURIComponent(code)}`))
+      if (!binding?.taskId) blockers.push(repairProblem('REQUIREMENT_TASK_BINDING_REQUIRED', `${code} 尚未绑定平台任务`, `/requirements/${encodeURIComponent(code)}`))
+    }
     if (!binding && !taskType) blockers.push(problem('TASK_TYPE_REQUIRED', '尚未配置默认任务类型', 'mapping.taskType'))
     const taskAfter = taskProjection(requirement, milestone, {
       projectId,
@@ -107,6 +120,14 @@ export function buildMilestoneSyncPlan({
     })
     validateTaskProjection(taskAfter, requirement, blockers, { create: !binding, managed })
     const taskHash = hashProjection(taskAfter, 'task', normalizedManagedFields)
+    if (binding?.taskId) {
+      verificationTasks.push({
+        requirement: code,
+        taskId: Number(binding.taskId),
+        contentHash: taskHash,
+        sprintId: targetSprintId
+      })
+    }
 
     if (!binding) {
       addOperation(operations, summary, {
@@ -185,6 +206,12 @@ export function buildMilestoneSyncPlan({
     })
   }
 
+  const source = buildMilestoneSource({ milestone, requirements, mapping, managedFields: normalizedManagedFields })
+  const sourceHash = hashSource(source)
+  const verification = {
+    sprint: { sprintId: targetSprintId, contentHash: sprintHash },
+    tasks: verificationTasks.sort((left, right) => left.requirement.localeCompare(right.requirement))
+  }
   const lifecycleKind = { start: 'sprint.start', end: 'sprint.end', cancel: 'sprint.cancel' }[normalizedAction]
   if (lifecycleKind) {
     operations.push({
@@ -198,6 +225,17 @@ export function buildMilestoneSyncPlan({
       dependsOn: operations.filter((item) => item.kind !== 'conflict').map((item) => item.key)
     })
   }
+  if (normalizedAction === 'freeze') {
+    for (const blocker of blockers) blocker.repairTo ||= freezeRepairRoute(blocker, milestone)
+    operations.push({
+      key: `local:${milestone.name}:freeze`,
+      kind: 'milestone.freeze',
+      risk: 'high',
+      before: { status: milestone.status, scopeHash: milestone.external?.scopeHash || null },
+      after: { status: 'frozen', scopeHash: sourceHash },
+      dependsOn: operations.filter((item) => item.kind !== 'conflict').map((item) => item.key)
+    })
+  }
 
   const generatedAt = new Date(now).toISOString()
   const expiresAt = new Date(new Date(now).getTime() + PLAN_TTL_MS).toISOString()
@@ -206,6 +244,9 @@ export function buildMilestoneSyncPlan({
     server: String(mapping.server || ''),
     projectId,
     managedFields: normalizedManagedFields,
+    source,
+    sourceHash,
+    verification,
     requirementStatuses: requirementCodes.map((code) => ({
       code,
       status: String(requirementsByCode.get(code)?.status || 'draft')
@@ -227,6 +268,9 @@ export function buildMilestoneSyncPlan({
     server: String(mapping.server || ''),
     projectId,
     managedFields: normalizedManagedFields,
+    source,
+    sourceHash,
+    verification,
     intent: {
       action: normalizedAction,
       scopeItems: Array.isArray(scopeItems) ? scopeItems : null,
@@ -243,6 +287,88 @@ export function buildMilestoneSyncPlan({
     warnings,
     operations
   }
+}
+
+export function buildMilestoneSourceHash({ milestone = {}, requirements = [], mapping = {}, managedFields } = {}) {
+  return hashSource(buildMilestoneSource({ milestone, requirements, mapping, managedFields }))
+}
+
+export function linkedMilestoneSourceHash(plan, steps = []) {
+  if (!plan?.source) return ''
+  const source = structuredClone(plan.source)
+  for (const step of steps || []) {
+    if (!['completed', 'remote-complete'].includes(step.status) || !positiveId(step.remoteResult?.id)) continue
+    if (step.kind === 'sprint.create') source.target.sprintId = positiveId(step.remoteResult.id)
+    if (step.kind === 'task.create') {
+      const requirement = source.requirements.find((item) => item.code === step.operation?.requirement)
+      if (requirement) {
+        requirement.binding = {
+          server: source.target.server,
+          projectId: source.target.projectId,
+          taskId: positiveId(step.remoteResult.id)
+        }
+      }
+    }
+  }
+  return hashSource(source)
+}
+
+function buildMilestoneSource({ milestone = {}, requirements = [], mapping = {}, managedFields } = {}) {
+  const fields = normalizeManagedFields(managedFields ?? mapping.managedFields)
+  const byCode = new Map(requirements.map((item) => [String(item.code || ''), item]))
+  const scope = (milestone.items || []).map((item) => ({
+    requirement: String(item.requirement || ''),
+    project: String(item.project || ''),
+    version: String(item.version || '')
+  })).sort((left, right) => stableStringify(left).localeCompare(stableStringify(right)))
+  const codes = [...new Set(scope.map((item) => item.requirement).filter(Boolean))].sort()
+  const projectId = positiveId(mapping.projectId)
+  const source = {
+    milestone: {
+      name: String(milestone.name || ''),
+      title: String(milestone.title || ''),
+      goal: String(milestone.goal || ''),
+      owner: String(milestone.owner || ''),
+      startAt: milestone.startAt || null,
+      endAt: milestone.endAt || null
+    },
+    scope,
+    requirements: codes.map((code) => {
+      const requirement = byCode.get(code) || { code }
+      const status = String(requirement.status || 'draft')
+      const projection = taskProjection(requirement, milestone, {
+        projectId,
+        taskType: positiveId(mapping.taskType),
+        priority: mapping.priorities?.[requirement.priority] ?? null,
+        assigneeId: mapping.members?.[requirement.owner] ?? null,
+        status: fields.includes('status') ? mapping.statuses?.[status] : undefined,
+        timezoneOffset: mapping.timezoneOffset
+      })
+      const binding = (requirement.externalTasks || []).find((item) =>
+        item.provider === PROVIDER && item.server === mapping.server && Number(item.projectId) === projectId)
+      return {
+        code,
+        status,
+        projection,
+        binding: binding ? {
+          server: String(binding.server || ''),
+          projectId: positiveId(binding.projectId),
+          taskId: positiveId(binding.taskId)
+        } : null
+      }
+    }),
+    target: {
+      server: String(mapping.server || ''),
+      projectId,
+      managedFields: fields,
+      sprintId: positiveId(milestone.external?.sprintId)
+    }
+  }
+  return source
+}
+
+function hashSource(source) {
+  return `sha256:${digest(stableStringify(source))}`
 }
 
 export function hashProjection(value, type, managedFields) {
@@ -464,6 +590,19 @@ function remoteObservation(value) {
 
 function problem(code, message, target) {
   return { code, message, target }
+}
+
+function repairProblem(code, message, repairTo) {
+  return { code, message, repairTo }
+}
+
+function freezeRepairRoute(blocker, milestone) {
+  if (String(blocker.target || '').startsWith('requirement:')) {
+    return `/requirements/${encodeURIComponent(String(blocker.target).slice('requirement:'.length))}`
+  }
+  if (['REMOTE_DRIFT', 'REMOTE_SPRINT_MISSING', 'REMOTE_TASK_MISSING'].includes(blocker.code)) return '/sync'
+  if (String(blocker.target || '').startsWith('mapping.')) return '/settings/mcp'
+  return `/milestones/${encodeURIComponent(milestone.name)}`
 }
 
 function positiveId(value) {
