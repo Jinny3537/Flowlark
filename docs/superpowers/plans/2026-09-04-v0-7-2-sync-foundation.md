@@ -299,7 +299,7 @@ git commit -m "feat: add project synchronization policy"
 - Modify: `src/core/service.js`
 - Modify: `test/migrate.test.js`
 
-- [ ] **Step 1: Write failing metadata backup tests**
+- [x] **Step 1: Write failing metadata backup tests**
 
 Create `test/metadata-backup.test.js` covering this contract:
 
@@ -329,7 +329,7 @@ test('restores touched metadata and removes files created after backup', (t) => 
 })
 ```
 
-- [ ] **Step 2: Verify the backup test fails**
+- [x] **Step 2: Verify the backup test fails**
 
 Run:
 
@@ -339,7 +339,7 @@ node --test test/metadata-backup.test.js
 
 Expected: FAIL because the module does not exist.
 
-- [ ] **Step 3: Implement scoped metadata backup and restore**
+- [x] **Step 3: Implement scoped metadata backup and restore**
 
 Create `src/core/metadata-backup.js`. It must:
 
@@ -360,7 +360,7 @@ export function restoreMetadataBackup(root, backup)
 
 The implementation must use `fs.cpSync`/`fs.copyFileSync` with explicit paths and must not shell out to `cp` or `rm`.
 
-- [ ] **Step 4: Write schema 3 migration tests**
+- [x] **Step 4: Write schema 3 migration tests**
 
 Update the migration import to include `migrateToLatest`, then append these three cases to `test/migrate.test.js`:
 
@@ -433,7 +433,7 @@ test('schema 3 validation failure restores every touched metadata file', (t) => 
 
 Add `import path from 'node:path'` at the top of the test file. The test callbacks must accept `(t)` where `t.assert` is used.
 
-- [ ] **Step 5: Refactor migration orchestration**
+- [x] **Step 5: Refactor migration orchestration**
 
 Update `src/core/migrate.js` to export:
 
@@ -464,7 +464,7 @@ Keep `migrateToSchema2` exported for existing tests, return without changes when
 
 Change the `Hub` constructor in `src/core/service.js` to call `migrate.migrateToLatest(root)` whenever `initial.schemaVersion < SCHEMA_VERSION` and import `SCHEMA_VERSION` from `src/core/repo.js`.
 
-- [ ] **Step 6: Update repository defaults**
+- [x] **Step 6: Update repository defaults**
 
 In `src/core/repo.js`:
 
@@ -474,7 +474,7 @@ export const SCHEMA_VERSION = 3
 
 Add `.flowlark/backup/` to `GITIGNORE` and `.flowlark/sync-audit.ndjson merge=union` to `GITATTRIBUTES`. Keep `.flowlark/cache/` ignored.
 
-- [ ] **Step 7: Run migration tests**
+- [x] **Step 7: Run migration tests**
 
 Run:
 
@@ -484,7 +484,7 @@ node --test test/metadata-backup.test.js test/migrate.test.js test/admin.test.js
 
 Expected: PASS, including schema 1 → 3 and injected rollback.
 
-- [ ] **Step 8: Commit schema 3 migration**
+- [x] **Step 8: Commit schema 3 migration**
 
 ```bash
 git add src/core/metadata-backup.js src/core/migrate.js src/core/repo.js src/core/service.js test/metadata-backup.test.js test/migrate.test.js

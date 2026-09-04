@@ -6,7 +6,7 @@ import { err } from './errors.js'
 import { stringify, parse } from './json.js'
 import * as cfg from './config.js'
 
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 export const REPO_FILE = 'flowlark.json'
 export const INTERNAL_DIR = '.flowlark'
 
@@ -31,10 +31,12 @@ BASELINE text eol=lf
 # 否则两个人各自加一个版本都会在这里撞出冲突 —— 而那个冲突毫无信息量，
 # 正确解法永远是「两边都留着」。
 .flowlark/oplog.ndjson merge=union
+.flowlark/sync-audit.ndjson merge=union
 `
 
 const GITIGNORE = `# 本地运行产物，不进版本库
 .flowlark/cache/
+.flowlark/backup/
 .DS_Store
 `
 

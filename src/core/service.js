@@ -46,7 +46,7 @@ import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
-import { readConfig, writeConfig, currentUser } from './repo.js'
+import { readConfig, writeConfig, currentUser, SCHEMA_VERSION } from './repo.js'
 
 function trashRestoreState(root, entry) {
   if (!store.projectExists(root, entry.project)) {
@@ -75,7 +75,7 @@ export class Hub {
     this.assessConfig = assessConfig
     this.mcpClientManager = mcpClientManager || createMcpClientManager()
     const initial = readConfig(root)
-    if (initial.schemaVersion < 2) migrate.migrateToSchema2(root)
+    if (initial.schemaVersion < SCHEMA_VERSION) migrate.migrateToLatest(root)
     this.config = readConfig(root)
   }
 
