@@ -60,7 +60,9 @@ export const paths = {
   teamViews: (root) => path.join(root, 'views', 'team.json'),
   trash: (root) => path.join(root, '.flowlark', 'trash'),
   oplog: (root) => path.join(root, '.flowlark', 'oplog.ndjson'),
-  syncAudit: (root) => path.join(root, '.flowlark', 'sync-audit.ndjson')
+  syncAudit: (root) => path.join(root, '.flowlark', 'sync-audit.ndjson'),
+  syncQueue: (root) => path.join(root, '.flowlark', 'cache', 'sync-queue'),
+  syncRecord: (root, id) => path.join(root, '.flowlark', 'cache', 'sync-queue', `${id}.json`)
 }
 
 // ---------- 附件 ----------

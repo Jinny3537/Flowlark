@@ -598,7 +598,7 @@ git commit -m "feat: add redacted synchronization audit"
 - Create: `test/sync-queue.test.js`
 - Modify: `src/core/store.js`
 
-- [ ] **Step 1: Write failing queue tests**
+- [x] **Step 1: Write failing queue tests**
 
 Create `test/sync-queue.test.js` with fixtures that assert:
 
@@ -628,7 +628,7 @@ Also cover:
 - writes are atomic and never leave a partial JSON file;
 - saved plans are passed through `sanitizeSyncValue`.
 
-- [ ] **Step 2: Verify the queue tests fail**
+- [x] **Step 2: Verify the queue tests fail**
 
 Run:
 
@@ -638,7 +638,7 @@ node --test test/sync-queue.test.js
 
 Expected: FAIL because the module does not exist.
 
-- [ ] **Step 3: Implement queue persistence and transitions**
+- [x] **Step 3: Implement queue persistence and transitions**
 
 Add queue paths to `src/core/store.js`, then create `src/core/sync-queue.js` with these exports:
 
@@ -661,7 +661,7 @@ Use a deterministic SHA-256-derived ID from `entityType:entityKey`, one file per
 
 Do not execute any remote operation from this module.
 
-- [ ] **Step 4: Run queue tests**
+- [x] **Step 4: Run queue tests**
 
 Run:
 
@@ -671,7 +671,7 @@ node --test test/sync-queue.test.js test/sync-audit.test.js
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the queue module**
+- [x] **Step 5: Commit the queue module**
 
 ```bash
 git add src/core/store.js src/core/sync-queue.js test/sync-queue.test.js
