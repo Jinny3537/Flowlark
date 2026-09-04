@@ -15,6 +15,7 @@ import Milestones from './pages/Milestones';
 import MilestoneDetail from './pages/MilestoneDetail';
 import NotFound from './pages/NotFound';
 import PrototypeEditor from './pages/PrototypeEditor';
+import ProjectSyncSettings from './pages/ProjectSyncSettings';
 import ProjectVersions from './pages/ProjectVersions';
 import Projects from './pages/Projects';
 import RequirementDetail from './pages/RequirementDetail';
@@ -34,6 +35,7 @@ function AppRoutes() {
         <Route path="/actions" element={<ActionCenter />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:slug" element={<ProjectVersions />} />
+        <Route path="/projects/:slug/sync" element={<ProjectSyncSettings />} />
         <Route path="/projects/:slug/compare" element={<Compare />} />
         <Route path="/projects/:slug/versions/:versionNo" element={<VersionWorkbench />} />
         <Route path="/search" element={<Search />} />

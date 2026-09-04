@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Alert, App, Badge, Button, Checkbox, Divider, Dropdown, Empty, Form, Input, Modal, Select, Space, Switch, Tag } from 'antd';
-import { ArrowRightOutlined, EditOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, EditOutlined, MoreOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
@@ -178,15 +178,19 @@ export default function Projects() {
                     <Dropdown
                       trigger={['click']}
                       menu={{
-                        items: [{ key: 'edit', label: '编辑项目', icon: <EditOutlined /> }],
-                        onClick: () => startEdit(item),
+                        items: [
+                          { key: 'edit', label: '编辑项目', icon: <EditOutlined />, disabled: !writable },
+                          { key: 'sync', label: '同步设置', icon: <SyncOutlined /> },
+                        ],
+                        onClick: ({ key }) => key === 'edit'
+                          ? startEdit(item)
+                          : navigate(`/projects/${encodeURIComponent(item.slug)}/sync`),
                       }}
                     >
                       <Button
                         className="fl-project-entry-more"
                         type="text"
                         icon={<MoreOutlined />}
-                        disabled={!writable}
                         aria-label={`更多项目操作：${item.name}`}
                       />
                     </Dropdown>

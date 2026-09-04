@@ -1085,7 +1085,7 @@ git commit -m "feat: add synchronization center"
 - Modify: `web/src/main.tsx`
 - Modify: `web/src/styles/global.css`
 
-- [ ] **Step 1: Write failing project sync model tests**
+- [x] **Step 1: Write failing project sync model tests**
 
 Create `web/src/pages/projectSyncModel.test.js`:
 
@@ -1113,7 +1113,7 @@ test('explains that trusted mode is not active in v0.7.2', () => {
 })
 ```
 
-- [ ] **Step 2: Verify the model tests fail**
+- [x] **Step 2: Verify the model tests fail**
 
 Run:
 
@@ -1123,11 +1123,11 @@ node --test web/src/pages/projectSyncModel.test.js
 
 Expected: FAIL because the model does not exist.
 
-- [ ] **Step 3: Implement the form model**
+- [x] **Step 3: Implement the form model**
 
 Create `web/src/pages/projectSyncModel.js` with deterministic defaults, nested payload generation, managed-field labels, and trusted-mode explanatory copy. It must never label trusted mode as active in `v0.7.2`, even when readiness probes pass.
 
-- [ ] **Step 4: Build the project settings page**
+- [x] **Step 4: Build the project settings page**
 
 Create `web/src/pages/ProjectSyncSettings.tsx` at `/projects/:slug/sync`. It must:
 
@@ -1140,7 +1140,7 @@ Create `web/src/pages/ProjectSyncSettings.tsx` at `/projects/:slug/sync`. It mus
 - disable save in read-only mode;
 - preserve the current project data when MCP configuration fails to load.
 
-- [ ] **Step 5: Register and link the settings page**
+- [x] **Step 5: Register and link the settings page**
 
 In `web/src/main.tsx` add:
 
@@ -1150,7 +1150,7 @@ In `web/src/main.tsx` add:
 
 In the project card menu in `web/src/pages/Projects.tsx`, add “同步设置” and route to `/projects/<slug>/sync`. Keep the existing edit action unchanged.
 
-- [ ] **Step 6: Add responsive styles and run tests**
+- [x] **Step 6: Add responsive styles and run tests**
 
 Run:
 
@@ -1161,7 +1161,7 @@ npm run build:web
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit project settings**
+- [x] **Step 7: Commit project settings**
 
 ```bash
 git add web/src/pages/projectSyncModel.js web/src/pages/projectSyncModel.test.js web/src/pages/ProjectSyncSettings.tsx web/src/pages/Projects.tsx web/src/main.tsx web/src/styles/global.css
