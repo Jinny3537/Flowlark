@@ -92,7 +92,7 @@ test('plans a task move without updating unchanged owned fields', () => {
   assert.equal(result.operations.filter((operation) => operation.kind === 'task.move').length, 1)
 })
 
-test('detects out-of-band drift and requires an explicit resolution', () => {
+test('detects out-of-band drift and only restore-local resolves it as high risk', () => {
   const initial = buildMilestoneSyncPlan(context())
   const taskCreate = initial.operations.find((operation) => operation.kind === 'task.create')
   const milestone = structuredClone(baseMilestone)
@@ -113,9 +113,17 @@ test('detects out-of-band drift and requires an explicit resolution', () => {
     remoteTasks: [remote],
     resolutions: { 'task:20': 'accept-remote' }
   }))
-  assert.equal(resolved.blockers.some((item) => item.code === 'REMOTE_DRIFT'), false)
-  const accept = resolved.operations.find((operation) => operation.kind === 'local.accept-remote')
-  assert.equal(accept.localPatch.title, '平台人工改名')
+  assert.ok(resolved.blockers.some((item) => item.code === 'REMOTE_DRIFT'))
+  assert.equal(resolved.operations.some((operation) => operation.kind === 'local.accept-remote'), false)
+
+  const restored = buildMilestoneSyncPlan(context({
+    milestone,
+    requirements: [localRequirement],
+    remoteTasks: [remote],
+    resolutions: { 'task:20': 'restore-local' }
+  }))
+  assert.equal(restored.blockers.some((item) => item.code === 'REMOTE_DRIFT'), false)
+  assert.equal(restored.operations.find((operation) => operation.kind === 'task.update').risk, 'high')
 })
 
 test('adds high-risk lifecycle operations after synchronization work', () => {
@@ -140,4 +148,202 @@ test('moves a previously managed task out when it leaves local scope', () => {
   assert.equal(move.kind, 'task.move')
   assert.equal(move.after.sprintId, null)
   assert.equal(move.risk, 'high')
+})
+
+test('plan hash covers authority, normalized managed fields, lifecycle status and remote observations', () => {
+  const options = {
+    ...context(),
+    managedFields: ['title', 'status'],
+    mapping: { ...mapping, statuses: { draft: 0, confirmed: 1 } }
+  }
+  const base = buildMilestoneSyncPlan(options)
+  assert.equal(base.hash, buildMilestoneSyncPlan({ ...options, managedFields: ['status', 'title', 'title'] }).hash)
+  assert.notEqual(base.hash, buildMilestoneSyncPlan({ ...options, mapping: { ...options.mapping, server: 'other-server' } }).hash)
+  assert.notEqual(base.hash, buildMilestoneSyncPlan({ ...options, mapping: { ...options.mapping, projectId: 456 } }).hash)
+  assert.notEqual(base.hash, buildMilestoneSyncPlan({ ...options, managedFields: ['title'] }).hash)
+  assert.notEqual(base.hash, buildMilestoneSyncPlan({
+    ...options,
+    requirements: [{ ...requirement, status: 'confirmed' }]
+  }).hash)
+
+  const sprintCreate = base.operations.find((operation) => operation.kind === 'sprint.create')
+  const taskCreate = base.operations.find((operation) => operation.kind === 'task.create')
+  const boundMilestone = {
+    ...structuredClone(baseMilestone),
+    external: {
+      provider: 'assess-task', server: mapping.server, projectId: 123,
+      sprintId: 10, lastSyncHash: sprintCreate.contentHash
+    }
+  }
+  const observed = {
+    ...options,
+    milestone: boundMilestone,
+    requirements: [{
+      ...requirement,
+      externalTasks: [{
+        provider: 'assess-task', server: mapping.server, projectId: 123,
+        taskId: 20, lastSyncHash: taskCreate.contentHash
+      }]
+    }],
+    remoteSprint: { id: 10, revision: 3, status: 'planned', ...sprintCreate.after },
+    remoteTasks: [{ id: 20, revision: 5, status: 0, sprintId: 10, ...taskCreate.after }]
+  }
+  const first = buildMilestoneSyncPlan(observed)
+  assert.notEqual(first.hash, buildMilestoneSyncPlan({
+    ...observed,
+    remoteSprint: { ...observed.remoteSprint, revision: 4 }
+  }).hash)
+  assert.notEqual(first.hash, buildMilestoneSyncPlan({
+    ...observed,
+    remoteSprint: { ...observed.remoteSprint, status: 'active' }
+  }).hash)
+  assert.notEqual(first.hash, buildMilestoneSyncPlan({
+    ...observed,
+    remoteTasks: [{ ...observed.remoteTasks[0], revision: 6 }]
+  }).hash)
+  assert.notEqual(first.hash, buildMilestoneSyncPlan({
+    ...observed,
+    remoteTasks: [{ ...observed.remoteTasks[0], status: 9 }]
+  }).hash)
+})
+
+test('existing task and sprint compare only managed fields and update with managed patches', () => {
+  const initial = buildMilestoneSyncPlan(context({ managedFields: ['title'] }))
+  const sprintCreate = initial.operations.find((operation) => operation.kind === 'sprint.create')
+  const taskCreate = initial.operations.find((operation) => operation.kind === 'task.create')
+  const milestone = {
+    ...structuredClone(baseMilestone),
+    external: {
+      provider: 'assess-task', server: mapping.server, projectId: 123,
+      sprintId: 10, lastSyncHash: sprintCreate.contentHash
+    }
+  }
+  const localRequirement = {
+    ...structuredClone(requirement),
+    externalTasks: [{
+      provider: 'assess-task', server: mapping.server, projectId: 123,
+      taskId: 20, revision: 2, lastSyncHash: taskCreate.contentHash
+    }]
+  }
+  const remoteSprint = {
+    id: 10, revision: 3, ...sprintCreate.after,
+    sprintGoal: '平台保留目标', ownerId: 999
+  }
+  const remoteTask = {
+    id: 20, revision: 2, sprintId: 10, ...taskCreate.after,
+    descriptionDoc: '平台保留说明', acceptanceDoc: '平台保留验收', priority: 9,
+    assigneeId: 999, status: 8
+  }
+  const unchanged = buildMilestoneSyncPlan(context({
+    milestone, requirements: [localRequirement], remoteSprint, remoteTasks: [remoteTask], managedFields: ['title']
+  }))
+  assert.equal(unchanged.operations.some((operation) => operation.kind.endsWith('.update')), false)
+
+  const changed = buildMilestoneSyncPlan(context({
+    milestone,
+    requirements: [{ ...localRequirement, title: '本地新标题' }],
+    remoteSprint: { ...remoteSprint, sprintName: '平台改名' },
+    remoteTasks: [remoteTask],
+    managedFields: ['title'],
+    resolutions: { 'sprint:10': 'restore-local' }
+  }))
+  assert.deepEqual(changed.operations.find((operation) => operation.kind === 'sprint.update').after, {
+    sprintName: '订单迭代',
+    planStartDate: '2026-08-01T00:00:00+08:00',
+    planEndDate: '2026-08-21T00:00:00+08:00'
+  })
+  assert.deepEqual(changed.operations.find((operation) => operation.kind === 'task.update').after, {
+    title: '[REQ-1] 本地新标题',
+    planStartDate: '2026-08-01T00:00:00+08:00',
+    planEndDate: '2026-08-18T00:00:00+08:00'
+  })
+})
+
+test('schedule fields always participate in hashes, drift, and update patches', () => {
+  const initial = buildMilestoneSyncPlan(context({ managedFields: [] }))
+  const sprintCreate = initial.operations.find((operation) => operation.kind === 'sprint.create')
+  const taskCreate = initial.operations.find((operation) => operation.kind === 'task.create')
+  assert.notEqual(
+    hashProjection(taskCreate.after, 'task', []),
+    hashProjection({ ...taskCreate.after, planEndDate: '2026-08-19T00:00:00+08:00' }, 'task', [])
+  )
+
+  const milestone = {
+    ...structuredClone(baseMilestone),
+    external: {
+      provider: 'assess-task', server: mapping.server, projectId: 123,
+      sprintId: 10, lastSyncHash: sprintCreate.contentHash
+    }
+  }
+  const localRequirement = {
+    ...structuredClone(requirement),
+    externalTasks: [{
+      provider: 'assess-task', server: mapping.server, projectId: 123,
+      taskId: 20, revision: 2, lastSyncHash: taskCreate.contentHash
+    }]
+  }
+  const changed = buildMilestoneSyncPlan(context({
+    milestone: { ...milestone, startAt: '2026-08-02', endAt: '2026-08-22' },
+    requirements: [{ ...localRequirement, dueDate: '2026-08-20' }],
+    remoteSprint: { id: 10, revision: 3, ...sprintCreate.after },
+    remoteTasks: [{ id: 20, revision: 2, sprintId: 10, ...taskCreate.after }],
+    managedFields: []
+  }))
+  assert.deepEqual(changed.operations.find((operation) => operation.kind === 'sprint.update').after, {
+    planStartDate: '2026-08-02T00:00:00+08:00',
+    planEndDate: '2026-08-22T00:00:00+08:00'
+  })
+  assert.deepEqual(changed.operations.find((operation) => operation.kind === 'task.update').after, {
+    planStartDate: '2026-08-02T00:00:00+08:00',
+    planEndDate: '2026-08-20T00:00:00+08:00'
+  })
+
+  const remoteDrift = buildMilestoneSyncPlan(context({
+    milestone,
+    requirements: [localRequirement],
+    remoteSprint: { id: 10, revision: 4, ...sprintCreate.after, planEndDate: '2026-09-01T00:00:00+08:00' },
+    remoteTasks: [{ id: 20, revision: 3, sprintId: 10, ...taskCreate.after, planEndDate: '2026-09-01T00:00:00+08:00' }],
+    managedFields: []
+  }))
+  assert.equal(remoteDrift.blockers.filter((item) => item.code === 'REMOTE_DRIFT').length, 2)
+})
+
+test('maps status explicitly, blocks missing mappings, and keeps delivery warning-only', () => {
+  const local = { ...structuredClone(requirement), status: 'confirmed', dueDate: '2026-09-30' }
+  const blocked = buildMilestoneSyncPlan(context({
+    requirements: [local], managedFields: ['status', 'delivery']
+  }))
+  assert.ok(blocked.blockers.some((item) => item.code === 'TASK_STATUS_UNMAPPED'))
+  assert.ok(blocked.warnings.some((item) => item.code === 'DELIVERY_SYNC_UNSUPPORTED'))
+
+  const mapped = buildMilestoneSyncPlan(context({
+    requirements: [local],
+    managedFields: ['delivery', 'status'],
+    mapping: { ...mapping, statuses: { confirmed: 4 } }
+  }))
+  const create = mapped.operations.find((operation) => operation.kind === 'task.create')
+  assert.equal(create.after.status, 4)
+  assert.equal(create.after.planEndDate, '2026-09-30T00:00:00+08:00')
+  assert.ok(mapped.warnings.some((item) => item.code === 'DELIVERY_SYNC_UNSUPPORTED'))
+})
+
+test('create bodies stay complete while sprint ownership follows managed field mappings', () => {
+  const result = buildMilestoneSyncPlan(context({
+    managedFields: ['assignee', 'description', 'title'],
+    mapping: { ...mapping, members: { ...mapping.members, pm: 11 } }
+  }))
+  const sprint = result.operations.find((operation) => operation.kind === 'sprint.create').after
+  const task = result.operations.find((operation) => operation.kind === 'task.create').after
+  assert.deepEqual(sprint, {
+    projectId: 123,
+    ownerId: 11,
+    sprintName: '订单迭代',
+    sprintGoal: '完成订单联调',
+    planStartDate: '2026-08-01T00:00:00+08:00',
+    planEndDate: '2026-08-21T00:00:00+08:00'
+  })
+  assert.deepEqual(Object.keys(task).sort(), [
+    'acceptanceDoc', 'assigneeId', 'currentSprintId', 'descriptionDoc', 'planEndDate',
+    'planStartDate', 'priority', 'projectId', 'taskType', 'title'
+  ])
 })

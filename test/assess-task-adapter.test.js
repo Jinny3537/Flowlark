@@ -66,14 +66,16 @@ function fakeSession() {
     [mapping.projectCapabilities]: { data: { canManageSprint: true, canManageProject: false } },
     [mapping.listMembers]: { items: [{ userId: 7, account: 'zhangsan', userName: '张三' }] },
     [mapping.listSprints]: { data: { records: [{ sprintId: 9, sprintName: 'S12', revision: 3, status: 1, planStartDate: '2026-08-01T00:00:00+08:00', planEndDate: '2026-08-21T00:00:00+08:00' }] } },
-    [mapping.getSprint]: { data: { sprintId: 9, sprintName: 'S12', sprintGoal: '完成联调', revision: 3, status: 1 } },
+    [mapping.getSprint]: { data: { sprintId: 9, sprintName: 'S12', sprintGoal: '完成联调', revision: 3, status: 1, customField: 'sprint-keep' } },
     [mapping.listTasks]: { data: { rows: [{ taskId: 21, taskCode: 'TASK-21', title: '任务', revision: 4, currentSprintId: 9, status: 2 }] } },
-    [mapping.getTask]: { data: { taskId: 21, taskCode: 'TASK-21', title: '任务', revision: 4, currentSprintId: 9, status: 2 } }
+    [mapping.getTask]: { data: { taskId: 21, taskCode: 'TASK-21', title: '任务', revision: 4, currentSprintId: 9, status: 2, customField: 'task-keep' } }
   }
   return {
     calls,
     async callTool(name, args) {
       calls.push({ name, args })
+      if (name === mapping.updateTask) return { data: args.body }
+      if (name === mapping.saveSprint) return { data: args.body }
       return responses[name]
     }
   }
@@ -111,7 +113,11 @@ test('normalizes identity, projects, members, sprints and tasks', async () => {
     revision: 3,
     startAt: '2026-08-01T00:00:00+08:00',
     endAt: '2026-08-21T00:00:00+08:00',
-    ownerId: null
+    ownerId: null,
+    raw: {
+      sprintId: 9, sprintName: 'S12', revision: 3, status: 1,
+      planStartDate: '2026-08-01T00:00:00+08:00', planEndDate: '2026-08-21T00:00:00+08:00'
+    }
   })
   assert.deepEqual((await adapter.listTasks({ sprintId: 9 }))[0], {
     id: 21,
@@ -127,9 +133,32 @@ test('normalizes identity, projects, members, sprints and tasks', async () => {
     sprintId: 9,
     assigneeId: null,
     planStartDate: null,
-    planEndDate: null
+    planEndDate: null,
+    raw: {
+      taskId: 21, taskCode: 'TASK-21', title: '任务', revision: 4,
+      currentSprintId: 9, status: 2
+    }
   })
   assert.ok(session.calls.some((item) => item.name === mapping.listTasks && item.args.projectId === 123 && item.args.sprintIds[0] === 9))
+})
+
+test('retains raw remote fields and forwards merged update bodies unchanged', async () => {
+  const session = fakeSession()
+  const adapter = createAssessTaskAdapter({ session, tools: contractTools(), mapping, projectId: 123, write: true })
+  const sprint = await adapter.getSprint(9)
+  const task = await adapter.getTask(21)
+  assert.equal(sprint.raw.customField, 'sprint-keep')
+  assert.equal(task.raw.customField, 'task-keep')
+
+  const body = {
+    ...task.raw,
+    taskId: 21,
+    revision: 4,
+    title: '本地标题',
+    customField: 'task-keep'
+  }
+  await adapter.updateTask(body)
+  assert.deepEqual(session.calls.at(-1), { name: mapping.updateTask, args: { body } })
 })
 
 test('rejects a non-numeric configured project id', () => {

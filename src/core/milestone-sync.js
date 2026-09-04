@@ -254,7 +254,12 @@ async function runOperation({ root, milestoneName, plan, operation, reason, conf
   if (operation.kind === 'sprint.update') {
     const binding = requiredSprintBinding(root, milestoneName)
     const current = await adapter.getSprint(binding.sprintId)
-    return adapter.saveSprint({ ...operation.after, id: binding.sprintId, revision: current.revision })
+    return adapter.saveSprint({
+      ...sprintUpdateBase(current),
+      ...operation.after,
+      id: binding.sprintId,
+      revision: current.revision
+    })
   }
   if (operation.kind === 'task.create') {
     const sprint = requiredSprintBinding(root, milestoneName)
@@ -263,7 +268,12 @@ async function runOperation({ root, milestoneName, plan, operation, reason, conf
   if (operation.kind === 'task.update') {
     const binding = requiredTaskBinding(root, operation.requirement, plan)
     const current = await adapter.getTask(binding.taskId)
-    return adapter.updateTask({ ...operation.after, id: binding.taskId, revision: current.revision })
+    return adapter.updateTask({
+      ...taskUpdateBase(current),
+      ...operation.after,
+      id: binding.taskId,
+      revision: current.revision
+    })
   }
   if (operation.kind === 'task.move') {
     const current = await adapter.getTask(operation.taskId)
@@ -291,34 +301,19 @@ async function runOperation({ root, milestoneName, plan, operation, reason, conf
     if (operation.kind === 'sprint.cancel') await adapter.cancelSprint(body)
     return adapter.getSprint(binding.sprintId)
   }
-  if (operation.kind === 'local.accept-remote') {
-    if (operation.entity === 'sprint') {
-      const current = milestones.readMilestone(root, milestoneName)
-      milestones.updateMilestone(root, milestoneName, {
-        ...operation.localPatch,
-        external: {
-          ...current.external,
-          lastSyncHash: operation.contentHash,
-          syncedAt: new Date().toISOString()
-        }
-      }, { system: true })
-      return { local: true, entity: 'sprint' }
-    }
-    if (operation.entity === 'task') {
-      requirements.updateRequirement(root, operation.requirement, operation.localPatch || {})
-      const binding = requiredTaskBinding(root, operation.requirement, plan)
-      requirements.upsertExternalTask(root, operation.requirement, {
-        ...binding,
-        lastSyncHash: operation.contentHash,
-        syncedAt: new Date().toISOString()
-      })
-      return { local: true, entity: 'task' }
-    }
-    throw err.bad('MCP_SYNC_OPERATION_INVALID', '接受平台值缺少对象类型')
-  }
   if (operation.kind === 'local.scope-change') return { local: true, entity: 'scope' }
   if (operation.kind === 'conflict') throw err.conflict('MCP_SYNC_CONFLICT', '同步计划包含未解决冲突')
   throw err.bad('MCP_SYNC_OPERATION_INVALID', `不支持的同步操作：${operation.kind}`)
+}
+
+function sprintUpdateBase(current = {}) {
+  const { raw, ...normalized } = current
+  return raw && typeof raw === 'object' ? { ...raw } : normalized
+}
+
+function taskUpdateBase(current = {}) {
+  const { raw, ...normalized } = current
+  return raw && typeof raw === 'object' ? { ...raw } : normalized
 }
 
 async function persistOperationResult({ root, milestoneName, plan, operation, result, adapter }) {

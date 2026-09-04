@@ -19,7 +19,7 @@ import * as requirements from '../src/core/requirements.js'
 const dirs = []
 after(() => dirs.forEach(cleanup))
 
-function fixture({ action = null } = {}) {
+function fixture({ action = null, managedFields } = {}) {
   const { root, hub } = newHub()
   dirs.push(root)
   hub.createProject({ name: '订单', code: 'orders' })
@@ -38,7 +38,7 @@ function fixture({ action = null } = {}) {
     priorities: { P1: 1 }, members: { dev: 8 }, timezoneOffset: '+08:00'
   }
   const plan = buildMilestoneSyncPlan({
-    milestone, requirements: [requirement], mapping, action
+    milestone, requirements: [requirement], mapping, action, managedFields
   })
   return { root, hub, plan, mapping }
 }
@@ -367,26 +367,81 @@ test('refreshes the remote revision before updating a sprint', async () => {
   assert.equal(saves[1][1].revision, 1)
 })
 
-test('accepts a reviewed remote task value as an explicit local edit', async () => {
-  const { root, plan, mapping } = fixture()
+test('rejects legacy accept-remote operations without changing local authority', async () => {
+  const { root, plan } = fixture()
   const remote = adapter()
   await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
-  remote.state.task.title = '[REQ-1] 平台调整标题'
-  remote.state.task.descriptionDoc = '平台调整说明'
-  remote.state.task.revision++
+  const legacy = {
+    ...plan,
+    hash: 'sha256:legacy-accept-remote',
+    operations: [{
+      key: 'task:20:accept-remote', kind: 'local.accept-remote', entity: 'task',
+      requirement: 'REQ-1', localPatch: { title: '平台调整标题' }, dependsOn: []
+    }]
+  }
+
+  await assert.rejects(
+    executeMilestoneSync({ root, milestoneName: 'S1', plan: legacy, confirmed: true, adapter: remote }),
+    (error) => error.code === 'MCP_SYNC_OPERATION_INVALID'
+  )
+  const local = requirements.readRequirement(root, 'REQ-1')
+  assert.equal(local.title, '需求一')
+})
+
+test('merges managed task and sprint updates into fresh remote bodies', async () => {
+  const { root, plan, mapping } = fixture({ managedFields: ['description', 'title'] })
+  const remote = adapter()
+  await executeMilestoneSync({ root, milestoneName: 'S1', plan, confirmed: true, adapter: remote })
+
+  requirements.updateRequirement(root, 'REQ-1', { title: '本地新标题' })
+  requirements.updateRequirement(root, 'REQ-1', { dueDate: '2026-08-20' })
+  milestones.updateMilestone(root, 'S1', {
+    goal: '本地新目标', startAt: '2026-08-02', endAt: '2026-08-22'
+  })
+  remote.state.task.descriptionDoc = '平台保留说明'
+  remote.state.task.acceptanceDoc = '平台保留验收'
+  remote.state.task.customField = 'task-keep'
+  remote.state.task.planStartDate = '2026-09-01T00:00:00+08:00'
+  remote.state.task.planEndDate = '2026-09-02T00:00:00+08:00'
+  remote.state.task.revision = 6
+  remote.state.sprint.sprintName = '平台保留名称'
+  remote.state.sprint.ownerId = 99
+  remote.state.sprint.customField = 'sprint-keep'
+  remote.state.sprint.planStartDate = '2026-09-01T00:00:00+08:00'
+  remote.state.sprint.planEndDate = '2026-09-02T00:00:00+08:00'
+  remote.state.sprint.revision = 7
+
   const nextPlan = buildMilestoneSyncPlan({
     milestone: milestones.inspectMilestone(root, 'S1'),
     requirements: [{ ...requirements.requirementDetail(root, 'REQ-1'), spec: '# 验收' }],
     remoteSprint: await remote.getSprint(10),
     remoteTasks: [await remote.getTask(20)],
     mapping,
-    resolutions: { 'task:20': 'accept-remote' }
+    managedFields: ['description', 'title'],
+    resolutions: { 'sprint:10': 'restore-local', 'task:20': 'restore-local' }
   })
-  assert.ok(nextPlan.operations.some((operation) => operation.kind === 'local.accept-remote'))
-  await executeMilestoneSync({ root, milestoneName: 'S1', plan: nextPlan, confirmed: true, adapter: remote })
-  const local = requirements.readRequirement(root, 'REQ-1')
-  assert.equal(local.title, '平台调整标题')
-  assert.equal(local.description, '平台调整说明')
+  await executeMilestoneSync({
+    root, milestoneName: 'S1', plan: nextPlan, confirmed: true,
+    reason: '恢复本地权威字段', adapter: remote
+  })
+
+  const sprintUpdate = remote.calls.filter(([name]) => name === 'saveSprint').at(-1)[1]
+  assert.equal(sprintUpdate.sprintName, '迭代一')
+  assert.equal(sprintUpdate.sprintGoal, '本地新目标')
+  assert.equal(sprintUpdate.ownerId, 99)
+  assert.equal(sprintUpdate.customField, 'sprint-keep')
+  assert.equal(sprintUpdate.planStartDate, '2026-08-02T00:00:00+08:00')
+  assert.equal(sprintUpdate.planEndDate, '2026-08-22T00:00:00+08:00')
+  assert.equal(sprintUpdate.revision, 7)
+
+  const taskUpdate = remote.calls.find(([name]) => name === 'updateTask')[1]
+  assert.equal(taskUpdate.title, '[REQ-1] 本地新标题')
+  assert.equal(taskUpdate.descriptionDoc, '说明\n\n关联原型：\n- orders/v1')
+  assert.equal(taskUpdate.acceptanceDoc, '平台保留验收')
+  assert.equal(taskUpdate.customField, 'task-keep')
+  assert.equal(taskUpdate.planStartDate, '2026-08-02T00:00:00+08:00')
+  assert.equal(taskUpdate.planEndDate, '2026-08-20T00:00:00+08:00')
+  assert.equal(taskUpdate.revision, 6)
 })
 
 test('applies a confirmed active scope draft only after remote verification', async () => {

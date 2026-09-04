@@ -387,7 +387,7 @@ test('retry never repeats a create whose remote response failed MCP protocol par
   t.assert.strictEqual(isolatedRemote.state.calls.filter(([name]) => name === 'saveSprint').length, 1)
 })
 
-test('sync center applies persisted drift resolutions and ignores browser resolution pollution', async (t) => {
+test('sync center keeps Flowlark authoritative and ignores browser resolution pollution', async (t) => {
   const ctx = newHub()
   const isolatedRoot = ctx.root
   t.after(() => cleanup(isolatedRoot))
@@ -410,22 +410,14 @@ test('sync center applies persisted drift resolutions and ignores browser resolu
   await isolatedHub.executeSyncRecord(preview.syncId, { planHash: preview.hash })
 
   const remoteTask = isolatedRemote.state.tasks.get(20)
-  isolatedRemote.state.tasks.set(20, { ...remoteTask, title: '[REQ-DRIFT] Remote accepted', revision: 2 })
+  isolatedRemote.state.tasks.set(20, { ...remoteTask, title: '[REQ-DRIFT] Remote drift', revision: 2 })
   preview = await isolatedHub.planMilestoneSync('DRIFT', {
     resolutions: { 'task:20': 'accept-remote' }
   })
   let record = findSyncRecord(isolatedRoot, 'milestone', 'DRIFT')
-  t.assert.deepStrictEqual(record.intent.resolutions, { 'task:20': 'accept-remote' })
-  isolatedRemote.state.calls.length = 0
-  await isolatedHub.executeSyncRecord(record.id, {
-    planHash: preview.hash,
-    resolutions: { 'task:20': 'restore-local' }
-  })
-  t.assert.strictEqual(ctx.hub.getRequirement('REQ-DRIFT').title, 'Remote accepted')
-  t.assert.strictEqual(isolatedRemote.state.calls.some(([name]) => name === 'updateTask'), false)
+  t.assert.deepStrictEqual(record.intent.resolutions, {})
+  t.assert.ok(preview.blockers.some((item) => item.code === 'REMOTE_DRIFT'))
 
-  const accepted = isolatedRemote.state.tasks.get(20)
-  isolatedRemote.state.tasks.set(20, { ...accepted, title: '[REQ-DRIFT] Remote rejected', revision: 3 })
   preview = await isolatedHub.planMilestoneSync('DRIFT', {
     resolutions: { 'task:20': 'restore-local' }
   })
@@ -437,8 +429,8 @@ test('sync center applies persisted drift resolutions and ignores browser resolu
     resolutions: { 'task:20': 'accept-remote' }
   })
   t.assert.ok(isolatedRemote.state.calls.some(([name]) => name === 'updateTask'))
-  t.assert.strictEqual(isolatedRemote.state.tasks.get(20).title, '[REQ-DRIFT] Remote accepted')
-  t.assert.strictEqual(ctx.hub.getRequirement('REQ-DRIFT').title, 'Remote accepted')
+  t.assert.strictEqual(isolatedRemote.state.tasks.get(20).title, '[REQ-DRIFT] Local title')
+  t.assert.strictEqual(ctx.hub.getRequirement('REQ-DRIFT').title, 'Local title')
 })
 
 test('cancel requires a reason and only cancels an eligible record', async (t) => {

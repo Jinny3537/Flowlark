@@ -245,10 +245,10 @@ git commit -m "feat: resolve project synchronization targets"
 - Modify: `test/milestone-sync.test.js`
 - Modify: `test/assess-task-adapter.test.js`
 
-- [ ] Add failing tests proving server, project ID, managed fields, requirement status, and remote revisions change plan hash.
-- [ ] Add `managedFields` and status mapping to planner input and the semantic hash.
-- [ ] For existing tasks compare only managed fields; preserve all remote non-managed values in update bodies.
-- [ ] Apply mappings:
+- [x] Add failing tests proving server, project ID, managed fields, requirement status, and remote revisions change plan hash.
+- [x] Add `managedFields` and status mapping to planner input and the semantic hash.
+- [x] For existing tasks compare only managed fields; preserve all remote non-managed values in update bodies.
+- [x] Apply mappings:
 
 ```text
 title       → task title / Sprint name
@@ -261,17 +261,17 @@ status      → task status through capability.options.statuses
 delivery    → warning only in v0.7.3, no remote write
 ```
 
-- [ ] Block status-managed plans without an explicit mapping for every lifecycle state used by the plan.
-- [ ] Remove `accept-remote` planning and execution. Keep only `restore-local` for drift, marked high risk.
-- [ ] Keep create bodies complete enough for platform-required fields, while updates mutate only managed fields.
-- [ ] Keep one operation per task move; a single confirmed milestone plan remains the batch user action.
-- [ ] Run:
+- [x] Block status-managed plans without an explicit mapping for every lifecycle state used by the plan.
+- [x] Remove `accept-remote` planning and execution. Keep only `restore-local` for drift, marked high risk.
+- [x] Keep create bodies complete enough for platform-required fields, while updates mutate only managed fields.
+- [x] Keep one operation per task move; a single confirmed milestone plan remains the batch user action.
+- [x] Run:
 
 ```bash
 node --test test/milestone-sync-plan.test.js test/milestone-sync.test.js test/assess-task-adapter.test.js
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/core/milestone-sync-plan.js src/core/milestone-sync.js src/core/integrations/assess-task/adapter.js test/milestone-sync-plan.test.js test/milestone-sync.test.js test/assess-task-adapter.test.js

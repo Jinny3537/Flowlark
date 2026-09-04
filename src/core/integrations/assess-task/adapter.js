@@ -159,7 +159,8 @@ function normalizeSprint(raw) {
     revision: numberOrNull(item.revision),
     startAt: item.startAt || item.planStartDate || item.startDate || null,
     endAt: item.endAt || item.planEndDate || item.endDate || null,
-    ownerId: numberOrNull(item.ownerId)
+    ownerId: numberOrNull(item.ownerId),
+    raw: { ...item }
   }
 }
 
@@ -180,7 +181,8 @@ function normalizeTask(raw) {
     sprintId: numberOrNull(item.sprintId ?? item.currentSprintId),
     assigneeId: numberOrNull(item.assigneeId),
     planStartDate: item.planStartDate || null,
-    planEndDate: item.planEndDate || null
+    planEndDate: item.planEndDate || null,
+    raw: { ...item }
   }
 }
 

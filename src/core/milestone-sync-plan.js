@@ -2,6 +2,12 @@ import crypto from 'node:crypto'
 
 const PLAN_TTL_MS = 15 * 60 * 1000
 const PROVIDER = 'assess-task'
+const LEGACY_MANAGED_FIELDS = Object.freeze([
+  'title', 'description', 'acceptance', 'priority', 'assignee', 'sprint'
+])
+const SUPPORTED_MANAGED_FIELDS = new Set([
+  ...LEGACY_MANAGED_FIELDS, 'status', 'delivery'
+])
 
 export function buildMilestoneSyncPlan({
   milestone,
@@ -10,6 +16,7 @@ export function buildMilestoneSyncPlan({
   remoteTasks = [],
   managedTaskBindings = [],
   mapping = {},
+  managedFields,
   action = null,
   scopeItems = null,
   scopeChangeReason = '',
@@ -18,6 +25,8 @@ export function buildMilestoneSyncPlan({
 } = {}) {
   const normalizedAction = ['start', 'end', 'cancel'].includes(String(action || '')) ? String(action) : null
   const normalizedResolutions = normalizeResolutions(resolutions)
+  const normalizedManagedFields = normalizeManagedFields(managedFields ?? mapping.managedFields)
+  const managed = new Set(normalizedManagedFields)
   const blockers = []
   const warnings = []
   const operations = []
@@ -34,15 +43,17 @@ export function buildMilestoneSyncPlan({
   const ownerId = positiveId(mapping.ownerId)
   const taskType = positiveId(mapping.taskType)
   if (!projectId) blockers.push(problem('ASSESS_PROJECT_REQUIRED', '尚未选择平台项目', 'mapping.projectId'))
-  if (!ownerId) blockers.push(problem('SPRINT_OWNER_REQUIRED', '尚未选择冲刺负责人', 'mapping.ownerId'))
-  if (!taskType) blockers.push(problem('TASK_TYPE_REQUIRED', '尚未配置默认任务类型', 'mapping.taskType'))
+  if (managed.has('delivery')) {
+    warnings.push(problem('DELIVERY_SYNC_UNSUPPORTED', 'v0.7.3 暂不回写交付日期', 'mapping.managedFields'))
+  }
 
-  const sprintAfter = sprintProjection(milestone, { projectId, ownerId, timezoneOffset: mapping.timezoneOffset })
-  validateSprintProjection(sprintAfter, blockers)
-  const sprintHash = hashProjection(sprintAfter, 'sprint')
   const sprintBinding = milestone.external && Number(milestone.external.projectId) === projectId
     ? milestone.external
     : null
+  const sprintOwnerId = assigneeIdFor(milestone.owner, mapping) || ownerId
+  const sprintAfter = sprintProjection(milestone, { projectId, ownerId: sprintOwnerId, timezoneOffset: mapping.timezoneOffset })
+  validateSprintProjection(sprintAfter, blockers, { create: !sprintBinding?.sprintId, managed })
+  const sprintHash = hashProjection(sprintAfter, 'sprint', normalizedManagedFields)
 
   if (!sprintBinding?.sprintId) {
     addOperation(operations, summary, {
@@ -64,7 +75,7 @@ export function buildMilestoneSyncPlan({
       remote: remoteSprint,
       lastSyncHash: sprintBinding.lastSyncHash,
       resolution: normalizedResolutions[`sprint:${sprintBinding.sprintId}`],
-      acceptPatch: sprintLocalPatch(remoteSprint),
+      managedFields: normalizedManagedFields,
       operations,
       blockers,
       summary
@@ -83,17 +94,19 @@ export function buildMilestoneSyncPlan({
       blockers.push(problem('MILESTONE_REQUIREMENT_MISSING', `需求 ${code} 不存在`, `requirement:${code}`))
       continue
     }
+    const binding = (requirement.externalTasks || []).find((item) =>
+      item.provider === PROVIDER && item.server === mapping.server && Number(item.projectId) === projectId)
+    if (!binding && !taskType) blockers.push(problem('TASK_TYPE_REQUIRED', '尚未配置默认任务类型', 'mapping.taskType'))
     const taskAfter = taskProjection(requirement, milestone, {
       projectId,
       taskType,
-      priority: priorityFor(requirement, mapping, blockers),
-      assigneeId: assigneeFor(requirement, mapping, warnings),
+      priority: priorityFor(requirement, mapping, blockers, !binding || managed.has('priority')),
+      assigneeId: assigneeFor(requirement, mapping, warnings, !binding || managed.has('assignee')),
+      status: statusFor(requirement, mapping, blockers, managed.has('status')),
       timezoneOffset: mapping.timezoneOffset
     })
-    validateTaskProjection(taskAfter, requirement, blockers)
-    const taskHash = hashProjection(taskAfter, 'task')
-    const binding = (requirement.externalTasks || []).find((item) =>
-      item.provider === PROVIDER && item.server === mapping.server && Number(item.projectId) === projectId)
+    validateTaskProjection(taskAfter, requirement, blockers, { create: !binding, managed })
+    const taskHash = hashProjection(taskAfter, 'task', normalizedManagedFields)
 
     if (!binding) {
       addOperation(operations, summary, {
@@ -123,12 +136,12 @@ export function buildMilestoneSyncPlan({
       remote: remoteTask,
       lastSyncHash: binding.lastSyncHash,
       resolution: normalizedResolutions[`task:${binding.taskId}`],
-      acceptPatch: taskLocalPatch(remoteTask, requirement, mapping),
+      managedFields: normalizedManagedFields,
       operations,
       blockers,
       summary
     })
-    if (targetSprintId && Number(remoteTask.sprintId) !== targetSprintId) {
+    if (managed.has('sprint') && targetSprintId && Number(remoteTask.sprintId) !== targetSprintId) {
       addOperation(operations, summary, {
         key: `task:${binding.taskId}:move`,
         kind: 'task.move',
@@ -143,7 +156,7 @@ export function buildMilestoneSyncPlan({
     }
   }
 
-  for (const binding of managedTaskBindings) {
+  for (const binding of managed.has('sprint') ? managedTaskBindings : []) {
     const taskId = Number(binding.taskId)
     const remoteTask = remoteTasksById.get(taskId)
     if (!remoteTask || currentTaskIds.has(taskId) || Number(remoteTask.sprintId) !== targetSprintId) continue
@@ -190,7 +203,17 @@ export function buildMilestoneSyncPlan({
   const expiresAt = new Date(new Date(now).getTime() + PLAN_TTL_MS).toISOString()
   const semantic = {
     milestone: milestone.name,
+    server: String(mapping.server || ''),
     projectId,
+    managedFields: normalizedManagedFields,
+    requirementStatuses: requirementCodes.map((code) => ({
+      code,
+      status: String(requirementsByCode.get(code)?.status || 'draft')
+    })),
+    remoteObservations: {
+      sprint: remoteObservation(remoteSprint),
+      tasks: remoteTasks.map(remoteObservation).sort((left, right) => Number(left.id || 0) - Number(right.id || 0))
+    },
     action: normalizedAction,
     scopeItems,
     scopeChangeReason: String(scopeChangeReason || ''),
@@ -203,6 +226,7 @@ export function buildMilestoneSyncPlan({
     milestone: milestone.name,
     server: String(mapping.server || ''),
     projectId,
+    managedFields: normalizedManagedFields,
     intent: {
       action: normalizedAction,
       scopeItems: Array.isArray(scopeItems) ? scopeItems : null,
@@ -221,13 +245,16 @@ export function buildMilestoneSyncPlan({
   }
 }
 
-export function hashProjection(value, type) {
-  return `sha256:${digest(stableStringify(type === 'sprint' ? sprintOwned(value) : taskOwned(value)))}`
+export function hashProjection(value, type, managedFields) {
+  const fields = normalizeManagedFields(managedFields)
+  return `sha256:${digest(stableStringify(type === 'sprint'
+    ? sprintOwned(value, fields)
+    : taskOwned(value, fields)))}`
 }
 
-function planOwnedChange({ entity, key, requirement, local, remote, lastSyncHash, resolution, acceptPatch, operations, blockers, summary }) {
-  const localHash = hashProjection(local, entity)
-  const remoteHash = hashProjection(remote, entity)
+function planOwnedChange({ entity, key, requirement, local, remote, lastSyncHash, resolution, managedFields, operations, blockers, summary }) {
+  const localHash = hashProjection(local, entity, managedFields)
+  const remoteHash = hashProjection(remote, entity, managedFields)
   if (localHash === remoteHash) {
     summary.unchanged++
     return
@@ -239,25 +266,10 @@ function planOwnedChange({ entity, key, requirement, local, remote, lastSyncHash
       kind: `${entity}.update`,
       risk: resolution === 'restore-local' ? 'high' : 'normal',
       requirement,
-      before: entity === 'sprint' ? sprintOwned(remote) : taskOwned(remote),
-      after: local,
+      before: entity === 'sprint' ? sprintOwned(remote, managedFields) : taskOwned(remote, managedFields),
+      after: entity === 'sprint' ? sprintOwned(local, managedFields) : taskOwned(local, managedFields),
       contentHash: localHash,
       revision: remote.revision,
-      dependsOn: []
-    })
-    return
-  }
-  if (resolution === 'accept-remote') {
-    operations.push({
-      key: `${key}:accept-remote`,
-      kind: 'local.accept-remote',
-      risk: 'normal',
-      requirement,
-      entity,
-      before: local,
-      after: entity === 'sprint' ? sprintOwned(remote) : taskOwned(remote),
-      localPatch: acceptPatch,
-      contentHash: remoteHash,
       dependsOn: []
     })
     return
@@ -267,8 +279,8 @@ function planOwnedChange({ entity, key, requirement, local, remote, lastSyncHash
     kind: 'conflict',
     risk: 'high',
     requirement,
-    before: entity === 'sprint' ? sprintOwned(remote) : taskOwned(remote),
-    after: local,
+    before: entity === 'sprint' ? sprintOwned(remote, managedFields) : taskOwned(remote, managedFields),
+    after: entity === 'sprint' ? sprintOwned(local, managedFields) : taskOwned(local, managedFields),
     dependsOn: []
   }
   operations.push(conflict)
@@ -300,7 +312,7 @@ function sprintProjection(milestone, mapping) {
 }
 
 function taskProjection(requirement, milestone, mapping) {
-  return {
+  const value = {
     projectId: mapping.projectId,
     taskType: mapping.taskType,
     title: `[${requirement.code}] ${requirement.title}`,
@@ -311,67 +323,65 @@ function taskProjection(requirement, milestone, mapping) {
     planStartDate: toRemoteDate(milestone.startAt, mapping.timezoneOffset),
     planEndDate: toRemoteDate(requirement.dueDate || milestone.endAt, mapping.timezoneOffset)
   }
+  if (mapping.status !== undefined) value.status = mapping.status
+  return value
 }
 
-function sprintOwned(value = {}) {
-  return {
-    projectId: positiveId(value.projectId),
-    ownerId: positiveId(value.ownerId),
+function sprintOwned(value = {}, managedFields) {
+  const managed = new Set(normalizeManagedFields(managedFields))
+  return pick({
     sprintName: String(value.sprintName || value.title || value.name || ''),
     sprintGoal: String(value.sprintGoal || value.goal || ''),
+    ownerId: positiveId(value.ownerId),
     planStartDate: value.planStartDate || value.startAt || null,
     planEndDate: value.planEndDate || value.endAt || null
-  }
+  }, [
+    ...(managed.has('title') ? ['sprintName'] : []),
+    ...(managed.has('description') ? ['sprintGoal'] : []),
+    ...(managed.has('assignee') ? ['ownerId'] : []),
+    'planStartDate',
+    'planEndDate'
+  ])
 }
 
-function taskOwned(value = {}) {
-  return {
-    projectId: positiveId(value.projectId),
-    taskType: positiveId(value.taskType),
+function taskOwned(value = {}, managedFields) {
+  const managed = new Set(normalizeManagedFields(managedFields))
+  return pick({
     title: String(value.title || value.taskName || value.name || ''),
     descriptionDoc: String(value.descriptionDoc || ''),
     acceptanceDoc: String(value.acceptanceDoc || ''),
     priority: value.priority ?? null,
     assigneeId: positiveId(value.assigneeId),
+    status: value.status ?? null,
     planStartDate: value.planStartDate || null,
     planEndDate: value.planEndDate || null
-  }
+  }, [
+    ...(managed.has('title') ? ['title'] : []),
+    ...(managed.has('description') ? ['descriptionDoc'] : []),
+    ...(managed.has('acceptance') ? ['acceptanceDoc'] : []),
+    ...(managed.has('priority') ? ['priority'] : []),
+    ...(managed.has('assignee') ? ['assigneeId'] : []),
+    ...(managed.has('status') ? ['status'] : []),
+    'planStartDate',
+    'planEndDate'
+  ])
 }
 
-function sprintLocalPatch(remote) {
-  const value = sprintOwned(remote)
-  return {
-    title: value.sprintName,
-    goal: value.sprintGoal,
-    startAt: dateOnly(value.planStartDate),
-    endAt: dateOnly(value.planEndDate)
-  }
-}
-
-function taskLocalPatch(remote, requirement, mapping) {
-  const value = taskOwned(remote)
-  const priority = Object.entries(mapping.priorities || {}).find(([, id]) => Number(id) === Number(value.priority))?.[0]
-  const owner = Object.entries(mapping.members || {}).find(([, id]) => Number(id) === Number(value.assigneeId))?.[0]
-  const prefix = new RegExp(`^\\[${escapeRegExp(requirement.code)}\\]\\s*`)
-  return {
-    title: value.title.replace(prefix, '') || requirement.title,
-    description: value.descriptionDoc,
-    ...(priority ? { priority } : {}),
-    ...(owner ? { owner } : {})
-  }
-}
-
-function validateSprintProjection(value, blockers) {
-  if (!value.sprintName) blockers.push(problem('SPRINT_NAME_REQUIRED', '迭代标题不能为空', 'milestone.title'))
-  else if (value.sprintName.length > 64) blockers.push(problem('SPRINT_NAME_TOO_LONG', '平台冲刺名称不能超过 64 字符', 'milestone.title'))
+function validateSprintProjection(value, blockers, { create, managed }) {
+  if ((create || managed.has('title')) && !value.sprintName) blockers.push(problem('SPRINT_NAME_REQUIRED', '迭代标题不能为空', 'milestone.title'))
+  else if ((create || managed.has('title')) && value.sprintName.length > 64) blockers.push(problem('SPRINT_NAME_TOO_LONG', '平台冲刺名称不能超过 64 字符', 'milestone.title'))
   if (!value.planStartDate || !value.planEndDate) blockers.push(problem('SPRINT_DATES_REQUIRED', '迭代开始和结束日期不能为空', 'milestone.range'))
+  if ((create || managed.has('assignee')) && !value.ownerId) blockers.push(problem('SPRINT_OWNER_REQUIRED', '尚未选择冲刺负责人', 'mapping.ownerId'))
 }
 
-function validateTaskProjection(value, requirement, blockers) {
-  if (value.title.length > 255) blockers.push(problem('TASK_TITLE_TOO_LONG', `${requirement.code} 的平台任务标题超过 255 字符`, `requirement:${requirement.code}`))
+function validateTaskProjection(value, requirement, blockers, { create, managed }) {
+  if ((create || managed.has('title')) && value.title.length > 255) {
+    blockers.push(problem('TASK_TITLE_TOO_LONG', `${requirement.code} 的平台任务标题超过 255 字符`, `requirement:${requirement.code}`))
+  }
 }
 
-function priorityFor(requirement, mapping, blockers) {
+function priorityFor(requirement, mapping, blockers, required) {
+  if (!required) return null
   const value = String(requirement.priority || '')
   if (!value) return null
   if (mapping.priorities?.[value] === undefined) {
@@ -381,7 +391,8 @@ function priorityFor(requirement, mapping, blockers) {
   return mapping.priorities[value]
 }
 
-function assigneeFor(requirement, mapping, warnings) {
+function assigneeFor(requirement, mapping, warnings, required) {
+  if (!required) return null
   const owner = String(requirement.owner || '')
   if (!owner) return null
   if (mapping.members?.[owner] === undefined) {
@@ -389,6 +400,21 @@ function assigneeFor(requirement, mapping, warnings) {
     return null
   }
   return mapping.members[owner]
+}
+
+function assigneeIdFor(owner, mapping) {
+  const value = String(owner || '')
+  return value && mapping.members?.[value] !== undefined ? positiveId(mapping.members[value]) : null
+}
+
+function statusFor(requirement, mapping, blockers, required) {
+  if (!required) return undefined
+  const status = String(requirement.status || 'draft')
+  if (mapping.statuses?.[status] === undefined) {
+    blockers.push(problem('TASK_STATUS_UNMAPPED', `${requirement.code} 的状态 ${status} 尚未映射`, `requirement:${requirement.code}`))
+    return undefined
+  }
+  return mapping.statuses[status]
 }
 
 function renderDescription(requirement, milestone) {
@@ -408,24 +434,32 @@ function toRemoteDate(value, offset = '+08:00') {
   return `${date}T00:00:00${safeOffset}`
 }
 
-function dateOnly(value) {
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(value || ''))
-  return match ? match[1] : null
-}
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 function semanticOperation(operation) {
-  return pick(operation, ['key', 'kind', 'risk', 'requirement', 'entity', 'before', 'after', 'reason', 'localPatch', 'contentHash', 'taskId', 'taskRevision', 'sprintId', 'revision', 'dependsOn'])
+  return pick(operation, ['key', 'kind', 'risk', 'requirement', 'entity', 'before', 'after', 'reason', 'contentHash', 'taskId', 'taskRevision', 'sprintId', 'revision', 'dependsOn'])
 }
 
 function normalizeResolutions(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return Object.fromEntries(Object.entries(value)
-    .filter(([, resolution]) => ['accept-remote', 'restore-local'].includes(resolution))
+    .filter(([, resolution]) => resolution === 'restore-local')
     .sort(([left], [right]) => left.localeCompare(right)))
+}
+
+function normalizeManagedFields(value) {
+  const source = Array.isArray(value) ? value : LEGACY_MANAGED_FIELDS
+  return [...new Set(source.map((field) => String(field || '').trim()))]
+    .filter((field) => SUPPORTED_MANAGED_FIELDS.has(field))
+    .sort()
+}
+
+function remoteObservation(value) {
+  if (!value) return null
+  return {
+    id: positiveId(value.id ?? value.sprintId ?? value.taskId),
+    status: value.status ?? null,
+    revision: value.revision ?? null,
+    sprintId: positiveId(value.sprintId ?? value.currentSprintId)
+  }
 }
 
 function problem(code, message, target) {
