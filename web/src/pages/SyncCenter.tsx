@@ -15,9 +15,11 @@ import {
   Timeline,
 } from 'antd';
 import {
+  DownOutlined,
   EyeOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
+  RightOutlined,
   StopOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
@@ -113,6 +115,63 @@ function planSummary(record: any) {
   const highRiskCount = operations.filter((operation: any) => operation?.risk === 'high').length;
   if (!operations.length) return '没有待执行步骤';
   return `${operations.length} 个步骤${highRiskCount ? ` · ${highRiskCount} 个高风险` : ''}`;
+}
+
+function operationDiff(item: any) {
+  const operation = item?.operation || item || {};
+  const hasBefore = Object.prototype.hasOwnProperty.call(operation, 'before');
+  const hasAfter = Object.prototype.hasOwnProperty.call(operation, 'after');
+  if (!hasBefore && !hasAfter) return { summary: '无字段差异', sections: [] };
+  if (operation.kind === 'local.scope-change') {
+    return {
+      summary: '目标范围',
+      sections: [{ label: '目标范围', value: operation.after, present: hasAfter, emptyText: '无目标范围' }],
+    };
+  }
+  if (operation.kind === 'local.accept-remote') {
+    return {
+      summary: '本地当前值 → 接受的外部值',
+      sections: [
+        { label: '本地当前值', value: operation.before, present: hasBefore, emptyText: '无本地当前值' },
+        { label: '接受的外部值', value: operation.after, present: hasAfter, emptyText: '无外部值' },
+      ],
+    };
+  }
+  return {
+    summary: '外部当前值 → Flowlark 目标值',
+    sections: [
+      { label: '外部当前值', value: operation.before, present: hasBefore, emptyText: '无外部当前值' },
+      { label: 'Flowlark 目标值', value: operation.after, present: hasAfter, emptyText: '无目标值' },
+    ],
+  };
+}
+
+function formattedJson(value: unknown) {
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function OperationDiff({ item }: { item: any }) {
+  const diff = operationDiff(item);
+  if (!diff.sections.length) return <p className="fl-sync-diff-empty">无字段差异</p>;
+  return (
+    <div className="fl-sync-diff">
+      <p>变更数据已由后端脱敏。</p>
+      <div className={`fl-sync-diff-grid ${diff.sections.length === 1 ? 'is-single' : ''}`}>
+        {diff.sections.map((section) => (
+          <section className="fl-sync-diff-panel" key={section.label}>
+            <h4>{section.label}</h4>
+            <pre className="fl-sync-diff-json" tabIndex={0}>
+              {section.present ? formattedJson(section.value) : section.emptyText}
+            </pre>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SyncStatus({ value }: { value: string }) {
@@ -307,6 +366,11 @@ export default function SyncCenter() {
         const risk = item.operation?.risk || item.risk;
         return <Tag color={risk === 'high' ? 'error' : 'default'}>{risk === 'high' ? '高风险' : '普通'}</Tag>;
       },
+    },
+    {
+      title: '变更预览',
+      width: 240,
+      render: (_: unknown, item: any) => <span className="fl-sync-diff-summary">{operationDiff(item).summary}</span>,
     },
     {
       title: '结果 / 错误',
@@ -515,7 +579,23 @@ export default function SyncCenter() {
                   pagination={false}
                   dataSource={recordOperations(detailRecord)}
                   columns={operationColumns}
-                  scroll={{ x: 720 }}
+                  expandable={{
+                    columnTitle: '展开',
+                    expandIcon: ({ expanded, onExpand, record }) => {
+                      const kind = textOf(record.kind || record.operation?.kind, '步骤');
+                      return (
+                        <Button
+                          className="fl-sync-expand-button"
+                          type="text"
+                          icon={expanded ? <DownOutlined /> : <RightOutlined />}
+                          aria-label={`${expanded ? '收起' : '展开'} ${kind} 变更预览`}
+                          onClick={(event) => onExpand(record, event)}
+                        />
+                      );
+                    },
+                    expandedRowRender: (item) => <OperationDiff item={item} />,
+                  }}
+                  scroll={{ x: 960 }}
                   locale={{ emptyText: '没有持久化的执行步骤' }}
                 />
               </div>

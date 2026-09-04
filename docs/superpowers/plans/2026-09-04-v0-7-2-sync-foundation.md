@@ -1007,7 +1007,8 @@ Implement `web/src/pages/SyncCenter.tsx` with:
 - filters for all, attention, running, and completed;
 - one flat table or list showing entity, plan summary, status text, update time, and latest error;
 - a detail drawer containing the persisted operation list and redacted audit timeline;
-- execute confirmation requiring `planHash` and a reason only when the plan contains high-risk operations;
+- an expandable operation diff showing external/current values and Flowlark target values from the redacted persisted plan;
+- execute confirmation requiring `planHash`, a reason for high-risk operations, and explicit unfinished-work confirmation for high-impact operations;
 - retry confirmation for failed or paused records;
 - cancel confirmation requiring a non-empty reason;
 - partial loading failure that leaves already-loaded records visible;
