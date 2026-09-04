@@ -998,7 +998,7 @@ git commit -m "feat: add synchronization center model"
 - Modify: `web/src/components/AppShell.tsx`
 - Modify: `web/src/styles/global.css`
 
-- [ ] **Step 1: Create the Sync Center page**
+- [x] **Step 1: Create the Sync Center page**
 
 Implement `web/src/pages/SyncCenter.tsx` with:
 
@@ -1015,7 +1015,7 @@ Implement `web/src/pages/SyncCenter.tsx` with:
 
 Use only `api.executeSyncRecord`, `api.retrySyncRecord`, and `api.cancelSyncRecord`; do not send operation arrays or MCP tool names from the browser.
 
-- [ ] **Step 2: Register the route**
+- [x] **Step 2: Register the route**
 
 In `web/src/main.tsx`:
 
@@ -1024,7 +1024,7 @@ import SyncCenter from './pages/SyncCenter';
 <Route path="/sync" element={<SyncCenter />} />
 ```
 
-- [ ] **Step 3: Add navigation with a text-accessible badge**
+- [x] **Step 3: Add navigation with a text-accessible badge**
 
 In `web/src/runtime/AppRuntime.tsx`, add `syncSummary` to `RuntimeValue`, default it to `{ attention: 0, running: 0, completed: 0 }`, and load it without blocking other runtime data:
 
@@ -1046,7 +1046,7 @@ In `web/src/components/AppShell.tsx`, add `SyncOutlined`, the `sync` navigation 
 
 Do not poll more often than the existing runtime refresh cadence. A sync-summary failure must not break the shell.
 
-- [ ] **Step 4: Add focused responsive styles**
+- [x] **Step 4: Add focused responsive styles**
 
 Add `fl-sync-*` styles to `web/src/styles/global.css` for:
 
@@ -1057,7 +1057,7 @@ Add `fl-sync-*` styles to `web/src/styles/global.css` for:
 - no nested card stacks deeper than one level;
 - status text displayed next to every color indicator.
 
-- [ ] **Step 5: Build the Web app**
+- [x] **Step 5: Build the Web app**
 
 Run:
 
@@ -1067,7 +1067,7 @@ npm run build:web
 
 Expected: PASS. Existing bundle-size warnings may remain; no new TypeScript error is allowed.
 
-- [ ] **Step 6: Commit the Sync Center page**
+- [x] **Step 6: Commit the Sync Center page**
 
 ```bash
 git add web/src/pages/SyncCenter.tsx web/src/main.tsx web/src/runtime/AppRuntime.tsx web/src/components/AppShell.tsx web/src/styles/global.css

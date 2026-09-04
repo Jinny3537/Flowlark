@@ -14,6 +14,7 @@ import {
   SearchOutlined,
   SendOutlined,
   SettingOutlined,
+  SyncOutlined,
   BellOutlined,
   BranchesOutlined,
 } from '@ant-design/icons';
@@ -30,23 +31,12 @@ import { NewVersionDialog } from './NewVersionDialog';
 const { Header, Sider, Content } = Layout;
 const SIDER_COLLAPSED_KEY = 'flowlark:sider-collapsed';
 
-const navigation: MenuProps['items'] = [
-  { key: 'actions', icon: <AppstoreOutlined />, label: '工作台' },
-  { key: 'projects', icon: <FolderOutlined />, label: '项目' },
-  { key: 'requirements', icon: <FileTextOutlined />, label: '需求' },
-  { key: 'milestones', icon: <CalendarOutlined />, label: '迭代' },
-  { key: 'deliveries', icon: <SendOutlined />, label: '交付' },
-  { type: 'divider' },
-  { key: 'watch', icon: <InboxOutlined />, label: '草稿箱' },
-  { key: 'trash', icon: <DeleteOutlined />, label: '回收站' },
-  { key: 'settings', icon: <SettingOutlined />, label: '设置' },
-];
-
 const pageNames: Record<string, string> = {
   actions: '工作台',
   projects: '项目',
   requirements: '需求',
   milestones: '迭代',
+  sync: '同步中心',
   deliveries: '交付',
   watch: '草稿箱',
   trash: '回收站',
@@ -61,7 +51,7 @@ export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { message } = App.useApp();
-  const { health, git, notifications, reload } = useAppRuntime();
+  const { health, git, notifications, syncSummary, reload } = useAppRuntime();
   const screens = Grid.useBreakpoint();
   const mobile = !screens.md;
   const [siderCollapsed, setSiderCollapsed] = useState(() => {
@@ -129,6 +119,33 @@ export function AppShell({ children }: AppShellProps) {
     }
   };
 
+  const navigation = useMemo<MenuProps['items']>(() => [
+    { key: 'actions', icon: <AppstoreOutlined />, label: '工作台' },
+    { key: 'projects', icon: <FolderOutlined />, label: '项目' },
+    { key: 'requirements', icon: <FileTextOutlined />, label: '需求' },
+    { key: 'milestones', icon: <CalendarOutlined />, label: '迭代' },
+    {
+      key: 'sync',
+      className: 'fl-sync-nav-item',
+      icon: <SyncOutlined />,
+      label: (
+        <span className="fl-sync-nav-label">
+          <span>同步中心</span>
+          {syncSummary.attention ? (
+            <span className="fl-sync-nav-count" aria-label={`${syncSummary.attention} 个同步项需处理`}>
+              <Badge count={syncSummary.attention} size="small" overflowCount={99} aria-hidden="true" />
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    { key: 'deliveries', icon: <SendOutlined />, label: '交付' },
+    { type: 'divider' },
+    { key: 'watch', icon: <InboxOutlined />, label: '草稿箱' },
+    { key: 'trash', icon: <DeleteOutlined />, label: '回收站' },
+    { key: 'settings', icon: <SettingOutlined />, label: '设置' },
+  ], [syncSummary.attention]);
+
   const menu = useMemo(() => (
     <Menu
       className="fl-app-menu"
@@ -138,7 +155,7 @@ export function AppShell({ children }: AppShellProps) {
       items={navigation}
       onClick={({ key }) => navigate(`/${key}`)}
     />
-  ), [mobile, navigate, selected, siderCollapsed]);
+  ), [mobile, navigate, navigation, selected, siderCollapsed]);
 
   const quickItems: MenuProps['items'] = [
     { key: 'version', icon: <FileTextOutlined />, label: '导入原型' },

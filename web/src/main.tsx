@@ -21,6 +21,7 @@ import RequirementDetail from './pages/RequirementDetail';
 import Requirements from './pages/Requirements';
 import Settings from './pages/Settings';
 import Search from './pages/Search';
+import SyncCenter from './pages/SyncCenter';
 import Trash from './pages/Trash';
 import VersionWorkbench from './pages/VersionWorkbench';
 import WatchInbox from './pages/WatchInbox';
@@ -40,6 +41,7 @@ function AppRoutes() {
         <Route path="/requirements/:code" element={<RequirementDetail />} />
         <Route path="/milestones" element={<Milestones />} />
         <Route path="/milestones/:name" element={<MilestoneDetail />} />
+        <Route path="/sync" element={<SyncCenter />} />
         <Route path="/deliveries" element={<Deliveries />} />
         <Route path="/deliveries/:name" element={<DeliveryDetail />} />
         <Route path="/watch" element={<WatchInbox />} />
