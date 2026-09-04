@@ -1,7 +1,7 @@
 import { after, describe, test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
-import { cleanup, html, newHub } from './helpers.js'
+import { cleanup, html, newHub, throwsCode } from './helpers.js'
 import { migrateToLatest, migrateToSchema2, rollbackMigration } from '../src/core/migrate.js'
 import * as store from '../src/core/store.js'
 
@@ -61,6 +61,68 @@ test('schema 2 projects gain normalized manual sync policy', (t) => {
   t.assert.strictEqual(JSON.parse(fs.readFileSync(configFile, 'utf8')).schemaVersion, 3)
   t.assert.strictEqual(store.readProject(root, 'orders').sync.mode, 'manual')
 })
+
+test('schema 3 preserves regular Git config and creates missing Git config', (t) => {
+  const { root } = newHub()
+  dirs.push(root)
+  const configFile = path.join(root, 'flowlark.json')
+  const config = JSON.parse(fs.readFileSync(configFile, 'utf8'))
+  config.schemaVersion = 2
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2) + '\n')
+  fs.writeFileSync(path.join(root, '.gitignore'), 'custom-cache/\n')
+  fs.rmSync(path.join(root, '.gitattributes'))
+
+  migrateToLatest(root)
+
+  t.assert.strictEqual(
+    fs.readFileSync(path.join(root, '.gitignore'), 'utf8'),
+    'custom-cache/\n.flowlark/backup/\n'
+  )
+  t.assert.strictEqual(
+    fs.readFileSync(path.join(root, '.gitattributes'), 'utf8'),
+    '.flowlark/sync-audit.ndjson merge=union\n'
+  )
+})
+
+for (const relative of ['.gitignore', '.gitattributes']) {
+  test('schema 3 rejects ' + relative + ' symlink without changing repository or external target', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    hub.createProject({ name: '订单', code: 'orders' })
+    const configFile = path.join(root, 'flowlark.json')
+    const projectFile = path.join(root, 'projects', 'orders', 'project.json')
+    const linkedFile = path.join(root, relative)
+    const otherGitConfig = path.join(root, relative === '.gitignore' ? '.gitattributes' : '.gitignore')
+    const outside = path.join(path.dirname(root), path.basename(root) + '-' + relative.slice(1) + '-outside')
+    t.after(() => fs.rmSync(outside, { force: true }))
+
+    const config = JSON.parse(fs.readFileSync(configFile, 'utf8'))
+    const project = JSON.parse(fs.readFileSync(projectFile, 'utf8'))
+    config.schemaVersion = 2
+    delete project.sync
+    fs.writeFileSync(configFile, JSON.stringify(config, null, 2) + '\n')
+    fs.writeFileSync(projectFile, JSON.stringify(project, null, 2) + '\n')
+    const externalBytes = Buffer.from([0, 255, 10, 46, 102, 108, 111, 119, 108, 97, 114, 107])
+    fs.writeFileSync(outside, externalBytes)
+    fs.rmSync(linkedFile)
+    fs.symlinkSync(outside, linkedFile)
+
+    const beforeConfig = fs.readFileSync(configFile)
+    const beforeProject = fs.readFileSync(projectFile)
+    const beforeOtherGitConfig = fs.readFileSync(otherGitConfig)
+    const error = throwsCode(t, 'MIGRATION_TOP_LEVEL_SYMLINK', () => migrateToLatest(root))
+
+    t.assert.strictEqual(error.status, 409)
+    t.assert.match(error.message, new RegExp(relative.replace('.', '\\.')))
+    t.assert.match(error.message, /符号链接/)
+    t.assert.deepStrictEqual(fs.readFileSync(outside), externalBytes)
+    t.assert.strictEqual(fs.lstatSync(linkedFile).isSymbolicLink(), true)
+    t.assert.strictEqual(fs.readlinkSync(linkedFile), outside)
+    t.assert.deepStrictEqual(fs.readFileSync(configFile), beforeConfig)
+    t.assert.deepStrictEqual(fs.readFileSync(projectFile), beforeProject)
+    t.assert.deepStrictEqual(fs.readFileSync(otherGitConfig), beforeOtherGitConfig)
+  })
+}
 
 test('schema 1 migrates through schema 2 and schema 3', (t) => {
   const { root, hub } = newHub()
