@@ -6,7 +6,7 @@
 
 ### 新增
 
-- Schema 3 迁移在改写元数据前创建本机备份，失败时可恢复，并拒绝符号链接形式的 `.gitignore` 或 `.gitattributes`；项目新增默认为 `manual` 的 `project.sync` 准备策略。
+- Schema 3 迁移在改写元数据前创建本机备份，失败时可恢复，并拒绝符号链接形式的 `flowlark.json`、`.gitignore` 或 `.gitattributes`；项目新增默认为 `manual` 的 `project.sync` 准备策略。
 - 迭代同步预览会持久化为本机可恢复队列记录，同步中心可审阅差异、确认执行、查看步骤与脱敏审计，并在失败后人工重试；同一迭代排他执行。
 - 同步审计以 append-only 方式记录预览、取消和执行步骤；除按键名递归脱敏外，也会清洗错误字符串中的 `Bearer`、`Basic`、`api_key` 和 `sk-` Token。
 - 同步中心按持久化 `intent` 重建并校验计划，变化时生成新预览而不执行旧计划；未知创建结果或缺少 ID 时暂停人工关联，已有 ID 时只补本地 binding。旧单迭代同步路由仅生成预览，通用 HTTP 直推已收紧；`trusted-auto` 在本版仅保存准备数据。

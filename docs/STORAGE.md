@@ -60,7 +60,7 @@ Schema 3 在每个 `projects/<项目>/project.json` 中增加 `project.sync`：
 - `server` 是逻辑 MCP 服务标识，`projectId` 是外部项目标识。密码、Token、可执行文件路径和个人运行配置不放进 `project.sync`。
 - `managedFields` 只保存 Flowlark 允许管理的字段：`title`、`description`、`acceptance`、`priority`、`assignee`、`sprint`、`status` 和 `delivery`。
 
-打开 Schema 1 或 Schema 2 仓库时，Flowlark 会先备份受迁移影响的元数据，再补齐项目策略，最后写入 `schemaVersion: 3`。迁移中任一步失败时，恢复备份；也可以使用保留在 `.flowlark/backup/` 中的备份手工回滚。Schema 3 迁移会拒绝符号链接形式的 `.gitignore` 或 `.gitattributes`，避免通过链接改写仓库外文件。
+打开 Schema 1 或 Schema 2 仓库时，Flowlark 会先备份受迁移影响的元数据，再补齐项目策略，最后写入 `schemaVersion: 3`。迁移中任一步失败时，恢复备份；也可以使用保留在 `.flowlark/backup/` 中的备份手工回滚。迁移会拒绝符号链接形式的 `flowlark.json`、`.gitignore` 或 `.gitattributes`，避免通过链接读取或改写仓库外文件。
 
 ## 区分团队历史和本机恢复状态
 
