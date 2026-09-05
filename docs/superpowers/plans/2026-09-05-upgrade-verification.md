@@ -84,11 +84,12 @@ Remaining v0.7.4 scope:
 - The requirement sync endpoint now supports list refresh through `/api/requirements/sync` with `mode: list`, using the configured requirement-pool search/list result to create new local external requirement references and update existing ones.
 - The Requirements page now exposes this path as “刷新需求池列表”, returning created/updated/failed counts instead of only refreshing requirements that were already imported locally.
 - Full-list refresh now marks existing external requirements that disappear from the returned requirement-pool list as unavailable, preserving the local record and surfacing `REQUIREMENT_REMOTE_MISSING` instead of deleting or silently treating it as synchronized.
+- Existing-requirement batch refresh now keeps `failed[].code` as the requirement code and reports the integration problem separately as `failed[].errorCode`, so callers can identify both the affected requirement and the cause.
 - Focused verification for MCP config import, existing requirement MCP search/import/comment, HTTP routing and UI manifest parsing: 51/51 passed.
 - Focused verification for requirement-pool status diagnostics, missing local secret gating, HTTP status routing and MCP Center parsing: 53/53 passed.
 - Focused verification for delivery snapshot source freezing and formal release mail flow: 24/24 passed.
 - Focused verification for single external requirement refresh, unreachable remote persistence, HTTP route and list projection: 42/42 passed.
-- Focused verification for requirement-pool list refresh, remote-missing marking and source projection: 10/10 passed.
+- Focused verification for requirement-pool list refresh, remote-missing marking, batch failure payloads and source projection: 10/10 passed.
 - Focused verification for requirement-pool manifest file validation and MCP settings model parsing: 7/7 passed.
 - Full suite after the requirement-pool configuration foundation, MCP Center import UI, delivery source freezing, integration diagnostics, single-requirement refresh, requirement-pool list refresh, remote-missing marking and manifest file selection: 704/704 passed, zero failures.
 - `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.

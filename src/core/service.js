@@ -2660,7 +2660,12 @@ export class Hub {
         result.updated++
       } catch (e) {
         const failure = this.#markExternalRequirementSyncFailure(item, e)
-        result.failed.push({ code: item.code, ...failure })
+        result.failed.push(sanitizeSyncValue({
+          code: item.code,
+          errorCode: failure.code,
+          message: failure.message,
+          hint: failure.hint || ''
+        }))
       }
     }
     this.#log(null, null, 'REQUIREMENT_SYNC', `同步需求池 ${result.updated}/${result.total} 条`)

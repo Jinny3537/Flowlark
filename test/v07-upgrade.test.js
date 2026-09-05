@@ -110,6 +110,10 @@ describe('v0.7 升级能力', () => {
     t.assert.strictEqual(failed.external.syncStatus, 'failed')
     t.assert.strictEqual(failed.external.failure.code, 'REQUIREMENT_POOL_TOOL_MISSING')
     t.assert.match(failed.external.failure.message, /404|not found/)
+    const synced = await hub.syncExternalRequirements('mcp')
+    t.assert.deepStrictEqual(synced.failed.map((item) => ({ code: item.code, errorCode: item.errorCode })), [
+      { code: 'REQ-GONE', errorCode: 'REQUIREMENT_POOL_TOOL_MISSING' }
+    ])
   })
 
   test('需求池列表刷新会新增和更新外部需求引用', async (t) => {
