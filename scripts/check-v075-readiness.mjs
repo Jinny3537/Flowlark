@@ -1,0 +1,180 @@
+#!/usr/bin/env node
+import fs from 'node:fs'
+import path from 'node:path'
+import { inspectRequirementPoolManifest } from '../src/core/mcp-config.js'
+
+const TARGET_VERSION = '0.7.5'
+const args = parseArgs(process.argv.slice(2))
+
+if (args.help) {
+  usage()
+  process.exit(0)
+}
+
+const checks = []
+const root = process.cwd()
+const manifestPath = args.manifest || process.env.FLOWLARK_V075_MANIFEST || ''
+const smokeResultPath = args.smokeResult || process.env.FLOWLARK_V075_SMOKE_RESULT || ''
+
+checkPackageVersions()
+checkNpmScripts()
+checkManifest()
+checkPlaywright()
+checkSmokeResult()
+
+const failed = checks.filter((item) => item.status === 'fail')
+const result = {
+  passed: failed.length === 0,
+  targetVersion: TARGET_VERSION,
+  checks,
+  next: failed.length
+    ? [
+        'Run the real-platform smoke against a disposable requirement-pool project and save its JSON output.',
+        'Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set.',
+        'Bump package.json and web/package.json to 0.7.5 only after the real-platform and browser smoke evidence exists.'
+      ]
+    : []
+}
+
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+process.exit(result.passed ? 0 : 1)
+
+function checkPackageVersions() {
+  const rootPackage = readJsonFile(path.join(root, 'package.json'))
+  const webPackage = readJsonFile(path.join(root, 'web/package.json'))
+  addCheck('package-version', rootPackage?.version === TARGET_VERSION,
+    `package.json version is ${rootPackage?.version || 'missing'}, expected ${TARGET_VERSION}`)
+  addCheck('web-package-version', webPackage?.version === TARGET_VERSION,
+    `web/package.json version is ${webPackage?.version || 'missing'}, expected ${TARGET_VERSION}`)
+}
+
+function checkNpmScripts() {
+  const rootPackage = readJsonFile(path.join(root, 'package.json'))
+  const scripts = rootPackage?.scripts || {}
+  addCheck('smoke-requirement-pool-script', scripts['smoke:v075:requirement-pool'] === 'node scripts/smoke-v075-requirement-pool.mjs',
+    'package.json must expose smoke:v075:requirement-pool')
+  addCheck('smoke-mcp-ui-script', scripts['smoke:v075:mcp-ui'] === 'node scripts/smoke-v075-mcp-ui.mjs',
+    'package.json must expose smoke:v075:mcp-ui')
+}
+
+function checkManifest() {
+  if (!manifestPath) {
+    addCheck('manifest-present', false, 'FLOWLARK_V075_MANIFEST or --manifest is required')
+    addCheck('manifest-inspect', false, 'manifest cannot be inspected until a file is provided')
+    return
+  }
+  const resolved = path.resolve(manifestPath)
+  if (!fs.existsSync(resolved)) {
+    addCheck('manifest-present', false, `manifest file does not exist: ${resolved}`)
+    addCheck('manifest-inspect', false, 'manifest cannot be inspected until the file exists')
+    return
+  }
+  addCheck('manifest-present', true, `manifest file found: ${resolved}`)
+  try {
+    const preview = inspectRequirementPoolManifest(readJsonFile(resolved))
+    addCheck('manifest-inspect', (preview.blockers || []).length === 0,
+      (preview.blockers || []).length
+        ? `manifest blockers: ${(preview.blockers || []).map((item) => item.code).join(', ')}`
+        : `manifest accepted for ${preview.platform?.id || 'requirement-pool'}`)
+    checkHeaderCredentialEnvironment(preview)
+  } catch (error) {
+    addCheck('manifest-inspect', false, `manifest inspect failed: ${error?.message || error}`)
+  }
+}
+
+function checkHeaderCredentialEnvironment(preview) {
+  const headers = preview?.server?.headers || {}
+  const names = new Set()
+  for (const value of Object.values(headers)) {
+    for (const reference of headerSecretReferences(value, preview?.server?.id || '')) {
+      names.add(reference.kind === 'env' ? reference.name : `FLOWLARK_V075_SECRET_${envSuffix(reference.name)}`)
+    }
+  }
+  if (!names.size) {
+    addCheck('manifest-credentials', true, 'manifest does not declare header credentials')
+    return
+  }
+  const missing = [...names].filter((name) => !process.env[name])
+  addCheck('manifest-credentials', missing.length === 0,
+    missing.length ? `missing credential environment variables: ${missing.join(', ')}` : 'credential environment variables are present',
+    { requiredEnv: [...names] })
+}
+
+function checkPlaywright() {
+  const modulePath = process.env.PLAYWRIGHT_MODULE || ''
+  addCheck('playwright-module', Boolean(modulePath && fs.existsSync(path.resolve(modulePath))),
+    modulePath ? `PLAYWRIGHT_MODULE not found: ${modulePath}` : 'PLAYWRIGHT_MODULE is required for smoke:v075:mcp-ui')
+}
+
+function checkSmokeResult() {
+  if (!smokeResultPath) {
+    addCheck('real-smoke-result', false, 'FLOWLARK_V075_SMOKE_RESULT or --smoke-result is required')
+    return
+  }
+  const resolved = path.resolve(smokeResultPath)
+  if (!fs.existsSync(resolved)) {
+    addCheck('real-smoke-result', false, `smoke result file does not exist: ${resolved}`)
+    return
+  }
+  try {
+    const result = readJsonFile(resolved)
+    const source = result?.requirementSource || {}
+    const sourceReady = result?.passed === true &&
+      Boolean(result.requirement && result.snapshot && source.source === 'requirement-pool' && source.key && source.status && source.syncedAt)
+    addCheck('real-smoke-result', sourceReady,
+      sourceReady ? `real smoke evidence accepted for ${result.requirement}` : 'real smoke result is missing passed requirement/snapshot/source evidence')
+  } catch (error) {
+    addCheck('real-smoke-result', false, `smoke result parse failed: ${error?.message || error}`)
+  }
+}
+
+function addCheck(key, passed, message, extra = {}) {
+  checks.push({ key, status: passed ? 'pass' : 'fail', message, ...extra })
+}
+
+function readJsonFile(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'))
+}
+
+function parseArgs(values) {
+  const out = {}
+  for (let index = 0; index < values.length; index++) {
+    const item = values[index]
+    if (item === '--help' || item === '-h') out.help = true
+    else if (item === '--manifest') out.manifest = values[++index]
+    else if (item === '--smoke-result') out.smokeResult = values[++index]
+    else throw new Error(`未知参数：${item}`)
+  }
+  return out
+}
+
+function headerSecretReferences(input, serverId) {
+  const refs = []
+  String(input || '').replace(/\$\{([^}]+)\}/g, (_raw, expr) => {
+    const text = String(expr || '').trim()
+    if (text === 'secret') refs.push({ kind: 'keychain', name: serverId })
+    else if (text.startsWith('secret:')) refs.push({ kind: 'keychain', name: text.slice(7).trim() })
+    else if (text.startsWith('env:')) refs.push({ kind: 'env', name: text.slice(4).trim() })
+    return ''
+  })
+  return refs.filter((item) => item.name)
+}
+
+function envSuffix(value) {
+  return String(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+function usage() {
+  console.error(`Usage:
+  FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \\
+  FLOWLARK_V075_QUERY="safe test requirement" \\
+  FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \\
+  FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \\
+  PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \\
+  npm run check:v075:readiness
+
+Options:
+  --manifest <file>       Requirement-pool MCP manifest JSON.
+  --smoke-result <file>   JSON output saved from smoke:v075:requirement-pool -- --output.
+`)
+}

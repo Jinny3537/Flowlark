@@ -32,6 +32,7 @@
   "scripts": {
     "test": "node --test",
     "build:web": "cd web && npm install && npm run build",
+    "check:v075:readiness": "node scripts/check-v075-readiness.mjs",
     "smoke:v075:requirement-pool": "node scripts/smoke-v075-requirement-pool.mjs",
     "smoke:v075:mcp-ui": "node scripts/smoke-v075-mcp-ui.mjs",
     "start": "bash ./start.sh",

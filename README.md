@@ -254,7 +254,7 @@ Flowlark 启动时会自动管理一个只监听 `127.0.0.1` 的企业微信 MCP
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_QUERY="safe test requirement" \
 FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \
-npm run smoke:v075:requirement-pool -- --keep
+npm run smoke:v075:requirement-pool -- --keep --output .flowlark/cache/v075-requirement-pool-smoke.json
 ```
 
 只检查配置 JSON 合同、不连接平台：
@@ -270,6 +270,15 @@ npm run smoke:v075:requirement-pool -- \
 ```bash
 npm run build:web
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs npm run smoke:v075:mcp-ui
+```
+
+最终发布门禁会检查版本号、manifest、凭据环境变量、真实 smoke 结果和 Playwright 入口；应在真实平台与浏览器 smoke 证据齐全、版本号提升到 `0.7.5` 后运行：
+
+```bash
+FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
+FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+npm run check:v075:readiness
 ```
 
 ### 3.5 Git 助手 — 从不让用户去敲 git

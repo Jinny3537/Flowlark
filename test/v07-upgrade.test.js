@@ -194,13 +194,15 @@ describe('v0.7 升级能力', () => {
       safety: { readOnly: true, writes: [], dangerous: [] }
     }
     const manifestFile = path.join(directory, 'requirement-pool.json')
+    const smokeResultFile = path.join(directory, 'smoke-result.json')
     fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8')
 
     const { stdout } = await execFileAsync(process.execPath, [
       'scripts/smoke-v075-requirement-pool.mjs',
       '--manifest', manifestFile,
       '--query', 'REQ',
-      '--requirement', 'REQ-7'
+      '--requirement', 'REQ-7',
+      '--output', smokeResultFile
     ], {
       cwd: process.cwd(),
       encoding: 'utf8',
@@ -208,6 +210,7 @@ describe('v0.7 升级能力', () => {
       env: { ...process.env, FLOWLARK_QUIET_MIGRATE: '1' }
     })
     const result = JSON.parse(stdout)
+    t.assert.deepStrictEqual(JSON.parse(fs.readFileSync(smokeResultFile, 'utf8')), result)
     t.assert.strictEqual(result.passed, true)
     t.assert.strictEqual(result.requirement, 'REQ-7')
     t.assert.deepStrictEqual(result.requirementSource, {
@@ -222,6 +225,61 @@ describe('v0.7 升级能力', () => {
     })
     t.assert.match(result.requirementSource.syncedAt, /^\d{4}-\d{2}-\d{2}T/)
     t.assert.ok(result.snapshot.startsWith('delivery-'))
+  })
+
+  test('v0.7.5 readiness gate reports missing final evidence without leaking secrets', async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-readiness-test-'))
+    dirs.push(directory)
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000, headers: { Authorization: 'Bearer ${secret:fixture-token}' } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
+      statuses: { open: '待处理' },
+      safety: { readOnly: true, writes: [], dangerous: [] }
+    }
+    const manifestFile = path.join(directory, 'requirement-pool.json')
+    const smokeResultFile = path.join(directory, 'smoke-result.json')
+    fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8')
+    fs.writeFileSync(smokeResultFile, JSON.stringify({
+      passed: true,
+      requirement: 'REQ-7',
+      snapshot: 'delivery-123',
+      requirementSource: {
+        source: 'requirement-pool',
+        key: 'REQ-7',
+        status: 'open',
+        syncedAt: '2026-09-05T08:00:00.000Z'
+      }
+    }), 'utf8')
+
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        'scripts/check-v075-readiness.mjs',
+        '--manifest', manifestFile,
+        '--smoke-result', smokeResultFile
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(result.checks.find((item) => item.key === 'manifest-inspect').status, 'pass')
+        t.assert.strictEqual(result.checks.find((item) => item.key === 'manifest-credentials').status, 'pass')
+        t.assert.strictEqual(result.checks.find((item) => item.key === 'real-smoke-result').status, 'pass')
+        t.assert.strictEqual(result.checks.find((item) => item.key === 'package-version').status, 'fail')
+        t.assert.doesNotMatch(error.stdout, /fixture-secret-value/)
+        return true
+      }
+    )
   })
 
   test('v0.7.5 验收脚本可从 Header 占位符推导本机密钥环境变量', async (t) => {

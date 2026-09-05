@@ -29,7 +29,7 @@ if (args.inspectOnly) {
   manifest = injectSmokeEnvSecrets(manifest, preview)
   if (manifest !== rawManifest) preview = inspectRequirementPoolManifest(manifest)
   assert.deepEqual(preview.blockers || [], [], `manifest blockers: ${formatProblems(preview.blockers)}`)
-  console.log(JSON.stringify({
+  emitResult({
     passed: true,
     mode: 'inspect-only',
     manifestVersion: preview.manifestVersion,
@@ -39,7 +39,7 @@ if (args.inspectOnly) {
     tools: preview.capability?.tools || {},
     warnings: preview.warnings || [],
     secrets: preview.secrets || []
-  }, null, 2))
+  })
   process.exit(0)
 }
 
@@ -155,7 +155,7 @@ try {
     milestone: milestoneName,
     snapshot: release.snapshot
   }
-  console.log(JSON.stringify(result, null, 2))
+  emitResult(result)
 } finally {
   await server?.close()
   if (!keepRepo) fs.rmSync(root, { recursive: true, force: true })
@@ -171,6 +171,7 @@ function parseArgs(values) {
     else if (item === '--query') out.query = values[++index]
     else if (item === '--requirement') out.requirement = values[++index]
     else if (item === '--inspect-only') out.inspectOnly = true
+    else if (item === '--output') out.output = values[++index]
     else throw new Error(`未知参数：${item}`)
   }
   return out
@@ -191,6 +192,7 @@ Options:
   --query <text>          Optional list-refresh query.
   --requirement <code>    Require a specific external requirement code/key.
   --inspect-only          Validate manifest shape and secret placeholders only.
+  --output <file>         Write the JSON result to a file for release readiness evidence.
   --keep                  Keep the temporary Flowlark repository for inspection.
 
 Secrets:
@@ -200,6 +202,16 @@ Secrets:
   temporary env placeholders in its disposable repository and never writes the
   secret value to mcp.json.
 `)
+}
+
+function emitResult(result) {
+  const text = `${JSON.stringify(result, null, 2)}\n`
+  if (args.output) {
+    const target = path.resolve(args.output)
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, text, 'utf8')
+  }
+  process.stdout.write(text)
 }
 
 function injectSmokeEnvSecrets(input, preview) {
