@@ -35,7 +35,7 @@ before(async () => {
           res.statusCode = 404
           return res.end(JSON.stringify({ message: 'requirement not found' }))
         }
-        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { content: [{ type: 'text', text: JSON.stringify({ code: 'REQ-7', title: '外部需求', description: '来自需求池的完整验收需求', owner: 'PM', url: 'https://mcp.example/REQ-7' }) }] } }))
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { content: [{ type: 'text', text: JSON.stringify({ code: 'REQ-7', title: '外部需求', description: '来自需求池的完整验收需求', owner: 'PM', status: 'open', url: 'https://mcp.example/REQ-7' }) }] } }))
       }
       if (params.name === 'requirements.comment') {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { url: 'https://mcp.example/REQ-7#comment' } } }))
@@ -210,6 +210,17 @@ describe('v0.7 升级能力', () => {
     const result = JSON.parse(stdout)
     t.assert.strictEqual(result.passed, true)
     t.assert.strictEqual(result.requirement, 'REQ-7')
+    t.assert.deepStrictEqual(result.requirementSource, {
+      code: 'REQ-7',
+      title: '外部需求',
+      source: 'requirement-pool',
+      provider: 'mcp',
+      key: 'REQ-7',
+      url: 'https://mcp.example/REQ-7',
+      status: 'open',
+      syncedAt: result.requirementSource.syncedAt
+    })
+    t.assert.match(result.requirementSource.syncedAt, /^\d{4}-\d{2}-\d{2}T/)
     t.assert.ok(result.snapshot.startsWith('delivery-'))
   })
 

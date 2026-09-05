@@ -239,6 +239,8 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs npm run smoke:v075:mcp-
 
 该浏览器 smoke 覆盖模板加载、manifest 预检/导入、缺失本机密钥提示、环境变量密钥连接测试、页面错误和桌面/移动端横向溢出。它不会点击本机钥匙串保存动作。
 
+真实平台 smoke 会在正式交付后读取交付快照，并校验需求池来源摘要已冻结 `code`、`title`、`source`、`provider`、`key`、`status`、`syncedAt`，以及平台返回的来源 URL。
+
 ## v0.7.5 完成标准
 
 以下条件全部满足后，才能把需求池 MCP 接入视为通过 v0.7.5 验收：

@@ -137,8 +137,7 @@ try {
 
   const snapshot = await api(base, 'GET', `/api/snapshots/${encodeURIComponent(release.snapshot)}`)
   const source = (snapshot.requirementSources || []).find((item) => item.code === selected.code)
-  assert.equal(source?.source, 'requirement-pool')
-  assert.ok(source.key, '交付快照缺少需求池来源 ID')
+  assertRequirementSourceFrozen(source, refreshed)
 
   const result = {
     passed: true,
@@ -146,6 +145,7 @@ try {
     platform: status.platform?.name || status.platform?.id || 'mcp',
     requirement: selected.code,
     externalKey: source.key,
+    requirementSource: source,
     project,
     version: versionNo,
     milestone: milestoneName,
@@ -306,6 +306,18 @@ function formatMissingSecret(item) {
   if (item?.kind === 'env') return `${name || item.label || 'env'}`
   const envKey = `FLOWLARK_V075_SECRET_${envSuffix(name)}`
   return `${name || item?.label || 'keychain'} (set ${envKey})`
+}
+
+function assertRequirementSourceFrozen(source, requirement) {
+  assert.ok(source, `交付快照缺少需求 ${requirement.code} 的需求池来源摘要`)
+  assert.equal(source.code, requirement.code)
+  assert.equal(source.source, 'requirement-pool')
+  assert.equal(source.provider, requirement.external?.provider || 'mcp')
+  assert.ok(source.title, '交付快照缺少需求池标题摘要')
+  assert.ok(source.key, '交付快照缺少需求池来源 ID')
+  assert.ok(source.status, '交付快照缺少需求池状态摘要')
+  assert.match(source.syncedAt || '', /^\d{4}-\d{2}-\d{2}T/, '交付快照缺少需求池同步时间')
+  if (requirement.external?.url) assert.equal(source.url, requirement.external.url)
 }
 
 function git(root, ...args) {
