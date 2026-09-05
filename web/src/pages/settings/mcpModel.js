@@ -48,6 +48,14 @@ export function capabilityPayload(form) {
   }
 }
 
+export function parseRequirementPoolManifestText(text) {
+  const source = String(text || '').trim()
+  if (!source) throw new Error('请先粘贴需求池配置 JSON')
+  const value = JSON.parse(source)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('需求池配置必须是 JSON 对象')
+  return value
+}
+
 export function runtimeDiagnosticStatus(value = {}) {
   const blockers = Array.isArray(value.blockers) ? value.blockers : []
   const warnings = Array.isArray(value.warnings) ? value.warnings : []

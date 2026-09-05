@@ -19,7 +19,7 @@ import { ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
-import { capabilityPayload, parseHeaders, serverForm, serverPayload } from './mcpModel.js';
+import { capabilityPayload, parseHeaders, parseRequirementPoolManifestText, serverForm, serverPayload } from './mcpModel.js';
 import { McpRuntimeFields } from './McpRuntimeFields';
 
 type McpServer = {
@@ -81,6 +81,15 @@ type CapabilityValues = {
 type ExtensionValues = CapabilityValues & { name: string };
 
 type TestResult = { type: 'success' | 'error'; text: string };
+
+type RequirementPoolManifestPreview = {
+  platform?: { name?: string; id?: string };
+  server?: { id?: string; name?: string; url?: string };
+  capability?: { tools?: Record<string, string> };
+  secrets?: { name: string; label?: string; required?: boolean }[];
+  warnings?: { code?: string; message?: string }[];
+  blockers?: { code?: string; message?: string }[];
+};
 
 const REQUIREMENT_DEFAULTS = {
   enabled: false,
@@ -295,6 +304,8 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
   const [secret, setSecret] = useState('');
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
   const [discoveredTools, setDiscoveredTools] = useState<any[]>([]);
+  const [manifestText, setManifestText] = useState('');
+  const [manifestPreview, setManifestPreview] = useState<RequirementPoolManifestPreview | null>(null);
   const serverId = Form.useWatch('id', serverAntForm) || '';
   const serverType = Form.useWatch('type', serverAntForm) || 'http';
   const runtimeProfile = Form.useWatch('runtimeProfile', serverAntForm) || '';
@@ -317,6 +328,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       setEditingExtension(false);
       setSecret('');
       setDiscoveredTools([]);
+      setManifestPreview(null);
       serverAntForm.resetFields();
       extensionAntForm.resetFields();
     } catch (error) {
@@ -340,6 +352,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
     value: server.id,
     label: `${server.name || server.id} · ${server.id}${server.enabled === false ? '（停用）' : ''}`,
   }));
+  const manifestBlocked = Boolean(manifestPreview?.blockers?.length);
 
   const newServer = () => {
     setEditingServer(false);
@@ -392,6 +405,52 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       message.error(errorText(error, 'MCP 工具发现失败'));
     } finally {
       setTesting('');
+    }
+  };
+
+  const inspectRequirementPoolManifest = async () => {
+    let manifest: unknown;
+    try {
+      manifest = parseRequirementPoolManifestText(manifestText);
+    } catch (error) {
+      message.error(errorText(error, '需求池配置 JSON 不合法'));
+      return;
+    }
+    setTesting('requirementPoolManifest');
+    try {
+      const preview = await api.inspectRequirementPoolManifest(manifest) as RequirementPoolManifestPreview;
+      setManifestPreview(preview);
+      if (preview.blockers?.length) {
+        message.warning(`发现 ${preview.blockers.length} 个阻塞项`);
+      } else {
+        message.success('配置 JSON 可导入');
+      }
+    } catch (error) {
+      message.error(errorText(error, '需求池配置预览失败'));
+    } finally {
+      setTesting('');
+    }
+  };
+
+  const importRequirementPoolManifest = async () => {
+    let manifest: unknown;
+    try {
+      manifest = parseRequirementPoolManifestText(manifestText);
+    } catch (error) {
+      message.error(errorText(error, '需求池配置 JSON 不合法'));
+      return;
+    }
+    setSaving('requirementPoolManifest');
+    try {
+      const next = await api.importRequirementPoolManifest(manifest) as McpInfo & { imported?: RequirementPoolManifestPreview };
+      setInfo(next);
+      updateBuiltinForms(next);
+      setManifestPreview(next.imported || null);
+      message.success('需求池 MCP 配置已导入；密钥仍需在本机单独保存');
+    } catch (error) {
+      message.error(errorText(error, '需求池配置导入失败'));
+    } finally {
+      setSaving('');
     }
   };
 
@@ -572,6 +631,54 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
               <div><strong>{servers.length}</strong><span>MCP 服务</span></div>
               <div><strong>{enabledCapabilityCount}</strong><span>已启用能力</span></div>
               <div><strong>{info.exists ? '已创建' : '未创建'}</strong><span>{info.file || 'mcp.json'}</span></div>
+            </div>
+
+            <Divider orientation="left">需求池配置导入</Divider>
+            <div className="fl-mcp-editor">
+              <div className="fl-mcp-subtitle">导入需求池 MCP 配置 JSON</div>
+              <p className="fl-muted">v0.7.5 只导入平台声明、服务地址、工具映射、字段/状态映射和密钥占位；不会从配置文件保存明文密钥，也不会执行写回。</p>
+              <Input.TextArea
+                rows={8}
+                className="fl-mono"
+                spellCheck={false}
+                disabled={!canWrite}
+                value={manifestText}
+                placeholder={'{\n  "manifestVersion": "2026-09",\n  "platform": { "id": "demand-pool", "name": "需求池平台" },\n  "transport": { "type": "http", "url": "https://mcp.example/api" },\n  "tools": { "test": "requirements.test", "search": "requirements.search", "get": "requirements.get" }\n}'}
+                onChange={(event) => {
+                  setManifestText(event.target.value);
+                  setManifestPreview(null);
+                }}
+              />
+              <Space wrap className="fl-mcp-result">
+                <Button loading={testing === 'requirementPoolManifest'} disabled={!canWrite || Boolean(testing) || !manifestText.trim()} onClick={() => void inspectRequirementPoolManifest()}>
+                  预览配置
+                </Button>
+                <Button type="primary" loading={saving === 'requirementPoolManifest'} disabled={!canWrite || Boolean(saving) || !manifestText.trim() || manifestBlocked} onClick={() => void importRequirementPoolManifest()}>
+                  导入到 MCP 配置
+                </Button>
+                <span className="fl-muted">导入后请在下方服务区域保存本机密钥，并测试需求能力。</span>
+              </Space>
+              {manifestPreview ? (
+                <div className="fl-mcp-result">
+                  <Alert
+                    showIcon
+                    type={manifestBlocked ? 'error' : 'success'}
+                    message={manifestBlocked ? '配置存在阻塞项，暂不能导入' : '配置可导入'}
+                    description={[
+                      manifestPreview.platform?.name ? `平台：${manifestPreview.platform.name}（${manifestPreview.platform.id || '未命名'}）` : '',
+                      manifestPreview.server?.id ? `服务：${manifestPreview.server.name || manifestPreview.server.id}（${manifestPreview.server.id}）` : '',
+                      manifestPreview.capability?.tools ? `工具：${Object.values(manifestPreview.capability.tools).filter(Boolean).join('、')}` : '',
+                      manifestPreview.secrets?.length ? `需本机补录密钥：${manifestPreview.secrets.map((item) => item.label || item.name).join('、')}` : '',
+                    ].filter(Boolean).join('；')}
+                  />
+                  {(manifestPreview.blockers || []).map((item) => (
+                    <Alert key={`blocker:${item.code}:${item.message}`} className="fl-settings-status" type="error" showIcon message={item.message || item.code || '配置阻塞项'} />
+                  ))}
+                  {(manifestPreview.warnings || []).map((item) => (
+                    <Alert key={`warning:${item.code}:${item.message}`} className="fl-settings-status" type="warning" showIcon message={item.message || item.code || '配置警告'} />
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <Divider orientation="left">MCP 服务</Divider>
