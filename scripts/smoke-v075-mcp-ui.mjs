@@ -84,7 +84,21 @@ try {
     button(importDialog, '执行连接测试').click())
   await importDialog.getByText('需求池连接测试通过', { exact: true }).waitFor()
   await importDialog.getByText('身份：MCP UI Smoke').waitFor()
+  await importDialog.getByLabel('搜索需求池').fill('ui smoke')
+  await expectResponse(page, '/api/integrations/requirements/mcp/search', () =>
+    importDialog.locator('.ant-input-search button').click())
+  await importDialog.getByText('REQ-UI-1').waitFor()
+  await importDialog.getByText('UI smoke requirement').waitFor()
+  const importRequirementButton = importDialog.locator('.fl-external-list button').filter({ hasText: /导\s*入/ }).first()
+  await assertEnabled(importRequirementButton)
+  await expectResponse(page, '/api/integrations/requirements/mcp/import', () =>
+    importRequirementButton.click())
+  await main.getByText('REQ-UI-1').waitFor()
+  assert.ok(page.url().endsWith('#/requirements/REQ-UI-1'))
 
+  await page.goto(`${base}/requirements`)
+  await page.waitForLoadState('networkidle')
+  await button(page, '从需求池导入').click()
   await button(importDialog, '高级 MCP 设置').click()
   await main.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
   assert.ok(page.url().endsWith('#/settings/mcp'))
@@ -122,6 +136,8 @@ try {
   await main.getByText('需求池连接测试通过', { exact: true }).waitFor()
   await main.getByText('身份：MCP UI Smoke').waitFor()
   assert.ok(calls.some((item) => item.name === 'requirements.test' && item.authorization === 'Bearer v075-ui-smoke-token'))
+  assert.ok(calls.some((item) => item.name === 'requirements.search' && item.authorization === 'Bearer v075-ui-smoke-token'))
+  assert.ok(calls.some((item) => item.name === 'requirements.get' && item.authorization === 'Bearer v075-ui-smoke-token'))
 
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
@@ -133,7 +149,7 @@ try {
   assert.deepEqual(errors, [])
   console.log(JSON.stringify({
     passed: true,
-    checks: ['requirements-direct-config-import', 'requirements-secret-ui', 'requirements-env-secret-probe', 'settings-advanced-entrypoint', 'template-load', 'manifest-preview', 'import', 'missing-secret-ui', 'env-secret-probe', 'desktop-mobile-layout', 'page-errors'],
+    checks: ['requirements-direct-config-import', 'requirements-secret-ui', 'requirements-env-secret-probe', 'requirements-search-import', 'settings-advanced-entrypoint', 'template-load', 'manifest-preview', 'import', 'missing-secret-ui', 'env-secret-probe', 'desktop-mobile-layout', 'page-errors'],
     viewportWidths: [1440, 390]
   }))
 } finally {
@@ -199,11 +215,33 @@ function startFakeRequirementPool() {
       return
     }
     if (name === 'requirements.search') {
-      res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: { items: [] } } }))
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: { items: [{
+        code: 'REQ-UI-1',
+        title: 'UI smoke requirement',
+        description: 'Imported through the Requirements dialog',
+        project: 'safe-prod',
+        module: 'integration',
+        type: 'feature',
+        priority: 'P1',
+        owner: 'PM',
+        status: 'open',
+        url: 'https://pool.example/REQ-UI-1'
+      }] } } }))
       return
     }
     if (name === 'requirements.get') {
-      res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: null } }))
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: {
+        code: 'REQ-UI-1',
+        title: 'UI smoke requirement',
+        description: 'Imported through the Requirements dialog',
+        project: 'safe-prod',
+        module: 'integration',
+        type: 'feature',
+        priority: 'P1',
+        owner: 'PM',
+        status: 'open',
+        url: 'https://pool.example/REQ-UI-1'
+      } } }))
       return
     }
     res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: {} } }))
@@ -249,6 +287,7 @@ Direct:
 Checks:
   - Requirements import dialog can load, preview and import a requirement-pool manifest.
   - Requirements import dialog shows missing local secrets and can run an env-based connection probe.
+  - Requirements import dialog can search the configured pool and import a requirement.
   - Requirements import dialog can route to advanced MCP Settings.
   - Requirement-pool manifest template, preview and import work in MCP Settings.
   - Missing keychain secret placeholders show an inline local secret entry.

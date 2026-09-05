@@ -265,7 +265,7 @@ npm run smoke:v075:requirement-pool -- \
   --inspect-only
 ```
 
-需求页配置导入和设置页浏览器验收需要本机提供 Playwright：
+需求页配置导入、连接测试、需求搜索导入和设置页高级诊断的浏览器验收需要本机提供 Playwright：
 
 ```bash
 npm run build:web
