@@ -8,6 +8,7 @@ import { initRepo } from '../src/core/repo.js'
 import * as gitx from '../src/core/git.js'
 import * as milestones from '../src/core/milestones.js'
 import { startServer } from '../src/server/index.js'
+import { inspectRequirementPoolManifest } from '../src/core/mcp-config.js'
 
 const args = parseArgs(process.argv.slice(2))
 const manifestPath = args.manifest || process.env.FLOWLARK_V075_MANIFEST
@@ -22,6 +23,26 @@ if (!manifestPath || args.help) {
 
 const rawManifest = JSON.parse(fs.readFileSync(path.resolve(manifestPath), 'utf8'))
 let manifest = rawManifest
+
+if (args.inspectOnly) {
+  let preview = inspectRequirementPoolManifest(manifest)
+  manifest = injectSmokeEnvSecrets(manifest, preview)
+  if (manifest !== rawManifest) preview = inspectRequirementPoolManifest(manifest)
+  assert.deepEqual(preview.blockers || [], [], `manifest blockers: ${formatProblems(preview.blockers)}`)
+  console.log(JSON.stringify({
+    passed: true,
+    mode: 'inspect-only',
+    manifestVersion: preview.manifestVersion,
+    platform: preview.platform,
+    transport: preview.transport,
+    server: { id: preview.server?.id, name: preview.server?.name, type: preview.server?.type },
+    tools: preview.capability?.tools || {},
+    warnings: preview.warnings || [],
+    secrets: preview.secrets || []
+  }, null, 2))
+  process.exit(0)
+}
+
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-requirement-pool-'))
 const project = 'v075-live'
 const versionNo = 'v0.7.5-live'
@@ -145,6 +166,7 @@ function parseArgs(values) {
     else if (item === '--manifest') out.manifest = values[++index]
     else if (item === '--query') out.query = values[++index]
     else if (item === '--requirement') out.requirement = values[++index]
+    else if (item === '--inspect-only') out.inspectOnly = true
     else throw new Error(`未知参数：${item}`)
   }
   return out
@@ -164,6 +186,7 @@ Options:
   --manifest <file>       Requirement-pool MCP manifest JSON.
   --query <text>          Optional list-refresh query.
   --requirement <code>    Require a specific external requirement code/key.
+  --inspect-only          Validate manifest shape and secret placeholders only.
   --keep                  Keep the temporary Flowlark repository for inspection.
 
 Secrets:

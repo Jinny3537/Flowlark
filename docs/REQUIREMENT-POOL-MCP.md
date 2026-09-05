@@ -220,6 +220,14 @@ FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \
 npm run smoke:v075:requirement-pool -- --keep
 ```
 
+只校验配置合同、不连接真实平台：
+
+```bash
+npm run smoke:v075:requirement-pool -- \
+  --manifest docs/examples/requirement-pool-manifest.example.json \
+  --inspect-only
+```
+
 如果 manifest 使用 `${secret:demand-pool-mcp}`，smoke 脚本会推导出环境变量名 `FLOWLARK_V075_SECRET_DEMAND_POOL_MCP`，并在一次性仓库中临时替换为 `${env:FLOWLARK_V075_SECRET_DEMAND_POOL_MCP}`。密钥值不会写入 `mcp.json`。
 
 设置页浏览器验收：

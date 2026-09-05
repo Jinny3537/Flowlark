@@ -257,6 +257,14 @@ FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \
 npm run smoke:v075:requirement-pool -- --keep
 ```
 
+只检查配置 JSON 合同、不连接平台：
+
+```bash
+npm run smoke:v075:requirement-pool -- \
+  --manifest docs/examples/requirement-pool-manifest.example.json \
+  --inspect-only
+```
+
 设置页浏览器验收需要本机提供 Playwright：
 
 ```bash
