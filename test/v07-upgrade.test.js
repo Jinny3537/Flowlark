@@ -212,4 +212,44 @@ describe('v0.7 升级能力', () => {
     t.assert.strictEqual(result.requirement, 'REQ-7')
     t.assert.ok(result.snapshot.startsWith('delivery-'))
   })
+
+  test('v0.7.5 验收脚本可从 Header 占位符推导本机密钥环境变量', async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-smoke-secret-test-'))
+    dirs.push(directory)
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000, headers: { Authorization: 'Bearer ${secret:fixture-token}' } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
+      statuses: { open: '待处理' },
+      safety: { readOnly: true, writes: [], dangerous: [] }
+    }
+    const manifestFile = path.join(directory, 'requirement-pool-secret.json')
+    fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8')
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      'scripts/smoke-v075-requirement-pool.mjs',
+      '--manifest', manifestFile,
+      '--query', 'REQ',
+      '--requirement', 'REQ-7',
+      '--keep'
+    ], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      env: {
+        ...process.env,
+        FLOWLARK_QUIET_MIGRATE: '1',
+        FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+      }
+    })
+    const result = JSON.parse(stdout)
+    dirs.push(result.repo)
+    t.assert.strictEqual(result.passed, true)
+    const saved = JSON.parse(fs.readFileSync(path.join(result.repo, 'mcp.json'), 'utf8'))
+    t.assert.strictEqual(saved.servers[0].headers.Authorization, 'Bearer ${env:FLOWLARK_V075_SECRET_FIXTURE_TOKEN}')
+    t.assert.doesNotMatch(JSON.stringify(saved), /fixture-secret-value/)
+  })
 })

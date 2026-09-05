@@ -5,7 +5,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { initRepo } from '../src/core/repo.js'
-import { Hub } from '../src/core/service.js'
 import * as gitx from '../src/core/git.js'
 import * as milestones from '../src/core/milestones.js'
 import { startServer } from '../src/server/index.js'
@@ -21,7 +20,8 @@ if (!manifestPath || args.help) {
   process.exit(args.help ? 0 : 2)
 }
 
-const manifest = JSON.parse(fs.readFileSync(path.resolve(manifestPath), 'utf8'))
+const rawManifest = JSON.parse(fs.readFileSync(path.resolve(manifestPath), 'utf8'))
+let manifest = rawManifest
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-requirement-pool-'))
 const project = 'v075-live'
 const versionNo = 'v0.7.5-live'
@@ -34,9 +34,6 @@ try {
   git(root, 'config', 'user.name', 'v0.7.5 Smoke')
   git(root, 'config', 'user.email', 'v075-smoke@example.invalid')
 
-  const hub = new Hub(root)
-  await storeDeclaredSecrets(hub, manifest)
-
   server = await startServer(root, {
     port: 0,
     previewPort: 0,
@@ -45,7 +42,11 @@ try {
   })
   const base = `http://127.0.0.1:${server.port}`
 
-  const preview = await api(base, 'POST', '/api/mcp/requirement-pool/inspect', manifest)
+  let preview = await api(base, 'POST', '/api/mcp/requirement-pool/inspect', manifest)
+  manifest = injectSmokeEnvSecrets(manifest, preview)
+  if (manifest !== rawManifest) {
+    preview = await api(base, 'POST', '/api/mcp/requirement-pool/inspect', manifest)
+  }
   assert.deepEqual(preview.blockers || [], [], `manifest blockers: ${formatProblems(preview.blockers)}`)
 
   await api(base, 'POST', '/api/mcp/requirement-pool/import', manifest)
@@ -164,18 +165,44 @@ Options:
 
 Secrets:
   Manifest placeholders like \${env:TOKEN_NAME} are read directly from the environment.
-  Manifest declarations like {"name":"demand-pool-mcp"} can be supplied as
-  FLOWLARK_V075_SECRET_DEMAND_POOL_MCP and are stored in the local secret store.
+  Header placeholders like \${secret:demand-pool-mcp} can be supplied as
+  FLOWLARK_V075_SECRET_DEMAND_POOL_MCP. The smoke script injects them as
+  temporary env placeholders in its disposable repository and never writes the
+  secret value to mcp.json.
 `)
 }
 
-async function storeDeclaredSecrets(hub, manifest) {
-  for (const secret of manifest.secrets || []) {
-    const name = String(secret?.name || '').trim()
-    if (!name) continue
-    const value = process.env[`FLOWLARK_V075_SECRET_${envSuffix(name)}`]
-    if (value) hub.setMcpServerSecret(name, value)
+function injectSmokeEnvSecrets(input, preview) {
+  const headers = preview?.server?.headers
+  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return input
+  const serverId = String(preview?.server?.id || '').trim()
+  let changed = false
+  const nextHeaders = {}
+  for (const [key, value] of Object.entries(headers)) {
+    nextHeaders[key] = String(value || '').replace(/\$\{([^}]+)\}/g, (raw, expr) => {
+      const name = smokeSecretName(expr, serverId)
+      if (!name) return raw
+      const envKey = `FLOWLARK_V075_SECRET_${envSuffix(name)}`
+      if (!process.env[envKey]) return raw
+      changed = true
+      return `\${env:${envKey}}`
+    })
   }
+  if (!changed) return input
+  const next = JSON.parse(JSON.stringify(input || {}))
+  const transport = next.transport && typeof next.transport === 'object' && !Array.isArray(next.transport)
+    ? { ...next.transport }
+    : {}
+  transport.headers = nextHeaders
+  next.transport = transport
+  return next
+}
+
+function smokeSecretName(expr, serverId) {
+  const value = String(expr || '').trim()
+  if (value === 'secret') return serverId
+  if (value.startsWith('secret:')) return value.slice(7).trim()
+  return ''
 }
 
 function envSuffix(value) {
