@@ -79,6 +79,8 @@ function checkPreflight({ manifest, smokeResult, uiSmokeResult }) {
   if (args.reuseUiSmokeResult && !fs.existsSync(path.resolve(uiSmokeResult))) {
     missing.push(`UI smoke result file: ${path.resolve(uiSmokeResult)}`)
   }
+  const dirty = gitDirtyEntries(process.cwd())
+  if (dirty.length) missing.push(`clean release worktree; current changes: ${formatDirtyEntries(dirty)}`)
   return {
     passed: missing.length === 0,
     targetVersion: TARGET_VERSION,
@@ -88,6 +90,29 @@ function checkPreflight({ manifest, smokeResult, uiSmokeResult }) {
       ? ['Provide the missing manifest, Playwright module or reusable smoke result files, then rerun upgrade:v075.']
       : []
   }
+}
+
+function gitDirtyEntries(root) {
+  try {
+    const inside = execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim()
+    if (inside !== 'true') return []
+    return execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).split('\n').map((line) => line.trim()).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+function formatDirtyEntries(entries) {
+  const head = entries.slice(0, 8).join(', ')
+  return entries.length > 8 ? `${head}, ... (${entries.length} total)` : head
 }
 
 function runNodeJson(step, script, values) {

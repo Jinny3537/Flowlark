@@ -275,7 +275,7 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
 ```
 
-有真实平台 manifest、凭据和 Playwright 后，推荐使用一键升级入口。它会依次构建 Web、运行浏览器 smoke、运行真实平台 smoke、执行 pre-bump readiness、受保护版本号提升和 final readiness：
+有真实平台 manifest、凭据和 Playwright 后，推荐使用一键升级入口。它会先确认 Git 工作区干净，再依次构建 Web、运行浏览器 smoke、运行真实平台 smoke、执行 pre-bump readiness、受保护版本号提升和 final readiness：
 
 ```bash
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \

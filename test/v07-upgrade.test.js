@@ -558,6 +558,89 @@ describe('v0.7 升级能力', () => {
     t.assert.doesNotMatch(stdout, /fixture-secret-value/)
   })
 
+  test('v0.7.5 finalize script refuses a dirty release worktree', async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-finalize-dirty-test-'))
+    const evidenceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-finalize-dirty-evidence-'))
+    dirs.push(directory, evidenceDirectory)
+    fs.mkdirSync(path.join(directory, 'web'), { recursive: true })
+    writeJson(path.join(directory, 'package.json'), {
+      name: 'flowlark',
+      version: '0.7.0',
+      type: 'module',
+      scripts: {
+        'check:v075:readiness': 'node scripts/check-v075-readiness.mjs',
+        'upgrade:v075': 'node scripts/upgrade-v075.mjs',
+        'release:v075:finalize': 'node scripts/finalize-v075-release.mjs',
+        'smoke:v075:requirement-pool': 'node scripts/smoke-v075-requirement-pool.mjs',
+        'smoke:v075:mcp-ui': 'node scripts/smoke-v075-mcp-ui.mjs'
+      }
+    })
+    writeJson(path.join(directory, 'web/package.json'), { name: 'flowlark-web', version: '0.7.0', type: 'module' })
+    writeJson(path.join(directory, 'package-lock.json'), { name: 'flowlark', version: '0.7.0', lockfileVersion: 3, packages: { '': { name: 'flowlark', version: '0.7.0' } } })
+    writeJson(path.join(directory, 'web/package-lock.json'), { name: 'flowlark-web', version: '0.7.0', lockfileVersion: 3, packages: { '': { name: 'flowlark-web', version: '0.7.0' } } })
+
+    await execFileAsync('git', ['init'], { cwd: directory })
+    await execFileAsync('git', ['config', 'user.name', 'v075 test'], { cwd: directory })
+    await execFileAsync('git', ['config', 'user.email', 'v075@example.invalid'], { cwd: directory })
+    await execFileAsync('git', ['add', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json'], { cwd: directory })
+    await execFileAsync('git', ['commit', '-m', 'baseline'], { cwd: directory })
+    fs.writeFileSync(path.join(directory, 'dirty.txt'), 'uncommitted\n', 'utf8')
+
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000, headers: { Authorization: 'Bearer ${secret:fixture-token}' } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
+      statuses: { open: '待处理' },
+      safety: { readOnly: true, writes: [], dangerous: [] }
+    }
+    const manifestFile = path.join(evidenceDirectory, 'requirement-pool.json')
+    const smokeResultFile = path.join(evidenceDirectory, 'smoke-result.json')
+    const uiSmokeResultFile = path.join(evidenceDirectory, 'ui-smoke-result.json')
+    writeJson(manifestFile, manifest)
+    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence(manifest))
+    writeJson(uiSmokeResultFile, {
+      passed: true,
+      checks: [
+        'requirements-direct-config-import',
+        'requirements-secret-ui',
+        'requirements-env-secret-probe',
+        'requirements-search-import',
+        'settings-advanced-entrypoint',
+        'desktop-mobile-layout',
+        'page-errors'
+      ]
+    })
+
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        path.resolve('scripts/finalize-v075-release.mjs'),
+        '--manifest', manifestFile,
+        '--smoke-result', smokeResultFile,
+        '--ui-smoke-result', uiSmokeResultFile
+      ], {
+        cwd: directory,
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          PLAYWRIGHT_MODULE: process.execPath,
+          FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(result.failedStep, 'release-worktree-clean')
+        t.assert.match(result.message, /dirty.txt/)
+        t.assert.strictEqual(JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8')).version, '0.7.0')
+        return true
+      }
+    )
+  })
+
   test('v0.7.5 upgrade script can reuse accepted smoke evidence and finalize versions', async (t) => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-upgrade-test-'))
     dirs.push(directory)
@@ -706,6 +789,61 @@ describe('v0.7 升级能力', () => {
         t.assert.strictEqual(result.passed, false)
         t.assert.strictEqual(result.phase, 'preflight')
         t.assert.ok(result.missing.some((item) => item.includes('real-platform smoke result file:')))
+        return true
+      }
+    )
+
+    const dirtyDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-upgrade-dirty-test-'))
+    const dirtyEvidenceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-upgrade-dirty-evidence-'))
+    dirs.push(dirtyDirectory, dirtyEvidenceDirectory)
+    const dirtyManifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000 },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' }
+    }
+    const dirtyManifestFile = path.join(dirtyEvidenceDirectory, 'requirement-pool.json')
+    const dirtySmokeResultFile = path.join(dirtyEvidenceDirectory, 'smoke-result.json')
+    const dirtyUiSmokeResultFile = path.join(dirtyEvidenceDirectory, 'ui-smoke-result.json')
+    writeJson(dirtyManifestFile, dirtyManifest)
+    writeJson(dirtySmokeResultFile, v075RequirementPoolSmokeEvidence(dirtyManifest))
+    writeJson(dirtyUiSmokeResultFile, {
+      passed: true,
+      checks: [
+        'requirements-direct-config-import',
+        'requirements-secret-ui',
+        'requirements-env-secret-probe',
+        'requirements-search-import',
+        'settings-advanced-entrypoint',
+        'desktop-mobile-layout',
+        'page-errors'
+      ]
+    })
+    await execFileAsync('git', ['init'], { cwd: dirtyDirectory })
+    fs.writeFileSync(path.join(dirtyDirectory, 'dirty.txt'), 'uncommitted\n', 'utf8')
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        path.resolve('scripts/upgrade-v075.mjs'),
+        '--manifest', dirtyManifestFile,
+        '--smoke-result', dirtySmokeResultFile,
+        '--ui-smoke-result', dirtyUiSmokeResultFile,
+        '--reuse-real-smoke-result',
+        '--reuse-ui-smoke-result'
+      ], {
+        cwd: dirtyDirectory,
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          PLAYWRIGHT_MODULE: process.execPath
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(result.phase, 'preflight')
+        t.assert.ok(result.missing.some((item) => item.includes('clean release worktree') && item.includes('dirty.txt')))
         return true
       }
     )

@@ -244,7 +244,7 @@ npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
 
 保存的真实平台 smoke 结果还会包含 `generatedBy: "smoke:v075:requirement-pool"`、`mode: "live"`、`evidenceVersion: "v075-requirement-pool-smoke/v1"`、manifest 摘要、manifest 指纹、连接证明和关键链路 `checks`。最终 readiness 会拒绝缺少这些审计字段的旧版最小 JSON，也会拒绝与当前 manifest 指纹不一致的旧结果。
 
-有真实平台 manifest、凭据和 Playwright 后，推荐使用一键升级入口。它会依次构建 Web、运行浏览器 smoke、运行真实平台 smoke、执行 pre-bump readiness、受保护版本号提升和 final readiness：
+有真实平台 manifest、凭据和 Playwright 后，推荐使用一键升级入口。它会先确认 Git 工作区干净，再依次构建 Web、运行浏览器 smoke、运行真实平台 smoke、执行 pre-bump readiness、受保护版本号提升和 final readiness：
 
 ```bash
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
