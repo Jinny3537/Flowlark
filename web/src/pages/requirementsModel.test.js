@@ -59,3 +59,15 @@ test('projects failed requirement-pool refresh as source warning without changin
   assert.equal(row.source.label, '需求池异常')
   assert.equal(row.source.tone, 'error')
 })
+
+test('projects missing requirement-pool items as unavailable', () => {
+  const row = projectRequirement({
+    code: 'REQ-GONE',
+    title: '远端已删除',
+    external: { provider: 'mcp', syncStatus: 'failed', failure: { code: 'REQUIREMENT_REMOTE_MISSING' } },
+    externalTasks: [],
+  })
+  assert.equal(row.source.value, 'pool')
+  assert.equal(row.source.label, '需求池不可访问')
+  assert.equal(row.source.tone, 'error')
+})

@@ -160,7 +160,8 @@ export default function Requirements() {
       const result: any = await api.syncRequirements(external.provider, { token: external.token }, 'list');
       await load();
       const failed = Array.isArray(result.failed) ? result.failed.length : Number(result.failed || 0);
-      message.success(`已刷新需求池：新增 ${result.created || 0} 条，更新 ${result.updated || 0} 条${failed ? `，失败 ${failed} 条` : ''}`);
+      const missing = Number(result.missing || 0);
+      message.success(`已刷新需求池：新增 ${result.created || 0} 条，更新 ${result.updated || 0} 条${missing ? `，不可访问 ${missing} 条` : ''}${failed ? `，失败 ${failed} 条` : ''}`);
     } catch (nextError) {
       message.error(errorText(nextError, '同步需求池失败'));
     } finally {

@@ -2675,7 +2675,8 @@ export class Hub {
     }
     const query = String(overrides.query || '').trim()
     const remotes = await reqIntegration.searchRequirements(selected, this.requirementConfig(selected, overrides), query)
-    const result = { provider: selected, query, total: remotes.length, created: 0, updated: 0, failed: [] }
+    const remoteKeys = new Set(remotes.map((remote) => String(remote?.code || '').trim()).filter(Boolean))
+    const result = { provider: selected, query, total: remotes.length, created: 0, updated: 0, missing: 0, failed: [] }
     for (const remote of remotes) {
       try {
         const exists = reqx.requirementExists(this.root, remote.code)
@@ -2692,7 +2693,16 @@ export class Hub {
         }))
       }
     }
-    this.#log(null, null, 'REQUIREMENT_LIST_REFRESH', `刷新需求池列表 ${result.created} 新增/${result.updated} 更新/${result.total} 条`)
+    if (!query) {
+      for (const item of reqx.listRequirements(this.root).filter((entry) => entry.external?.provider === selected)) {
+        const key = String(item.external?.key || item.code || '').trim()
+        if (!remoteKeys.has(key) && !remoteKeys.has(String(item.code || '').trim())) {
+          this.#markExternalRequirementUnavailable(item)
+          result.missing++
+        }
+      }
+    }
+    this.#log(null, null, 'REQUIREMENT_LIST_REFRESH', `刷新需求池列表 ${result.created} 新增/${result.updated} 更新/${result.missing} 不可访问/${result.total} 条`)
     return { ...result, items: reqx.listRequirements(this.root) }
   }
 
@@ -3299,6 +3309,25 @@ export class Hub {
       code: problem.code,
       message: problem.message,
       hint: problem.hint || '',
+      at: now
+    })
+    reqx.updateRequirement(this.root, item.code, {
+      external: {
+        ...(item.external || {}),
+        syncStatus: 'failed',
+        failure,
+        lastSyncAttemptAt: now
+      }
+    }, { trusted: true, now })
+    return failure
+  }
+
+  #markExternalRequirementUnavailable(item) {
+    const now = new Date().toISOString()
+    const failure = sanitizeSyncValue({
+      code: 'REQUIREMENT_REMOTE_MISSING',
+      message: `需求 ${item.code} 在需求池列表中不可见`,
+      hint: '确认需求是否已删除、移出当前项目或当前凭据失去访问权限',
       at: now
     })
     reqx.updateRequirement(this.root, item.code, {

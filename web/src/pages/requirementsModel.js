@@ -19,6 +19,8 @@ export function projectRequirement(item = {}) {
     .map((milestone) => typeof milestone === 'string' ? milestone : milestone?.name)
     .map(text)
     .filter(Boolean)
+  const remoteMissing = item.external?.syncStatus === 'failed' && item.external?.failure?.code === 'REQUIREMENT_REMOTE_MISSING'
+  const externalFailed = item.external?.syncStatus === 'failed'
   return {
     ...item,
     lifecycle: requirementStatusMeta(item.status),
@@ -26,7 +28,7 @@ export function projectRequirement(item = {}) {
     milestoneMembership: { count: milestones.length, names: milestones },
     externalBinding: externalBindingMeta(item),
     source: item.external
-      ? { value: 'pool', label: item.external.syncStatus === 'failed' ? '需求池异常' : '需求池', tone: item.external.syncStatus === 'failed' ? 'error' : 'success' }
+      ? { value: 'pool', label: remoteMissing ? '需求池不可访问' : externalFailed ? '需求池异常' : '需求池', tone: externalFailed ? 'error' : 'success' }
       : { value: 'local', label: '本地', tone: 'default' },
   }
 }

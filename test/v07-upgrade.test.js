@@ -115,6 +115,11 @@ describe('v0.7 升级能力', () => {
   test('需求池列表刷新会新增和更新外部需求引用', async (t) => {
     const { root, hub } = newHub()
     dirs.push(root)
+    reqx.createRequirement(root, {
+      code: 'REQ-GONE',
+      title: '已移除外部需求',
+      external: { provider: 'mcp', key: 'REQ-GONE', syncStatus: 'synced' }
+    }, { trusted: true })
     hub.saveMcpServer({ id: 'requirements-mcp', name: '需求池 MCP', url: `${baseUrl}/mcp`, headers: { 'X-Test': 'yes' } })
     hub.saveMcpCapability('requirements', {
       enabled: true,
@@ -127,7 +132,11 @@ describe('v0.7 升级能力', () => {
     const first = await hub.refreshExternalRequirementList('mcp')
     t.assert.strictEqual(first.created, 1)
     t.assert.strictEqual(first.updated, 0)
+    t.assert.strictEqual(first.missing, 1)
     t.assert.strictEqual(reqx.readRequirement(root, 'REQ-7').external.syncStatus, 'synced')
+    const gone = reqx.readRequirement(root, 'REQ-GONE')
+    t.assert.strictEqual(gone.external.syncStatus, 'failed')
+    t.assert.strictEqual(gone.external.failure.code, 'REQUIREMENT_REMOTE_MISSING')
 
     const second = await hub.refreshExternalRequirementList('mcp')
     t.assert.strictEqual(second.created, 0)
