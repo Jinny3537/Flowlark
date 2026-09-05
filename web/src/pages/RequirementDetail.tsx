@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, App, Button, DatePicker, Descriptions, Form, Input, List, Modal, Space, Tag } from 'antd';
+import { Alert, App, Button, DatePicker, Descriptions, Form, Input, List, Modal, Select, Space, Tag } from 'antd';
 import { AuditOutlined, CheckCircleOutlined, EditOutlined, ExportOutlined, LinkOutlined, SaveOutlined, SyncOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -27,6 +27,10 @@ function milestoneName(value: any) {
   return String(typeof value === 'string' ? value : value?.name || '');
 }
 
+function projectSlug(value: any) {
+  return String(value?.slug || value?.code || value?.id || '');
+}
+
 export default function RequirementDetail() {
   const navigate = useNavigate();
   const { code = '' } = useParams();
@@ -49,8 +53,14 @@ export default function RequirementDetail() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [refreshingExternal, setRefreshingExternal] = useState(false);
+  const [linkVersionOpen, setLinkVersionOpen] = useState(false);
+  const [linkVersionSaving, setLinkVersionSaving] = useState(false);
+  const [linkTargetsLoading, setLinkTargetsLoading] = useState(false);
+  const [linkProjects, setLinkProjects] = useState<any[]>([]);
+  const [linkVersions, setLinkVersions] = useState<any[]>([]);
   const [form] = Form.useForm();
   const [bindingForm] = Form.useForm();
+  const [linkVersionForm] = Form.useForm();
 
   const lifecycle = useMemo(() => requirementStatusMeta(item?.status), [item?.status]);
   const prototypeProgress = useMemo(() => prototypeProgressMeta(item?.derivedStatus), [item?.derivedStatus]);
@@ -165,6 +175,61 @@ export default function RequirementDetail() {
       setRefreshingExternal(false);
     }
   }, [code, message]);
+
+  const loadLinkVersions = useCallback(async (project: string) => {
+    if (!project) {
+      setLinkVersions([]);
+      return;
+    }
+    setLinkTargetsLoading(true);
+    try {
+      setLinkVersions(await api.listVersions(project, { includeDraft: true, includeVoid: false }) || []);
+    } catch (nextError) {
+      message.error(errorText(nextError, '读取项目版本失败'));
+      setLinkVersions([]);
+    } finally {
+      setLinkTargetsLoading(false);
+    }
+  }, [message]);
+
+  const startLinkVersion = useCallback(async () => {
+    setLinkVersionOpen(true);
+    setLinkProjects([]);
+    setLinkVersions([]);
+    linkVersionForm.resetFields();
+    setLinkTargetsLoading(true);
+    try {
+      const projects = await api.listProjects();
+      setLinkProjects(projects || []);
+      const preferredProject = item?.versions?.[0]?.project || item?.project || '';
+      const matchedProject = (projects || []).find((project: any) => projectSlug(project) === preferredProject);
+      const initialProject = projectSlug(matchedProject || projects?.[0]);
+      if (initialProject) {
+        linkVersionForm.setFieldsValue({ project: initialProject });
+        setLinkVersions(await api.listVersions(initialProject, { includeDraft: true, includeVoid: false }) || []);
+      }
+    } catch (nextError) {
+      message.error(errorText(nextError, '读取可关联版本失败'));
+    } finally {
+      setLinkTargetsLoading(false);
+    }
+  }, [item, linkVersionForm, message]);
+
+  const linkVersion = useCallback(async () => {
+    let values: any;
+    try { values = await linkVersionForm.validateFields(); } catch { return; }
+    setLinkVersionSaving(true);
+    try {
+      await api.linkRequirement(code, { project: values.project, versionNo: values.versionNo });
+      message.success(`已关联到 ${values.project}/${values.versionNo}`);
+      setLinkVersionOpen(false);
+      await load();
+    } catch (nextError) {
+      message.error(errorText(nextError, '关联版本失败'));
+    } finally {
+      setLinkVersionSaving(false);
+    }
+  }, [code, linkVersionForm, load, message]);
 
   const runPrimaryAction = useCallback(async () => {
     if (!primaryAction || primaryGuard.disabled) return;
@@ -313,7 +378,10 @@ export default function RequirementDetail() {
             <section className="fl-detail-section">
               <div className="fl-section-head">
                 <div><h2>原型进度与关联版本</h2><p>生命周期与原型完成度分开计算，避免把“已确认”误当作“已交付”。</p></div>
-                <Tag>{item?.versions?.length || 0} 个版本</Tag>
+                <Space>
+                  <Tag>{item?.versions?.length || 0} 个版本</Tag>
+                  <Button size="small" icon={<LinkOutlined />} disabled={!writable} title={!writable ? readonlyReason : undefined} onClick={() => void startLinkVersion()}>关联版本</Button>
+                </Space>
               </div>
               <List locale={{ emptyText: '还没有关联版本' }} dataSource={item?.versions || []} renderItem={(version: any) => {
                 const versionNo = version.versionNo || version.no;
@@ -389,6 +457,45 @@ export default function RequirementDetail() {
           <Form.Item name="description" label="描述" rules={[{ required: true, message: '请填写描述' }]}><Input.TextArea rows={5} /></Form.Item>
           <Form.Item name="owner" label="负责人" rules={[{ required: true, message: '请填写负责人' }]}><Input /></Form.Item>
           <Form.Item name="dueDate" label="截止日期"><DatePicker className="fl-full-width" format="YYYY-MM-DD" placeholder="选择截止日期" /></Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal title="关联到原型版本" open={linkVersionOpen} confirmLoading={linkVersionSaving} okText="确认关联" okButtonProps={{ disabled: !writable || linkTargetsLoading }} onOk={() => void linkVersion()} onCancel={() => setLinkVersionOpen(false)}>
+        <Form form={linkVersionForm} layout="vertical" disabled={!writable || linkTargetsLoading}>
+          <Alert className="fl-dashboard-alert" type="info" showIcon message="只建立引用关系" description="关联后版本范围会引用当前需求编号；需求池标题、状态和来源信息仍由需求详情维护，不会复制成另一份主数据。" />
+          <Form.Item name="project" label="项目" rules={[{ required: true, message: '请选择项目' }]}>
+            <Select
+              showSearch
+              placeholder="选择项目"
+              optionFilterProp="label"
+              options={linkProjects.map((project: any) => ({
+                value: projectSlug(project),
+                label: `${project.name || projectSlug(project)}（${projectSlug(project)}）`,
+              }))}
+              onChange={(project) => {
+                linkVersionForm.setFieldValue('versionNo', undefined);
+                void loadLinkVersions(project);
+              }}
+            />
+          </Form.Item>
+          <Form.Item name="versionNo" label="版本" rules={[{ required: true, message: '请选择版本' }]}>
+            <Select
+              showSearch
+              placeholder="选择要加入的原型版本"
+              optionFilterProp="label"
+              loading={linkTargetsLoading}
+              options={linkVersions.map((version: any) => {
+                const versionNo = version.versionNo || version.no;
+                const selectedProject = linkVersionForm.getFieldValue('project');
+                const linked = (item?.versions || []).some((entry: any) => entry.project === selectedProject && (entry.versionNo || entry.no) === versionNo);
+                return {
+                  value: versionNo,
+                  disabled: linked,
+                  label: `${versionNo} · ${version.title || '未命名版本'}${linked ? '（已关联）' : ''}`,
+                };
+              })}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 

@@ -116,6 +116,32 @@ describe('v0.7 升级能力', () => {
     ])
   })
 
+  test('拉取的需求可加入原型版本范围且保留需求池来源', async (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    hub.createProject({ name: '订单中心', code: 'orders' })
+    hub.addVersion('orders', { versionNo: 'v1.0', title: '首版', html: html('<main>订单</main>') })
+    hub.saveMcpServer({ id: 'requirements-mcp', name: '需求池 MCP', url: `${baseUrl}/mcp`, headers: { 'X-Test': 'yes' } })
+    hub.saveMcpCapability('requirements', {
+      enabled: true,
+      server: 'requirements-mcp',
+      project: 'safe-prod',
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      options: { fields: { title: 'title' }, statuses: { open: '待处理' } }
+    })
+
+    const imported = await hub.importExternalRequirement('mcp', 'REQ-7')
+    t.assert.strictEqual(imported.external.provider, 'mcp')
+    const version = hub.linkRequirement('REQ-7', 'orders', 'v1.0')
+    t.assert.deepStrictEqual(version.requirements.map((item) => item.code), ['REQ-7'])
+
+    const detail = hub.getRequirement('REQ-7')
+    t.assert.strictEqual(detail.external.provider, 'mcp')
+    t.assert.deepStrictEqual(detail.versions.map((item) => ({ project: item.project, versionNo: item.versionNo })), [
+      { project: 'orders', versionNo: 'v1.0' }
+    ])
+  })
+
   test('需求池列表刷新会新增和更新外部需求引用', async (t) => {
     const { root, hub } = newHub()
     dirs.push(root)
