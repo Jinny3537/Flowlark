@@ -397,6 +397,7 @@ export const api = {
   getMcpConfig: () => get('/api/mcp'),
   inspectRequirementPoolManifest: (body: unknown) => post('/api/mcp/requirement-pool/inspect', body),
   importRequirementPoolManifest: (body: unknown) => post('/api/mcp/requirement-pool/import', body),
+  requirementPoolStatus: (probe = false) => post('/api/mcp/requirement-pool/status', { probe }),
   saveMcpServer: (id: string, body: unknown) => put(`/api/mcp/servers/${enc(id)}`, body),
   removeMcpServer: (id: string) => del(`/api/mcp/servers/${enc(id)}`),
   discoverMcpServerTools: (id: string) => post<any>(`/api/mcp/servers/${enc(id)}/discover`, {}),

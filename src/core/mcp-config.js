@@ -101,6 +101,73 @@ export function importRequirementPoolManifest(root, input = {}) {
   return { ...inspect(root), imported: draft }
 }
 
+export function inspectRequirementPoolStatus(root, { secretStore = secrets } = {}) {
+  const config = readMcpConfig(root)
+  const capability = config.capabilities.requirements
+  const blockers = []
+  const warnings = []
+  if (!capability || capability.enabled !== true) {
+    return {
+      status: 'not_configured',
+      configured: false,
+      ready: false,
+      canProbe: false,
+      blockers: [problem('REQUIREMENT_POOL_NOT_CONFIGURED', '需求池 MCP 能力尚未启用')],
+      warnings: []
+    }
+  }
+
+  const server = config.servers.find((item) => item.id === capability.server)
+  if (!server) {
+    blockers.push(problem('MCP_SERVER_MISSING', '需求池 MCP 能力绑定的服务不存在'))
+  } else if (server.enabled === false) {
+    blockers.push(problem('MCP_SERVER_DISABLED', `MCP 服务 ${server.name || server.id} 已停用`))
+  }
+
+  for (const name of REQUIREMENT_POOL_REQUIRED_TOOLS) {
+    if (!capability.tools?.[name]) {
+      blockers.push(problem('REQUIREMENT_POOL_TOOL_MISSING', `需求池能力缺少 ${name} 工具映射`))
+    }
+  }
+
+  const missingSecrets = server ? missingHeaderSecrets(server, secretStore, blockers) : []
+  const fields = objectValue(capability.options?.fields)
+  const statuses = objectValue(capability.options?.statuses)
+  if (!capability.project) warnings.push(problem('REQUIREMENT_POOL_PROJECT_EMPTY', '尚未配置需求池项目或空间标识'))
+  if (!Object.keys(fields).length) warnings.push(problem('REQUIREMENT_POOL_FIELDS_EMPTY', '尚未配置字段映射，导入后只能显示原始引用'))
+  if (!Object.keys(statuses).length) warnings.push(problem('REQUIREMENT_POOL_STATUSES_EMPTY', '尚未配置状态映射，导入后不会自动判断需求池状态'))
+
+  const configProblems = validate(config)
+  for (const message of configProblems) blockers.push(problem('MCP_CONFIG_INVALID', message))
+  const ready = blockers.length === 0 && missingSecrets.length === 0
+  return {
+    status: ready ? 'ready_to_test' : missingSecrets.length ? 'needs_secret' : 'blocked',
+    configured: true,
+    ready,
+    canProbe: ready,
+    platform: capability.options?.platform || null,
+    server: server ? {
+      id: server.id,
+      name: server.name,
+      type: server.type,
+      url: server.url,
+      enabled: server.enabled !== false
+    } : null,
+    capability: {
+      enabled: capability.enabled === true,
+      project: capability.project || '',
+      tools: {
+        test: capability.tools?.test || '',
+        search: capability.tools?.search || '',
+        get: capability.tools?.get || ''
+      }
+    },
+    missingSecrets,
+    warnings,
+    blockers
+  }
+}
+
 export function normalize(raw = {}) {
   const base = defaultMcpConfig()
   const servers = Array.isArray(raw.servers) ? raw.servers.map(normalizeServer) : []
@@ -354,6 +421,44 @@ function findPlaintextSecrets(value, prefix = '') {
     out.push(path)
   }
   return out
+}
+
+function missingHeaderSecrets(server, secretStore, blockers) {
+  const missing = []
+  const seen = new Set()
+  for (const value of Object.values(server.headers || {})) {
+    for (const secret of headerSecretReferences(value, server.id)) {
+      const key = `${secret.kind}:${secret.name}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      let stored = false
+      try {
+        stored = secret.kind === 'env'
+          ? Boolean(process.env[secret.name])
+          : Boolean(secretStore.getSecret('mcp-server', { name: secret.name }))
+      } catch (e) {
+        blockers.push(problem('REQUIREMENT_POOL_SECRET_READ_FAILED', e.message || '无法读取本机密钥状态'))
+      }
+      if (!stored) missing.push({
+        kind: secret.kind,
+        name: secret.name,
+        label: secret.kind === 'env' ? `环境变量 ${secret.name}` : `本机密钥 ${secret.name}`
+      })
+    }
+  }
+  return missing
+}
+
+function headerSecretReferences(value, serverId) {
+  const refs = []
+  String(value || '').replace(/\$\{([^}]+)\}/g, (_, expr) => {
+    const text = String(expr || '').trim()
+    if (text === 'secret') refs.push({ kind: 'keychain', name: serverId })
+    else if (text.startsWith('secret:')) refs.push({ kind: 'keychain', name: text.slice(7) })
+    else if (text.startsWith('env:')) refs.push({ kind: 'env', name: text.slice(4) })
+    return ''
+  })
+  return refs.filter((item) => item.name)
 }
 
 function redactUrl(value) {

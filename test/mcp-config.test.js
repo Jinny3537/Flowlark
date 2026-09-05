@@ -3,7 +3,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cleanup, newHub } from './helpers.js'
-import { inspectRequirementPoolManifest, resolveCapability } from '../src/core/mcp-config.js'
+import { inspectRequirementPoolManifest, inspectRequirementPoolStatus, resolveCapability } from '../src/core/mcp-config.js'
 
 const dirs = []
 let server
@@ -126,6 +126,52 @@ describe('MCP 配置文件', () => {
     t.assert.strictEqual(info.config.capabilities.requirements.server, 'demand-pool-mcp')
     t.assert.strictEqual(info.config.capabilities.requirements.tools.search, 'requirements.search')
     t.assert.strictEqual(info.imported.secrets[0].name, 'secret')
+  })
+
+  test('需求池接入诊断区分缺本机密钥和可测试状态', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    hub.importRequirementPoolManifest({
+      manifestVersion: '2026-09',
+      platform: { id: 'demand-pool', name: '需求池平台' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, headers: { Authorization: 'Bearer ${secret}' } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title' },
+      statuses: { doing: '开发中' }
+    })
+    const emptyStore = { getSecret: () => null }
+    const missing = inspectRequirementPoolStatus(root, { secretStore: emptyStore })
+    t.assert.strictEqual(missing.status, 'needs_secret')
+    t.assert.strictEqual(missing.canProbe, false)
+    t.assert.deepStrictEqual(missing.missingSecrets, [{ kind: 'keychain', name: 'demand-pool-mcp', label: '本机密钥 demand-pool-mcp' }])
+
+    const stored = inspectRequirementPoolStatus(root, { secretStore: { getSecret: () => 'stored-token' } })
+    t.assert.strictEqual(stored.status, 'ready_to_test')
+    t.assert.strictEqual(stored.canProbe, true)
+    t.assert.deepStrictEqual(stored.missingSecrets, [])
+    t.assert.doesNotMatch(JSON.stringify(stored), /stored-token/)
+  })
+
+  test('需求池接入诊断可执行连接测试', async (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    hub.saveMcpServer({
+      id: 'requirements-mcp',
+      name: '需求系统 MCP',
+      url: `${baseUrl}/mcp`,
+      headers: { 'X-Workspace': 'safe' }
+    })
+    hub.saveMcpCapability('requirements', {
+      enabled: true,
+      server: 'requirements-mcp',
+      project: 'safe-prod',
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      options: { fields: { title: 'title' }, statuses: { doing: '开发中' } }
+    })
+    const status = await hub.requirementPoolStatus({ probe: true })
+    t.assert.strictEqual(status.status, 'connected')
+    t.assert.strictEqual(status.connected, true)
+    t.assert.strictEqual(status.connection.identity, 'MCP User')
   })
 
   test('需求池配置 JSON 拒绝明文密钥和缺少必需工具', (t) => {

@@ -91,6 +91,21 @@ type RequirementPoolManifestPreview = {
   blockers?: { code?: string; message?: string }[];
 };
 
+type RequirementPoolStatus = {
+  status?: string;
+  configured?: boolean;
+  ready?: boolean;
+  canProbe?: boolean;
+  connected?: boolean;
+  platform?: { name?: string; id?: string } | null;
+  server?: { id?: string; name?: string; type?: string; url?: string; enabled?: boolean } | null;
+  capability?: { project?: string; tools?: Record<string, string> };
+  missingSecrets?: { kind?: string; name?: string; label?: string }[];
+  warnings?: { code?: string; message?: string; hint?: string }[];
+  blockers?: { code?: string; message?: string; hint?: string }[];
+  connection?: { identity?: string; name?: string; ok?: boolean };
+};
+
 const REQUIREMENT_DEFAULTS = {
   enabled: false,
   server: '',
@@ -214,6 +229,22 @@ function testResultText(result: any) {
   return '连接成功';
 }
 
+function requirementPoolStatusTone(status: RequirementPoolStatus | null): 'success' | 'warning' | 'error' | 'info' {
+  if (!status) return 'info';
+  if (status.connected || status.status === 'ready_to_test') return 'success';
+  if (status.status === 'needs_secret') return 'warning';
+  return 'error';
+}
+
+function requirementPoolStatusTitle(status: RequirementPoolStatus) {
+  if (status.connected) return '需求池连接测试通过';
+  if (status.status === 'ready_to_test') return '需求池配置已具备连接测试条件';
+  if (status.status === 'needs_secret') return '需求池配置缺少本机密钥';
+  if (status.status === 'not_configured') return '需求池尚未完成配置';
+  if (status.status === 'probe_failed') return '需求池连接测试失败';
+  return '需求池配置存在阻塞项';
+}
+
 type CapabilityEditorProps = {
   name: 'requirements' | 'milestones';
   title: string;
@@ -306,6 +337,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
   const [discoveredTools, setDiscoveredTools] = useState<any[]>([]);
   const [manifestText, setManifestText] = useState('');
   const [manifestPreview, setManifestPreview] = useState<RequirementPoolManifestPreview | null>(null);
+  const [requirementPoolStatus, setRequirementPoolStatus] = useState<RequirementPoolStatus | null>(null);
   const serverId = Form.useWatch('id', serverAntForm) || '';
   const serverType = Form.useWatch('type', serverAntForm) || 'http';
   const runtimeProfile = Form.useWatch('runtimeProfile', serverAntForm) || '';
@@ -329,6 +361,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       setSecret('');
       setDiscoveredTools([]);
       setManifestPreview(null);
+      setRequirementPoolStatus(null);
       serverAntForm.resetFields();
       extensionAntForm.resetFields();
     } catch (error) {
@@ -446,11 +479,27 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       setInfo(next);
       updateBuiltinForms(next);
       setManifestPreview(next.imported || null);
+      setRequirementPoolStatus(await api.requirementPoolStatus(false) as RequirementPoolStatus);
       message.success('需求池 MCP 配置已导入；密钥仍需在本机单独保存');
     } catch (error) {
       message.error(errorText(error, '需求池配置导入失败'));
     } finally {
       setSaving('');
+    }
+  };
+
+  const checkRequirementPoolStatus = async (probe = false) => {
+    setTesting(probe ? 'requirementPoolProbe' : 'requirementPoolStatus');
+    try {
+      const result = await api.requirementPoolStatus(probe) as RequirementPoolStatus;
+      setRequirementPoolStatus(result);
+      if (result.connected) message.success('需求池连接测试通过');
+      else if (result.ready) message.success('需求池配置已具备连接测试条件');
+      else message.warning(requirementPoolStatusTitle(result));
+    } catch (error) {
+      message.error(errorText(error, '需求池接入状态检查失败'));
+    } finally {
+      setTesting('');
     }
   };
 
@@ -678,6 +727,48 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                     <Alert key={`warning:${item.code}:${item.message}`} className="fl-settings-status" type="warning" showIcon message={item.message || item.code || '配置警告'} />
                   ))}
                 </div>
+              ) : null}
+              <Space wrap className="fl-mcp-result">
+                <Button loading={testing === 'requirementPoolStatus'} disabled={Boolean(testing)} onClick={() => void checkRequirementPoolStatus(false)}>
+                  检查接入状态
+                </Button>
+                <Button loading={testing === 'requirementPoolProbe'} disabled={Boolean(testing) || requirementPoolStatus?.canProbe === false} onClick={() => void checkRequirementPoolStatus(true)}>
+                  执行连接测试
+                </Button>
+                <span className="fl-muted">连接测试只调用配置中的需求池测试工具，不执行写回。</span>
+              </Space>
+              {requirementPoolStatus ? (
+                <Alert
+                  className="fl-mcp-result"
+                  showIcon
+                  type={requirementPoolStatusTone(requirementPoolStatus)}
+                  message={requirementPoolStatusTitle(requirementPoolStatus)}
+                  description={(
+                    <div>
+                      <div>
+                        {requirementPoolStatus.platform?.name ? `平台：${requirementPoolStatus.platform.name}；` : ''}
+                        {requirementPoolStatus.server?.id ? `服务：${requirementPoolStatus.server.name || requirementPoolStatus.server.id}（${requirementPoolStatus.server.id}）；` : ''}
+                        {requirementPoolStatus.capability?.project ? `项目/空间：${requirementPoolStatus.capability.project}；` : ''}
+                        {requirementPoolStatus.connection?.identity ? `身份：${requirementPoolStatus.connection.identity}` : ''}
+                      </div>
+                      {requirementPoolStatus.missingSecrets?.length ? (
+                        <ul>
+                          {requirementPoolStatus.missingSecrets.map((item) => <li key={`secret:${item.kind}:${item.name}`}>缺少{item.label || item.name}</li>)}
+                        </ul>
+                      ) : null}
+                      {requirementPoolStatus.blockers?.length ? (
+                        <ul>
+                          {requirementPoolStatus.blockers.map((item) => <li key={`blocker:${item.code}:${item.message}`}>{item.message || item.code}{item.hint ? `；${item.hint}` : ''}</li>)}
+                        </ul>
+                      ) : null}
+                      {requirementPoolStatus.warnings?.length ? (
+                        <ul>
+                          {requirementPoolStatus.warnings.map((item) => <li key={`warning:${item.code}:${item.message}`}>{item.message || item.code}</li>)}
+                        </ul>
+                      ) : null}
+                    </div>
+                  )}
+                />
               ) : null}
             </div>
 

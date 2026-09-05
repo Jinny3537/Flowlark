@@ -259,6 +259,12 @@ describe('配置与局域网 API', () => {
     t.assert.strictEqual(imported.status, 200)
     t.assert.strictEqual(imported.body.config.capabilities.requirements.server, 'demand-pool-mcp')
     t.assert.strictEqual(imported.body.config.capabilities.requirements.options.source, 'requirement-pool-manifest')
+
+    const status = await api.send('POST', '/api/mcp/requirement-pool/status', { probe: true })
+    t.assert.strictEqual(status.status, 200)
+    t.assert.strictEqual(status.body.status, 'needs_secret')
+    t.assert.strictEqual(status.body.canProbe, false)
+    t.assert.strictEqual(status.body.missingSecrets[0].name, 'demand-pool-mcp')
   })
 
   test('配置列表带 schema 元信息，前端不用自己维护一份', async (t) => {

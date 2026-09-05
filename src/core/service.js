@@ -1770,6 +1770,28 @@ export class Hub {
     this.#assertWritable('导入需求池 MCP 配置')
     return mcpConfig.importRequirementPoolManifest(this.root, input)
   }
+  async requirementPoolStatus({ probe = false } = {}) {
+    const status = mcpConfig.inspectRequirementPoolStatus(this.root)
+    if (!probe || !status.canProbe) return status
+    try {
+      const connection = await this.testRequirementConnection('mcp')
+      return {
+        ...status,
+        status: 'connected',
+        connected: true,
+        connection
+      }
+    } catch (e) {
+      return {
+        ...status,
+        status: 'probe_failed',
+        ready: false,
+        connected: false,
+        canProbe: true,
+        blockers: [...status.blockers, requirementPoolProbeProblem(e)]
+      }
+    }
+  }
   async discoverMcpServerTools(id) {
     const config = mcpConfig.readMcpConfig(this.root)
     const server = config.servers.find((item) => item.id === id)
@@ -3554,6 +3576,28 @@ function guessContentType(name) {
 function identityFromMcpTest(body) {
   if (!body || typeof body !== 'object') return null
   return body.identity || body.name || body.login || body.email || body.text || null
+}
+
+function requirementPoolProbeProblem(error) {
+  const sourceCode = String(error?.code || '')
+  const message = String(error?.message || '需求池连接测试失败')
+  const text = `${sourceCode} ${message}`.toLowerCase()
+  if (sourceCode === 'INTEGRATION_TIMEOUT' || /timeout|超时/.test(text)) {
+    return { code: 'REQUIREMENT_POOL_TIMEOUT', message, hint: '检查需求池 MCP 服务是否可访问，或提高超时时间' }
+  }
+  if (sourceCode === 'INTEGRATION_UNAVAILABLE' || /unavailable|network|econn|enotfound|无法连接|断网/.test(text)) {
+    return { code: 'REQUIREMENT_POOL_UNAVAILABLE', message, hint: '检查网络、服务地址和本机代理配置' }
+  }
+  if (/401|403|unauthorized|forbidden|permission|credential|token|凭据|授权|权限/.test(text)) {
+    return { code: 'REQUIREMENT_POOL_PERMISSION_FAILED', message, hint: '重新补录本机密钥，并确认账号具备读取权限' }
+  }
+  if (/429|rate|limit|限流/.test(text)) {
+    return { code: 'REQUIREMENT_POOL_RATE_LIMITED', message, hint: '等待平台限流恢复后重试' }
+  }
+  if (/404|not found|missing|不存在|删除/.test(text)) {
+    return { code: 'REQUIREMENT_POOL_TOOL_MISSING', message, hint: '检查配置 JSON 中的工具名称和项目范围' }
+  }
+  return { code: 'REQUIREMENT_POOL_PROBE_FAILED', message }
 }
 
 function validReleaseTime(value) {
