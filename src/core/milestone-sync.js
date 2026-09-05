@@ -88,21 +88,7 @@ async function executeMilestoneSyncUnlocked({
   if (unresolvedCreate) {
     const causeCode = unresolvedCreate.error?.causeCode || 'PROCESS_INTERRUPTED'
     if (unresolvedCreate.status === 'executing') {
-      const failure = createLinkFailure(unresolvedCreate.kind, causeCode)
-      unresolvedCreate.status = 'paused'
-      unresolvedCreate.error = failure
-      unresolvedCreate.updatedAt = new Date().toISOString()
-      journal.status = 'paused'
-      journal.error = failure
-      journal.updatedAt = unresolvedCreate.updatedAt
-      persistAuditTransition(root, milestoneName, journal, {
-        action: 'step.paused',
-        status: 'paused',
-        operationKey: unresolvedCreate.key,
-        before: unresolvedCreate.operation.before ?? null,
-        after: null,
-        error: failure
-      })
+      pauseCreateStep(root, milestoneName, journal, unresolvedCreate, causeCode, null)
     }
     throw linkRequiredError(unresolvedCreate.kind, causeCode)
   }
@@ -119,55 +105,18 @@ async function executeMilestoneSyncUnlocked({
   for (const step of journal.operations) {
     if (step.status === 'remote-complete') {
       if (['sprint.create', 'task.create'].includes(step.kind) && !positiveId(step.remoteResult?.id)) {
-        const failure = createLinkFailure(step.kind, 'REMOTE_ID_MISSING')
-        step.status = 'paused'
-        step.error = failure
-        step.updatedAt = new Date().toISOString()
-        journal.status = 'paused'
-        journal.error = failure
-        journal.updatedAt = step.updatedAt
-        persistAuditTransition(root, milestoneName, journal, {
-          action: 'step.paused',
-          status: 'paused',
-          operationKey: step.key,
-          before: step.operation.before ?? null,
-          after: step.remoteResult ?? null,
-          error: failure
-        })
+        const failure = pauseCreateStep(root, milestoneName, journal, step, 'REMOTE_ID_MISSING')
         throw linkRequiredError(step.kind, failure.causeCode)
       }
       try {
         await persistOperationResult({
           root, milestoneName, plan, operation: step.operation, result: step.remoteResult, adapter
         })
-        step.status = 'completed'
-        step.error = null
-        step.updatedAt = new Date().toISOString()
-        journal.updatedAt = step.updatedAt
-        persistAuditTransition(root, milestoneName, journal, {
-          action: 'step.completed',
-          status: 'completed',
-          operationKey: step.key,
-          before: step.operation.before ?? null,
-          after: step.remoteResult ?? null
-        })
+        completeStep(root, milestoneName, journal, step, step.remoteResult ?? null)
         continue
       } catch (error) {
         if (error?.code === 'SYNC_AUDIT_WRITE_FAILED') throw error
-        step.status = 'failed'
-        step.error = { code: error?.code || 'MCP_SYNC_STEP_FAILED', message: String(error?.message || error) }
-        step.updatedAt = new Date().toISOString()
-        journal.status = 'failed'
-        journal.error = step.error
-        journal.updatedAt = step.updatedAt
-        persistAuditTransition(root, milestoneName, journal, {
-          action: 'step.failed',
-          status: 'failed',
-          operationKey: step.key,
-          before: step.operation.before ?? null,
-          after: step.remoteResult ?? null,
-          error: step.error
-        })
+        failStep(root, milestoneName, journal, step, error, step.remoteResult ?? null)
         throw error
       }
     }
@@ -199,50 +148,14 @@ async function executeMilestoneSyncUnlocked({
       writeMilestoneSyncJournal(root, milestoneName, journal)
 
       await persistOperationResult({ root, milestoneName, plan, operation: step.operation, result, adapter })
-      step.status = 'completed'
-      step.updatedAt = new Date().toISOString()
-      journal.updatedAt = step.updatedAt
-      persistAuditTransition(root, milestoneName, journal, {
-        action: 'step.completed',
-        status: 'completed',
-        operationKey: step.key,
-        before: step.operation.before ?? null,
-        after: step.operation.after ?? step.remoteResult ?? null
-      })
+      completeStep(root, milestoneName, journal, step, step.operation.after ?? step.remoteResult ?? null)
     } catch (error) {
       if (error?.code === 'SYNC_AUDIT_WRITE_FAILED') throw error
       if (['sprint.create', 'task.create'].includes(step.kind) && isUnknownCreateResult(error)) {
-        const failure = createLinkFailure(step.kind, error.code)
-        step.status = 'paused'
-        step.error = failure
-        step.updatedAt = new Date().toISOString()
-        journal.status = 'paused'
-        journal.error = failure
-        journal.updatedAt = step.updatedAt
-        persistAuditTransition(root, milestoneName, journal, {
-          action: 'step.paused',
-          status: 'paused',
-          operationKey: step.key,
-          before: step.operation.before ?? null,
-          after: step.remoteResult ?? null,
-          error: failure
-        })
-        throw linkRequiredError(step.kind, error.code)
+        const failure = pauseCreateStep(root, milestoneName, journal, step, error.code)
+        throw linkRequiredError(step.kind, failure.causeCode)
       }
-      step.status = 'failed'
-      step.error = { code: error?.code || 'MCP_SYNC_STEP_FAILED', message: String(error?.message || error) }
-      step.updatedAt = new Date().toISOString()
-      journal.status = 'failed'
-      journal.error = step.error
-      journal.updatedAt = step.updatedAt
-      persistAuditTransition(root, milestoneName, journal, {
-        action: 'step.failed',
-        status: 'failed',
-        operationKey: step.key,
-        before: step.operation.before ?? null,
-        after: step.remoteResult ?? null,
-        error: step.error
-      })
+      failStep(root, milestoneName, journal, step, error, step.remoteResult ?? null)
       throw error
     }
   }
@@ -697,6 +610,63 @@ function linkRequiredError(kind, causeCode) {
   const error = err.conflict(failure.code, failure.message)
   error.causeCode = failure.causeCode
   return error
+}
+
+function pauseCreateStep(root, milestoneName, journal, step, causeCode, after = step.remoteResult ?? null) {
+  const failure = createLinkFailure(step.kind, causeCode)
+  const updatedAt = new Date().toISOString()
+  step.status = 'paused'
+  step.error = failure
+  step.updatedAt = updatedAt
+  journal.status = 'paused'
+  journal.error = failure
+  journal.updatedAt = updatedAt
+  persistAuditTransition(root, milestoneName, journal, {
+    action: 'step.paused',
+    status: 'paused',
+    operationKey: step.key,
+    before: step.operation.before ?? null,
+    after,
+    error: failure
+  })
+  return failure
+}
+
+function failStep(root, milestoneName, journal, step, error, after) {
+  const failure = {
+    code: error?.code || 'MCP_SYNC_STEP_FAILED',
+    message: String(error?.message || error)
+  }
+  const updatedAt = new Date().toISOString()
+  step.status = 'failed'
+  step.error = failure
+  step.updatedAt = updatedAt
+  journal.status = 'failed'
+  journal.error = failure
+  journal.updatedAt = updatedAt
+  persistAuditTransition(root, milestoneName, journal, {
+    action: 'step.failed',
+    status: 'failed',
+    operationKey: step.key,
+    before: step.operation.before ?? null,
+    after,
+    error: failure
+  })
+}
+
+function completeStep(root, milestoneName, journal, step, after) {
+  const updatedAt = new Date().toISOString()
+  step.status = 'completed'
+  step.error = null
+  step.updatedAt = updatedAt
+  journal.updatedAt = updatedAt
+  persistAuditTransition(root, milestoneName, journal, {
+    action: 'step.completed',
+    status: 'completed',
+    operationKey: step.key,
+    before: step.operation.before ?? null,
+    after
+  })
 }
 
 function persistAuditTransition(root, milestoneName, journal, audit) {
