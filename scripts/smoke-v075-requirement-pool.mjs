@@ -199,7 +199,11 @@ function fakeWecomMcp() {
     },
     async sendReleaseMail() {
       return { ok: true, fake: true }
-    }
+    },
+    diagnostics() {
+      return { available: true, fake: true }
+    },
+    async close() {}
   }
 }
 

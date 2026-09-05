@@ -1,10 +1,16 @@
 import { after, before, describe, test } from 'node:test'
+import { execFile } from 'node:child_process'
+import fs from 'node:fs'
 import http from 'node:http'
+import os from 'node:os'
+import path from 'node:path'
+import { promisify } from 'node:util'
 import { cleanup, html, newHub } from './helpers.js'
 import { fetchRequirement, postRequirementComment, searchRequirements, testRequirementConnection } from '../src/core/integrations/requirements/index.js'
 import * as reqx from '../src/core/requirements.js'
 
 const dirs = []
+const execFileAsync = promisify(execFile)
 let server
 let baseUrl
 const requests = []
@@ -29,7 +35,7 @@ before(async () => {
           res.statusCode = 404
           return res.end(JSON.stringify({ message: 'requirement not found' }))
         }
-        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { content: [{ type: 'text', text: JSON.stringify({ code: 'REQ-7', title: '外部需求', url: 'https://mcp.example/REQ-7' }) }] } }))
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { content: [{ type: 'text', text: JSON.stringify({ code: 'REQ-7', title: '外部需求', description: '来自需求池的完整验收需求', owner: 'PM', url: 'https://mcp.example/REQ-7' }) }] } }))
       }
       if (params.name === 'requirements.comment') {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { url: 'https://mcp.example/REQ-7#comment' } } }))
@@ -172,5 +178,38 @@ describe('v0.7 升级能力', () => {
     t.assert.strictEqual(second.created, 0)
     t.assert.strictEqual(second.updated, 1)
     t.assert.deepStrictEqual(second.failed, [])
+  })
+
+  test('v0.7.5 真实平台验收脚本可跑完产品路径', async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-smoke-test-'))
+    dirs.push(directory)
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000, headers: { 'X-Smoke': 'v075' } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
+      statuses: { open: '待处理' },
+      safety: { readOnly: true, writes: [], dangerous: [] }
+    }
+    const manifestFile = path.join(directory, 'requirement-pool.json')
+    fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8')
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      'scripts/smoke-v075-requirement-pool.mjs',
+      '--manifest', manifestFile,
+      '--query', 'REQ',
+      '--requirement', 'REQ-7'
+    ], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      env: { ...process.env, FLOWLARK_QUIET_MIGRATE: '1' }
+    })
+    const result = JSON.parse(stdout)
+    t.assert.strictEqual(result.passed, true)
+    t.assert.strictEqual(result.requirement, 'REQ-7')
+    t.assert.ok(result.snapshot.startsWith('delivery-'))
   })
 })
