@@ -6,6 +6,7 @@ import { cleanup, tmpRepo } from './helpers.js'
 import { Hub } from '../src/core/service.js'
 import * as gitx from '../src/core/git.js'
 import { readDeliverySnapshot } from '../src/core/delivery-snapshots.js'
+import { hashProjection } from '../src/core/milestone-sync-plan.js'
 import * as milestones from '../src/core/milestones.js'
 import * as requirements from '../src/core/requirements.js'
 import {
@@ -115,7 +116,7 @@ test('项目创建和更新会持久化规范化的发版邮件配置', (t) => {
   assert.deepEqual(updated.releaseMail.cc, ['王五'])
 })
 
-function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
+function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts, assessAdapter = null } = {}) {
   const root = tmpRepo()
   t.after(() => cleanup(root))
   const calls = []
@@ -139,6 +140,7 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
   }
   const hub = new Hub(root, {
     wecomMcp,
+    assessAdapter,
     gitSync: async (options) => {
       calls.push('git')
       if (gitSync) await gitSync(options)
@@ -169,6 +171,8 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
     name: 'S1',
     title: '迭代一',
     status: 'active',
+    startAt: '2026-08-01',
+    endAt: '2026-08-21',
     items: [{ requirement: 'REQ-2', project: project.slug, version: 'v2' }]
   })
   const originalSetBaseline = hub.setBaseline.bind(hub)
@@ -177,6 +181,70 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
     return originalSetBaseline(...args)
   }
   return { root, hub, project, milestone, calls, wecomMcp }
+}
+
+function deliveryCompletionAdapter({ managedFields }) {
+  const calls = []
+  const state = {
+    sprint: {
+      id: 10,
+      projectId: 123,
+      sprintName: '迭代一',
+      sprintGoal: '',
+      ownerId: 7,
+      planStartDate: '2026-08-01T00:00:00+08:00',
+      planEndDate: '2026-08-21T00:00:00+08:00',
+      revision: 5,
+      status: 'active'
+    },
+    task: {
+      id: 20,
+      projectId: 123,
+      taskType: 2,
+      title: '[REQ-2] 筛选优化',
+      descriptionDoc: '优化筛选体验\n\n关联原型：\n- orders/v2',
+      acceptanceDoc: '# 筛选优化验收\n',
+      priority: null,
+      assigneeId: 8,
+      status: 'testing',
+      planStartDate: '2026-08-01T00:00:00+08:00',
+      planEndDate: '2026-08-21T00:00:00+08:00',
+      sprintId: 10,
+      revision: 3
+    }
+  }
+  return {
+    calls,
+    state,
+    async listTasks() {
+      calls.push('listTasks')
+      return [state.task]
+    },
+    async getSprint() {
+      calls.push('getSprint')
+      return state.sprint
+    },
+    async getTask() {
+      calls.push('getTask')
+      return state.task
+    },
+    async updateTask(body) {
+      calls.push('updateTask')
+      state.task = { ...state.task, ...body, revision: Number(body.revision || state.task.revision) + 1 }
+      return state.task
+    },
+    async endSprint(body) {
+      calls.push('endSprint')
+      state.sprint = { ...state.sprint, status: 'ended', revision: Number(body.revision || state.sprint.revision) + 1 }
+      return state.sprint
+    },
+    currentHashes() {
+      return {
+        sprint: hashProjection(state.sprint, 'sprint', managedFields),
+        task: hashProjection(state.task, 'task', managedFields)
+      }
+    }
+  }
 }
 
 test('迭代发版要求进行中状态且版本在范围内', async (t) => {
@@ -323,6 +391,85 @@ test('归档迭代必须先完成交付验收和外部关闭回读', async (t) =
     revision: 3,
     remoteStatus: 'closed'
   })
+  assert.equal(ctx.hub.transitionMilestone(ctx.milestone.name, { target: 'archived' }).status, 'archived')
+})
+
+test('交付完成预览在验收通过后关闭任务并结束 Sprint', async (t) => {
+  const managedFields = ['title', 'description', 'acceptance', 'assignee', 'sprint', 'status']
+  const remote = deliveryCompletionAdapter({ managedFields })
+  const ctx = releaseFixture(t, { assessAdapter: remote })
+  ctx.hub.saveMcpServer({
+    id: 'assess',
+    name: 'Assess Task',
+    type: 'stdio',
+    adapter: 'assess-task',
+    runtimeProfile: 'test-runtime'
+  })
+  ctx.hub.saveMcpCapability('milestones', {
+    enabled: true,
+    server: 'assess',
+    project: '123',
+    options: {
+      ownerId: 7,
+      taskType: 2,
+      members: { PM: 8 },
+      statuses: { completed: 'closed' },
+      timezoneOffset: '+08:00'
+    }
+  })
+  ctx.hub.updateProject(ctx.project.slug, { sync: { server: 'assess', projectId: '123', managedFields } })
+  const release = await ctx.hub.formalReleaseMilestoneVersion(ctx.milestone.name, ctx.project.slug, 'v2')
+
+  const blocked = await ctx.hub.planMilestoneDeliveryCompletion(ctx.milestone.name)
+  assert.equal(blocked.ready, false)
+  assert.equal(blocked.syncStatus, 'blocked')
+  assert.equal(blocked.blockers.some((item) => item.code === 'MILESTONE_DELIVERY_ACCEPTANCE_BLOCKED'), true)
+
+  const snapshotHash = readDeliverySnapshot(ctx.root, release.snapshot).contentHash
+  for (const role of ['product', 'development', 'qa']) {
+    ctx.hub.recordAcceptance(release.snapshot, { role, verdict: 'approved', expectedSnapshotHash: snapshotHash })
+  }
+  const hashes = remote.currentHashes()
+  milestones.updateMilestone(ctx.root, ctx.milestone.name, {
+    external: {
+      provider: 'assess-task',
+      server: 'assess',
+      projectId: 123,
+      sprintId: 10,
+      revision: remote.state.sprint.revision,
+      remoteStatus: remote.state.sprint.status,
+      lastSyncHash: hashes.sprint
+    }
+  }, { system: true })
+  requirements.upsertExternalTask(ctx.root, 'REQ-2', {
+    provider: 'assess-task',
+    server: 'assess',
+    projectId: 123,
+    taskId: 20,
+    revision: remote.state.task.revision,
+    remoteStatus: remote.state.task.status,
+    lastSyncHash: hashes.task
+  })
+
+  const plan = await ctx.hub.planMilestoneDeliveryCompletion(ctx.milestone.name)
+  assert.equal(plan.ready, true, JSON.stringify(plan.blockers))
+  assert.equal(plan.deliveryCompletion.ready, true)
+  assert.ok(plan.deliveryCompletion.deliveries.some((item) => item.snapshot === release.snapshot && item.acceptance.ready))
+  assert.ok(plan.operations.some((item) => item.kind === 'task.update' && item.after.status === 'closed'))
+  assert.ok(plan.operations.some((item) => item.kind === 'sprint.end'))
+
+  const result = await ctx.hub.executeMilestoneDeliveryCompletion(ctx.milestone.name, {
+    confirmed: true,
+    planHash: plan.hash,
+    reason: '交付验收完成，关闭外部执行项',
+    confirmUnfinished: true
+  })
+  assert.equal(result.status, 'completed')
+  assert.ok(remote.calls.includes('updateTask'))
+  assert.ok(remote.calls.includes('endSprint'))
+  assert.equal(milestones.readMilestone(ctx.root, ctx.milestone.name).external.remoteStatus, 'ended')
+  const binding = requirements.readRequirement(ctx.root, 'REQ-2').externalTasks.find((item) => item.taskId === 20)
+  assert.equal(binding.remoteStatus, 'closed')
   assert.equal(ctx.hub.transitionMilestone(ctx.milestone.name, { target: 'archived' }).status, 'archived')
 })
 

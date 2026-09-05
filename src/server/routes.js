@@ -175,6 +175,14 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, await hub.planMilestoneSync(p.name, body))
   })
+  r.post('/api/milestones/:name/delivery-completion/plan', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.planMilestoneDeliveryCompletion(p.name, body))
+  })
+  r.post('/api/milestones/:name/delivery-completion/execute', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.executeMilestoneDeliveryCompletion(p.name, body))
+  })
   r.post('/api/milestones/:name/sync-execute', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, await hub.executeMilestoneSync(p.name, body))

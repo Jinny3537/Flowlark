@@ -771,6 +771,46 @@ export class Hub {
     return { ...plan, syncId: sync.id, syncStatus: sync.status }
   }
 
+  async planMilestoneDeliveryCompletion(name, input = {}) {
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    const readiness = this.#milestoneDeliveryCompletionReadiness(name)
+    const intent = { ...value, action: 'end' }
+    if (!readiness.ready) {
+      return {
+        milestone: name,
+        ready: false,
+        intent: { action: 'end' },
+        deliveryCompletion: readiness,
+        summary: {
+          createSprint: 0,
+          updateSprint: 0,
+          createTask: 0,
+          updateTask: 0,
+          moveTask: 0,
+          conflict: 0,
+          unchanged: 0
+        },
+        blockers: readiness.blockers,
+        warnings: readiness.warnings,
+        operations: [],
+        syncId: null,
+        syncStatus: 'blocked'
+      }
+    }
+    const plan = await this.planMilestoneSync(name, intent)
+    return {
+      ...plan,
+      ready: (plan.blockers || []).length === 0,
+      deliveryCompletion: readiness
+    }
+  }
+
+  async executeMilestoneDeliveryCompletion(name, input = {}) {
+    const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+    this.#assertMilestoneDeliveryCompletionReady(name)
+    return this.executeMilestoneSync(name, { ...value, action: 'end' })
+  }
+
   async planRequirementTaskBinding(code, input = {}) {
     this.#assertWritable('预览需求平台任务绑定')
     reqx.readRequirement(this.root, code)
@@ -3249,6 +3289,106 @@ export class Hub {
       this.#transitionRequirement(code, target, { system: true, reason })
     }
     return aggregate
+  }
+
+  #milestoneDeliveryCompletionReadiness(name) {
+    const milestone = milestones.inspectMilestone(this.root, name)
+    const blockers = []
+    const warnings = []
+    const deliveries = []
+    if (milestone.status !== 'delivered') {
+      blockers.push({
+        code: 'MILESTONE_DELIVERY_COMPLETION_STATUS_INVALID',
+        message: `迭代 ${milestone.name} 尚未完成正式交付`,
+        repairTo: `/milestones/${encodeURIComponent(milestone.name)}`
+      })
+    }
+    const deliveryByVersion = new Map((milestone.deliveries || []).map((entry) => [`${entry.project}:${entry.version}`, entry]))
+    for (const key of [...new Set((milestone.items || []).map((entry) => `${entry.project}:${entry.version}`))]) {
+      const delivery = deliveryByVersion.get(key)
+      if (!delivery) {
+        blockers.push({
+          code: 'MILESTONE_DELIVERY_REQUIRED',
+          message: `迭代 ${milestone.name} 还有范围版本未形成正式交付`,
+          repairTo: `/milestones/${encodeURIComponent(milestone.name)}`
+        })
+        continue
+      }
+      try {
+        const acceptance = this.deliveryAcceptance(delivery.snapshot)
+        deliveries.push({
+          project: delivery.project,
+          version: delivery.version,
+          snapshot: delivery.snapshot,
+          snapshotHash: acceptance.snapshotHash,
+          integrity: acceptance.integrity,
+          acceptance: {
+            status: acceptance.status,
+            ready: acceptance.ready,
+            blockers: acceptance.blockers
+          }
+        })
+        if (!acceptance.ready) {
+          blockers.push({
+            code: 'MILESTONE_DELIVERY_ACCEPTANCE_BLOCKED',
+            message: `交付 ${delivery.snapshot} 尚未通过验收`,
+            snapshot: delivery.snapshot,
+            repairTo: `/deliveries/${encodeURIComponent(delivery.snapshot)}`
+          })
+        }
+      } catch (error) {
+        blockers.push({
+          code: error?.code || 'DELIVERY_SNAPSHOT_INVALID',
+          message: error?.message || `交付 ${delivery.snapshot} 无法验证`,
+          snapshot: delivery.snapshot,
+          repairTo: `/deliveries/${encodeURIComponent(delivery.snapshot)}`
+        })
+      }
+    }
+    const codes = [...new Set((milestone.items || []).map((entry) => entry.requirement))]
+    for (const code of codes) {
+      const requirement = reqx.readRequirement(this.root, code)
+      if (requirement.status !== 'completed') {
+        blockers.push({
+          code: 'MILESTONE_REQUIREMENT_ACCEPTANCE_PENDING',
+          requirement: code,
+          message: `需求 ${code} 尚未完成交付验收`,
+          repairTo: `/requirements/${encodeURIComponent(code)}`
+        })
+      }
+    }
+    const external = milestone.external
+    if (!external?.sprintId) {
+      blockers.push({
+        code: 'MILESTONE_EXTERNAL_REQUIRED',
+        message: '结束外部 Sprint 前必须先绑定平台 Sprint',
+        repairTo: `/milestones/${encodeURIComponent(milestone.name)}`
+      })
+    } else {
+      for (const code of codes) {
+        const requirement = reqx.readRequirement(this.root, code)
+        const binding = (requirement.externalTasks || []).find((entry) =>
+          entry.provider === 'assess-task' &&
+          entry.server === external.server &&
+          Number(entry.projectId) === Number(external.projectId))
+        if (!binding?.taskId) {
+          blockers.push({
+            code: 'MILESTONE_TASK_BINDING_REQUIRED',
+            requirement: code,
+            message: `需求 ${code} 缺少平台任务绑定`,
+            repairTo: `/requirements/${encodeURIComponent(code)}`
+          })
+        }
+      }
+    }
+    return { ready: blockers.length === 0, milestone: milestone.name, deliveries, blockers, warnings }
+  }
+
+  #assertMilestoneDeliveryCompletionReady(name) {
+    const readiness = this.#milestoneDeliveryCompletionReadiness(name)
+    if (readiness.ready) return readiness
+    const blocker = readiness.blockers[0]
+    throw err.conflict(blocker.code || 'MILESTONE_DELIVERY_COMPLETION_BLOCKED', blocker.message || '迭代交付完成门禁未通过', blocker.repairTo)
   }
 
   #assertMilestoneArchiveReady(milestone) {

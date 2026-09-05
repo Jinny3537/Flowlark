@@ -189,6 +189,17 @@ test('preflight and plan endpoints expose blockers and deterministic operations'
     resolutions: {}
   })
   t.assert.strictEqual(listSyncAudit(root, { syncId: queued.id })[0].action, 'sync.previewed')
+
+  const completion = await call('POST', '/api/milestones/S1/delivery-completion/plan', {})
+  t.assert.strictEqual(completion.status, 200)
+  t.assert.strictEqual(completion.body.syncStatus, 'blocked')
+  t.assert.strictEqual(completion.body.blockers[0].code, 'MILESTONE_DELIVERY_COMPLETION_STATUS_INVALID')
+  const executeCompletion = await call('POST', '/api/milestones/S1/delivery-completion/execute', {
+    confirmed: true,
+    planHash: completion.body.hash
+  })
+  t.assert.strictEqual(executeCompletion.status, 409)
+  t.assert.strictEqual(executeCompletion.body.code, 'MILESTONE_DELIVERY_COMPLETION_STATUS_INVALID')
 })
 
 test('legacy single-milestone sync route only creates a server-owned preview', async (t) => {

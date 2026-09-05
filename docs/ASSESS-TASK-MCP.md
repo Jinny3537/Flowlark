@@ -156,7 +156,7 @@ Schema 3 在 `projects/<项目>/project.json` 中保存 `project.sync`：
 
 同步中心只暴露服务端固定的“执行”、“重试”和“取消”动作。浏览器可提交计划哈希、原因和未完成任务确认，但不能指定 MCP 服务、工具名或任意远端操作。执行和重试都以持久化的 `intent` 为准：服务端从记录取出 `entityKey`、`intent` 和 `planHash`，重新读取当前本地数据与远端对象并重建计划。哈希一致时才会执行；发现变化时会保存新的 `pending-confirmation` 预览，不执行旧计划。
 
-Sprint 启动、取消和进行中范围变化属于高风险操作，必须填写原因并确认影响。正式发版不会自动结束 Sprint 或归档迭代；把 Sprint end 和归档接入验收闭环属于后续版本。
+Sprint 启动、取消、交付完成和进行中范围变化属于高风险操作，必须填写原因并确认影响。正式发版不会直接结束 Sprint；交付验收通过后，可以生成交付完成同步计划，手动确认后关闭托管任务状态并结束 Sprint。归档只接受已通过远端关闭回读的迭代。
 解除冻结同样必须填写原因，原因会进入操作日志。
 
 CLI 对应命令：
@@ -165,6 +165,7 @@ CLI 对应命令：
 flowlark milestone preflight S12
 flowlark milestone plan S12 --action freeze --json
 flowlark milestone plan S12 --action start --json
+flowlark milestone plan S12 --action end --json
 flowlark milestone sync S12 --plan-hash sha256:... --action start --confirm --reason "进入开发" --unfinished
 flowlark milestone resume S12
 flowlark milestone transition S12 reviewing
