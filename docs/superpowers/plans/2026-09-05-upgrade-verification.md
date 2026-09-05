@@ -69,3 +69,16 @@ git diff --check
 Remaining v0.7.4 scope:
 
 - Failure injection covers Git, snapshot and mail for formal release, plus delivery-completion remote recovery and existing sync-center step recovery. Archive gate failures are covered as blocking validations; product/security review still needs a final pass before v0.7.5 qualification.
+
+## v0.7.5 requirement-pool MCP configuration foundation
+
+- v0.7.5 scope was narrowed to the updated requirement-pool integration route: import a platform-provided configuration JSON before expanding automatic write-back.
+- Requirement-pool manifests now have a server/capability preview and import path that validates `manifestVersion`, platform/server identifiers, HTTP/SSE endpoint URL, required requirement tools (`test`, `search`, `get`) and secret handling.
+- Inline plaintext secrets in secret fields, Authorization headers and URL credentials are rejected. Missing field/status mappings remain warnings because they degrade the integration to raw read-only references instead of corrupting data.
+- Import writes the existing `mcp.json` structure only: a MCP server plus the built-in `requirements` capability with platform, field, status and safety metadata under capability options.
+- HTTP endpoints expose the same rules at `/api/mcp/requirement-pool/inspect` and `/api/mcp/requirement-pool/import`; the Web API client has matching methods.
+- Focused verification for MCP config import, existing requirement MCP search/import/comment and HTTP routing: 47/47 passed.
+- Full suite after the requirement-pool configuration foundation: 694/694 passed, zero failures.
+- `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
+
+This does not complete real platform acceptance. A real v0.7.5 exit still requires a sample platform JSON, credentials entered locally, connection test, requirement list/detail pull, manual version association and delivery snapshot evidence against a test requirement pool.

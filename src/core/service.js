@@ -1763,6 +1763,13 @@ export class Hub {
   buildWorkspaceIndex() { return workspaceIndex.buildWorkspaceIndex() }
   searchWorkspaces(query, options) { return workspaceIndex.searchWorkspaces(query, options) }
   mcpConfig() { return mcpConfig.inspect(this.root) }
+  inspectRequirementPoolManifest(input) {
+    return mcpConfig.inspectRequirementPoolManifest(input)
+  }
+  importRequirementPoolManifest(input) {
+    this.#assertWritable('导入需求池 MCP 配置')
+    return mcpConfig.importRequirementPoolManifest(this.root, input)
+  }
   async discoverMcpServerTools(id) {
     const config = mcpConfig.readMcpConfig(this.root)
     const server = config.servers.find((item) => item.id === id)

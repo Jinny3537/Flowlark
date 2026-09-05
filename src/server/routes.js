@@ -721,6 +721,16 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.get('/api/mcp', async (req, res) =>
     sendJson(res, 200, hub.mcpConfig()))
 
+  r.post('/api/mcp/requirement-pool/inspect', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.inspectRequirementPoolManifest(body))
+  })
+
+  r.post('/api/mcp/requirement-pool/import', async (req, res) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.importRequirementPoolManifest(body))
+  })
+
   r.put('/api/mcp/servers/:id', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.saveMcpServer({ ...body, id: p.id }))

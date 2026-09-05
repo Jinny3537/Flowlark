@@ -241,6 +241,26 @@ describe('升级后的 API', () => {
 })
 
 describe('配置与局域网 API', () => {
+  test('HTTP 可导入需求池 MCP 配置 JSON', async (t) => {
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'demand-pool', name: '需求池平台' },
+      transport: { type: 'http', url: 'https://mcp.example/api' },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title' },
+      statuses: { doing: '开发中' },
+      secrets: [{ name: 'secret', label: '访问 Token' }]
+    }
+    const preview = await api.send('POST', '/api/mcp/requirement-pool/inspect', manifest)
+    t.assert.strictEqual(preview.status, 200)
+    t.assert.deepStrictEqual(preview.body.blockers, [])
+
+    const imported = await api.send('POST', '/api/mcp/requirement-pool/import', manifest)
+    t.assert.strictEqual(imported.status, 200)
+    t.assert.strictEqual(imported.body.config.capabilities.requirements.server, 'demand-pool-mcp')
+    t.assert.strictEqual(imported.body.config.capabilities.requirements.options.source, 'requirement-pool-manifest')
+  })
+
   test('配置列表带 schema 元信息，前端不用自己维护一份', async (t) => {
     const r = await api.get('/api/config')
     t.assert.strictEqual(r.status, 200)

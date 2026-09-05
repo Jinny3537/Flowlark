@@ -3,7 +3,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cleanup, newHub } from './helpers.js'
-import { resolveCapability } from '../src/core/mcp-config.js'
+import { inspectRequirementPoolManifest, resolveCapability } from '../src/core/mcp-config.js'
 
 const dirs = []
 let server
@@ -97,6 +97,64 @@ describe('MCP 配置文件', () => {
     t.assert.strictEqual(info.config.schemaVersion, 2)
     t.assert.strictEqual(info.config.servers[0].url, 'https://mcp.example/api')
     t.assert.deepStrictEqual(info.config.servers[0].headers, { 'X-Test': 'yes' })
+  })
+
+  test('需求池配置 JSON 导入为需求 MCP 服务和只读能力', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'demand-pool', name: '需求池平台', type: 'requirement-pool', docsUrl: 'https://docs.example/pool' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, headers: { Authorization: 'Bearer ${secret}' } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title', priority: 'priority', owner: 'owner' },
+      statuses: { doing: '开发中' },
+      secrets: [{ name: 'secret', label: '访问 Token' }],
+      safety: { readOnly: true }
+    }
+
+    const preview = inspectRequirementPoolManifest(manifest)
+    t.assert.deepStrictEqual(preview.blockers, [])
+    t.assert.strictEqual(preview.server.id, 'demand-pool-mcp')
+    t.assert.strictEqual(preview.capability.options.platform.name, '需求池平台')
+
+    const info = hub.importRequirementPoolManifest(manifest)
+    const server = info.config.servers.find((item) => item.id === 'demand-pool-mcp')
+    t.assert.strictEqual(server.url, `${baseUrl}/mcp`)
+    t.assert.deepStrictEqual(server.headers, { Authorization: 'Bearer ${secret}' })
+    t.assert.strictEqual(info.config.capabilities.requirements.enabled, true)
+    t.assert.strictEqual(info.config.capabilities.requirements.server, 'demand-pool-mcp')
+    t.assert.strictEqual(info.config.capabilities.requirements.tools.search, 'requirements.search')
+    t.assert.strictEqual(info.imported.secrets[0].name, 'secret')
+  })
+
+  test('需求池配置 JSON 拒绝明文密钥和缺少必需工具', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    const unsafe = {
+      manifestVersion: '2026-09',
+      platform: { id: 'demand-pool', name: '需求池平台' },
+      transport: { type: 'http', url: 'https://mcp.example/api', headers: { Authorization: 'Bearer real-token-value' } },
+      tools: { test: 'requirements.test', search: 'requirements.search' },
+      secrets: { token: 'real-token-value' }
+    }
+    const preview = inspectRequirementPoolManifest(unsafe)
+    t.assert.ok(preview.blockers.some((item) => item.code === 'REQUIREMENT_POOL_TOOL_MISSING'))
+    t.assert.ok(preview.blockers.some((item) => item.code === 'REQUIREMENT_POOL_SECRET_INLINE'))
+    t.assert.throws(
+      () => hub.importRequirementPoolManifest(unsafe),
+      (error) => error.code === 'REQUIREMENT_POOL_TOOL_MISSING'
+    )
+  })
+
+  test('需求池配置 JSON 暂不激活本机 stdio 服务包', (t) => {
+    const preview = inspectRequirementPoolManifest({
+      manifestVersion: '2026-09',
+      platform: { id: 'demand-pool', name: '需求池平台' },
+      transport: { type: 'stdio', command: '/usr/local/bin/pool-mcp' },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' }
+    })
+    t.assert.ok(preview.blockers.some((item) => item.code === 'REQUIREMENT_POOL_TRANSPORT_UNSUPPORTED'))
   })
 
   test('stdio 服务缺少适配器或本机配置引用时拒绝保存', (t) => {

@@ -21,6 +21,10 @@ const DEFAULT_MILESTONE_TOOLS = {
   upsert: 'milestones.upsert'
 }
 
+const REQUIREMENT_POOL_REQUIRED_TOOLS = ['test', 'search', 'get']
+const SECRET_KEY_RE = /(?:token|secret|password|passwd|api[_-]?key|access[_-]?key|client[_-]?secret)/i
+const SECRET_PLACEHOLDER_RE = /(?:\$\{[^}]+\}|<[^>]+>|\{\{[^}]+\}\}|required|placeholder|your-|填写|占位)/i
+
 const BUILTIN_CAPABILITIES = {
   requirements: {
     label: '需求',
@@ -65,6 +69,36 @@ export function readMcpConfig(root) {
 
 export function writeMcpConfig(root, config) {
   fs.writeFileSync(path.join(root, MCP_FILE), stringify(normalize(config), 'mcp'), 'utf8')
+}
+
+export function inspectRequirementPoolManifest(input = {}) {
+  const manifest = normalizeRequirementPoolManifest(input)
+  return {
+    manifestVersion: manifest.manifestVersion,
+    platform: manifest.platform,
+    transport: manifest.transport,
+    server: manifest.server,
+    capability: manifest.capability,
+    secrets: manifest.secrets,
+    safety: manifest.safety,
+    warnings: manifest.warnings,
+    blockers: manifest.blockers
+  }
+}
+
+export function importRequirementPoolManifest(root, input = {}) {
+  const draft = inspectRequirementPoolManifest(input)
+  if (draft.blockers.length) {
+    const first = draft.blockers[0]
+    throw err.bad(first.code, first.message, first.hint)
+  }
+  const config = readMcpConfig(root)
+  const existingServer = config.servers.findIndex((item) => item.id === draft.server.id)
+  if (existingServer >= 0) config.servers[existingServer] = draft.server
+  else config.servers.push(draft.server)
+  config.capabilities.requirements = draft.capability
+  writeMcpConfig(root, config)
+  return { ...inspect(root), imported: draft }
 }
 
 export function normalize(raw = {}) {
@@ -148,6 +182,191 @@ function normalizeTools(input) {
 function normalizeOptions(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
   return JSON.parse(JSON.stringify(input))
+}
+
+function normalizeRequirementPoolManifest(input = {}) {
+  const manifestVersion = String(input.manifestVersion || input.version || '').trim()
+  const platformInput = objectValue(input.platform)
+  const transportInput = objectValue(input.transport)
+  const toolsInput = objectValue(input.tools)
+  const fields = normalizeOptions(input.fields)
+  const statuses = normalizeOptions(input.statuses)
+  const safetyInput = objectValue(input.safety)
+  const platform = {
+    id: slugId(platformInput.id || input.id || platformInput.type || platformInput.name || ''),
+    name: String(platformInput.name || platformInput.id || input.name || '').trim(),
+    type: String(platformInput.type || 'requirement-pool').trim(),
+    docsUrl: String(platformInput.docsUrl || platformInput.documentationUrl || platformInput.url || '').trim(),
+    icon: String(platformInput.icon || '').trim()
+  }
+  const transportType = String(transportInput.type || input.transportType || 'http').trim().toLowerCase()
+  const baseUrl = String(transportInput.url || transportInput.baseUrl || input.url || input.baseUrl || '').trim()
+  const serverId = slugId(input.serverId || input.server?.id || `${platform.id || 'requirement-pool'}-mcp`)
+  const server = {
+    id: serverId,
+    name: String(input.server?.name || platform.name || serverId).trim(),
+    type: ['http', 'sse'].includes(transportType) ? transportType : transportType,
+    enabled: true,
+    url: baseUrl,
+    timeoutMs: Number(transportInput.timeoutMs || input.timeoutMs || 10000),
+    headers: normalizeHeaders(transportInput.headers || input.headers || {})
+  }
+  if (!Object.keys(server.headers).length) server.headers = { Authorization: 'Bearer ${secret}' }
+  const project = String(input.project?.id || input.projectId || transportInput.project || '').trim()
+  const tools = normalizeTools({
+    test: toolsInput.test || toolsInput.connectionTest || toolsInput.ping,
+    search: toolsInput.search || toolsInput.list || toolsInput.query,
+    get: toolsInput.get || toolsInput.detail || toolsInput.fetch,
+    comment: toolsInput.comment
+  })
+  const safety = {
+    readOnly: safetyInput.readOnly !== false,
+    writes: Array.isArray(safetyInput.writes) ? safetyInput.writes.map((item) => String(item || '').trim()).filter(Boolean) : [],
+    dangerous: Array.isArray(safetyInput.dangerous) ? safetyInput.dangerous.map((item) => String(item || '').trim()).filter(Boolean) : []
+  }
+  const secrets = normalizeSecretDeclarations(input.secrets)
+  const blockers = []
+  const warnings = []
+
+  if (!manifestVersion) {
+    blockers.push(problem('REQUIREMENT_POOL_MANIFEST_VERSION_REQUIRED', '配置 JSON 缺少 manifestVersion'))
+  }
+  if (!validId(platform.id)) {
+    blockers.push(problem('REQUIREMENT_POOL_PLATFORM_INVALID', '需求池平台标识不合法'))
+  }
+  if (!validId(server.id)) {
+    blockers.push(problem('MCP_SERVER_ID_INVALID', 'MCP 服务标识只能包含小写字母、数字、点、下划线和连字符'))
+  }
+  if (!['http', 'sse'].includes(server.type)) {
+    blockers.push(problem('REQUIREMENT_POOL_TRANSPORT_UNSUPPORTED', 'v0.7.5 配置导入只激活 HTTP/SSE MCP 服务；本机 stdio 服务包留到后续版本'))
+  } else if (!server.url) {
+    blockers.push(problem('MCP_SERVER_URL_REQUIRED', '配置 JSON 缺少 MCP 服务 URL'))
+  } else {
+    try {
+      const url = new URL(server.url)
+      if (!['http:', 'https:'].includes(url.protocol)) blockers.push(problem('MCP_SERVER_URL_INVALID', 'MCP 服务 URL 必须是 HTTP 或 HTTPS'))
+      if (url.username || url.password) blockers.push(problem('REQUIREMENT_POOL_SECRET_INLINE', '配置 JSON 的 MCP 服务 URL 不允许包含账号或密码', '请改为占位符，并由用户在本机单独保存密钥'))
+    } catch {
+      blockers.push(problem('MCP_SERVER_URL_INVALID', 'MCP 服务 URL 不合法'))
+    }
+  }
+  for (const name of REQUIREMENT_POOL_REQUIRED_TOOLS) {
+    if (!tools[name]) blockers.push(problem('REQUIREMENT_POOL_TOOL_MISSING', `配置 JSON 缺少需求池 ${name} 工具映射`))
+  }
+  const secretFindings = findPlaintextSecrets(input)
+  if (secretFindings.length) {
+    blockers.push(problem('REQUIREMENT_POOL_SECRET_INLINE', `配置 JSON 疑似包含明文密钥：${secretFindings.slice(0, 3).join('、')}`, '请改为占位符，并由用户在本机单独保存密钥'))
+  }
+  if (safety.readOnly === false || safety.writes.length || safety.dangerous.length) {
+    warnings.push(problem('REQUIREMENT_POOL_WRITE_DECLARED', '配置 JSON 声明了写能力；v0.7.5 导入仅启用需求读取，写回需后续版本单独验收'))
+  }
+  if (!Object.keys(fields).length) warnings.push(problem('REQUIREMENT_POOL_FIELDS_EMPTY', '配置 JSON 未声明字段映射，导入后只能显示原始引用'))
+  if (!Object.keys(statuses).length) warnings.push(problem('REQUIREMENT_POOL_STATUSES_EMPTY', '配置 JSON 未声明状态映射，导入后不会自动判断需求池状态'))
+
+  return {
+    manifestVersion,
+    platform,
+    transport: {
+      type: server.type,
+      url: server.url ? redactUrl(server.url) : '',
+      timeoutMs: server.timeoutMs
+    },
+    server,
+    capability: {
+      enabled: true,
+      server: server.id,
+      label: platform.name || '需求',
+      category: 'product',
+      description: `${platform.name || '需求池'}需求读取与只读引用`,
+      project,
+      options: {
+        source: 'requirement-pool-manifest',
+        manifestVersion,
+        platform,
+        fields,
+        statuses,
+        safety
+      },
+      tools
+    },
+    secrets,
+    safety,
+    warnings,
+    blockers
+  }
+}
+
+function objectValue(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function problem(code, message, hint = null) {
+  return { code, message, ...(hint ? { hint } : {}) }
+}
+
+function slugId(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+}
+
+function normalizeSecretDeclarations(input) {
+  if (Array.isArray(input)) {
+    return input.map((item) => {
+      const value = objectValue(item)
+      return {
+        name: String(value.name || value.key || '').trim(),
+        label: String(value.label || value.name || value.key || '').trim(),
+        required: value.required !== false
+      }
+    }).filter((item) => item.name)
+  }
+  const value = objectValue(input)
+  return Object.entries(value).map(([name, detail]) => ({
+    name,
+    label: typeof detail === 'object' && detail ? String(detail.label || name).trim() : name,
+    required: typeof detail === 'object' && detail ? detail.required !== false : true
+  }))
+}
+
+function findPlaintextSecrets(value, prefix = '') {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => findPlaintextSecrets(item, `${prefix}[${index}]`))
+  }
+  if (!value || typeof value !== 'object') return []
+  const out = []
+  for (const [key, entry] of Object.entries(value)) {
+    const path = prefix ? `${prefix}.${key}` : key
+    if (entry && typeof entry === 'object') {
+      out.push(...findPlaintextSecrets(entry, path))
+      continue
+    }
+    const text = String(entry || '').trim()
+    if (key.toLowerCase() === 'authorization' && text && !SECRET_PLACEHOLDER_RE.test(text)) {
+      out.push(path)
+      continue
+    }
+    if (!SECRET_KEY_RE.test(key)) continue
+    if (!text || SECRET_PLACEHOLDER_RE.test(text)) continue
+    out.push(path)
+  }
+  return out
+}
+
+function redactUrl(value) {
+  try {
+    const url = new URL(value)
+    if (url.username || url.password) {
+      url.username = url.username ? '***' : ''
+      url.password = url.password ? '***' : ''
+    }
+    return url.toString()
+  } catch {
+    return ''
+  }
 }
 
 export function validate(config) {
