@@ -286,6 +286,12 @@ FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
 FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+npm run release:v075:finalize
+
+FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
+FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
+FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run check:v075:readiness -- --phase final
 ```
 

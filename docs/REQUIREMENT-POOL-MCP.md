@@ -255,6 +255,12 @@ FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
 FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+npm run release:v075:finalize
+
+FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
+FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
+FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run check:v075:readiness -- --phase final
 ```
 
@@ -270,4 +276,4 @@ npm run check:v075:readiness -- --phase final
 - 正式交付快照冻结了需求池来源摘要。
 - `npm run smoke:v075:requirement-pool -- --keep` 在真实测试平台跑通。
 - `npm run smoke:v075:mcp-ui` 在安装 Playwright 的本机跑通。
-- 保存真实平台 smoke 和浏览器 smoke 结果后，`npm run check:v075:readiness -- --phase pre-bump` 通过；完成最终版本号提升后，`npm run check:v075:readiness -- --phase final` 通过。
+- 保存真实平台 smoke 和浏览器 smoke 结果后，`npm run check:v075:readiness -- --phase pre-bump` 通过；`npm run release:v075:finalize` 完成 `package.json`、`package-lock.json`、`web/package.json` 和 `web/package-lock.json` 的版本号提升，并且 `npm run check:v075:readiness -- --phase final` 通过。

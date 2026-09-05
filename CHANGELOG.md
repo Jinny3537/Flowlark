@@ -31,6 +31,7 @@
 - v0.7.5 真实平台 smoke 会校验正式交付快照冻结完整需求池来源摘要，包括来源类型、provider、外部 ID、状态、同步时间和来源 URL。
 - v0.7.5 真实平台 smoke 在创建测试迭代后回读需求详情和迭代详情，确认测试需求已关联原型版本并进入迭代范围。
 - 新增 `check:v075:readiness` 只读发布门禁，支持 `pre-bump` 和 `final` 两个阶段，检查最终交付前的版本号、manifest、凭据环境变量、真实平台 smoke 结果、浏览器 smoke 结果和 Playwright 入口，避免未完成真实验收时误标 v0.7.5。
+- 新增 `release:v075:finalize`，在 pre-bump readiness 通过后一次性提升根包、Web 包和两个 lockfile 的版本号，再执行 final readiness。
 - v0.7.5 真实平台验收脚本新增 `--inspect-only`，可在不启动服务、不连接平台的情况下校验 manifest 合同。
 - 需求页“从需求池导入”弹窗新增配置 JSON 加载、预览、导入、本机密钥补录和只读连接测试入口，MCP 中心保留为高级设置和诊断入口。
 

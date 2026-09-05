@@ -45,17 +45,27 @@ process.exit(result.passed ? 0 : 1)
 function checkPackageVersions() {
   const rootPackage = readJsonFile(path.join(root, 'package.json'))
   const webPackage = readJsonFile(path.join(root, 'web/package.json'))
+  const rootLock = readOptionalJsonFile(path.join(root, 'package-lock.json'))
+  const webLock = readOptionalJsonFile(path.join(root, 'web/package-lock.json'))
   if (phase === 'pre-bump') {
     addCheck('package-version', true,
       `package.json version is ${rootPackage?.version || 'missing'}; ${TARGET_VERSION} is required in final phase`)
     addCheck('web-package-version', true,
       `web/package.json version is ${webPackage?.version || 'missing'}; ${TARGET_VERSION} is required in final phase`)
+    addCheck('package-lock-version', Boolean(rootLock),
+      `package-lock.json version is ${rootLock?.version || 'missing'}; ${TARGET_VERSION} is required in final phase`)
+    addCheck('web-package-lock-version', Boolean(webLock),
+      `web/package-lock.json version is ${webLock?.version || 'missing'}; ${TARGET_VERSION} is required in final phase`)
     return
   }
   addCheck('package-version', rootPackage?.version === TARGET_VERSION,
     `package.json version is ${rootPackage?.version || 'missing'}, expected ${TARGET_VERSION}`)
   addCheck('web-package-version', webPackage?.version === TARGET_VERSION,
     `web/package.json version is ${webPackage?.version || 'missing'}, expected ${TARGET_VERSION}`)
+  addCheck('package-lock-version', packageLockVersionMatches(rootLock),
+    `package-lock.json version is ${rootLock?.version || 'missing'}, expected ${TARGET_VERSION}`)
+  addCheck('web-package-lock-version', packageLockVersionMatches(webLock),
+    `web/package-lock.json version is ${webLock?.version || 'missing'}, expected ${TARGET_VERSION}`)
 }
 
 function checkNpmScripts() {
@@ -65,6 +75,8 @@ function checkNpmScripts() {
     'package.json must expose smoke:v075:requirement-pool')
   addCheck('smoke-mcp-ui-script', scripts['smoke:v075:mcp-ui'] === 'node scripts/smoke-v075-mcp-ui.mjs',
     'package.json must expose smoke:v075:mcp-ui')
+  addCheck('finalize-v075-script', scripts['release:v075:finalize'] === 'node scripts/finalize-v075-release.mjs',
+    'package.json must expose release:v075:finalize')
 }
 
 function checkManifest() {
@@ -174,6 +186,14 @@ function addCheck(key, passed, message, extra = {}) {
 
 function readJsonFile(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'))
+}
+
+function readOptionalJsonFile(file) {
+  return fs.existsSync(file) ? readJsonFile(file) : null
+}
+
+function packageLockVersionMatches(lock) {
+  return lock?.version === TARGET_VERSION && lock?.packages?.['']?.version === TARGET_VERSION
 }
 
 function parseArgs(values) {
