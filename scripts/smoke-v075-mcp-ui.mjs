@@ -42,6 +42,13 @@ try {
   })
 
   const base = `http://127.0.0.1:${appServer.port}/#`
+  await page.goto(`${base}/requirements`)
+  await page.waitForLoadState('networkidle')
+  await page.getByRole('button', { name: '从需求池导入', exact: true }).click()
+  await page.getByRole('button', { name: '打开集成配置', exact: true }).click()
+  await page.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
+  assert.ok(page.url().endsWith('#/settings/mcp'))
+
   await page.goto(`${base}/settings/mcp`)
   await page.waitForLoadState('networkidle')
   await page.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
@@ -86,7 +93,7 @@ try {
   assert.deepEqual(errors, [])
   console.log(JSON.stringify({
     passed: true,
-    checks: ['template-load', 'manifest-preview', 'import', 'missing-secret-ui', 'env-secret-probe', 'desktop-mobile-layout', 'page-errors'],
+    checks: ['requirements-entrypoint', 'template-load', 'manifest-preview', 'import', 'missing-secret-ui', 'env-secret-probe', 'desktop-mobile-layout', 'page-errors'],
     viewportWidths: [1440, 390]
   }))
 } finally {

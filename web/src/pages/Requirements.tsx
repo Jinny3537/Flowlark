@@ -348,7 +348,7 @@ export default function Requirements() {
           />
           <Space className="fl-external-actions" wrap>
             <Button disabled={!external.token.trim()} onClick={saveExternalToken}>保存 Token</Button>
-            <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>打开集成配置</Button>
+            <Button icon={<SettingOutlined />} onClick={() => navigate('/settings/mcp')}>打开集成配置</Button>
           </Space>
         </Form>
         <List
