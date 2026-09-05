@@ -1,0 +1,185 @@
+#!/usr/bin/env node
+// Run after `npm run build:web` with PLAYWRIGHT_MODULE pointing to an installed Playwright index.mjs.
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import http from 'node:http'
+import os from 'node:os'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { initRepo } from '../src/core/repo.js'
+import { startServer } from '../src/server/index.js'
+import { unavailableWecomMcp } from '../src/core/wecom-mcp-manager.js'
+
+if (!process.env.PLAYWRIGHT_MODULE) {
+  console.error('PLAYWRIGHT_MODULE is required, for example /path/to/playwright/index.mjs')
+  process.exit(2)
+}
+
+process.env.FLOWLARK_V075_UI_TOKEN = 'v075-ui-smoke-token'
+
+const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE).href)
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-mcp-ui-smoke-'))
+initRepo(root, { name: 'v0.7.5 MCP UI smoke' })
+
+let mcpServer, appServer, browser
+const errors = []
+const calls = []
+
+try {
+  mcpServer = await startFakeRequirementPool()
+  const mcpUrl = `http://127.0.0.1:${mcpServer.address().port}/mcp`
+  appServer = await startServer(root, {
+    port: 0,
+    previewPort: 0,
+    wecomMcp: unavailableWecomMcp('v075-mcp-ui-smoke')
+  })
+
+  browser = await chromium.launch({ headless: true })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+
+  const base = `http://127.0.0.1:${appServer.port}/#`
+  await page.goto(`${base}/settings/mcp`)
+  await page.waitForLoadState('networkidle')
+  await page.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
+
+  await page.getByRole('button', { name: '加载示例', exact: true }).click()
+  await page.getByText('需求池平台').waitFor()
+
+  const manifestEditor = page.locator('.fl-mcp-editor textarea').first()
+  await manifestEditor.fill(JSON.stringify(manifestWithKeychainSecret(mcpUrl), null, 2))
+  await expectResponse(page, '/api/mcp/requirement-pool/inspect', () =>
+    page.getByRole('button', { name: '预览配置', exact: true }).click())
+  await page.getByText('配置可导入', { exact: true }).waitFor()
+  await page.getByText('需本机补录密钥：UI Smoke Token').waitFor()
+
+  await expectResponse(page, '/api/mcp/requirement-pool/import', () =>
+    page.getByRole('button', { name: '导入到 MCP 配置', exact: true }).click())
+  await expectResponse(page, '/api/mcp/requirement-pool/status', () =>
+    page.getByRole('button', { name: '检查接入状态', exact: true }).click())
+  await page.getByText('需求池配置缺少本机密钥', { exact: true }).waitFor()
+  const missingSecretRow = page.locator('li').filter({ hasText: 'ui-smoke-token' })
+  await missingSecretRow.getByPlaceholder('输入后只保存到本机').fill('not-written-by-smoke')
+  await assertEnabled(missingSecretRow.getByRole('button', { name: '保存密钥', exact: true }))
+
+  await manifestEditor.fill(JSON.stringify(manifestWithEnvSecret(mcpUrl), null, 2))
+  await expectResponse(page, '/api/mcp/requirement-pool/inspect', () =>
+    page.getByRole('button', { name: '预览配置', exact: true }).click())
+  await expectResponse(page, '/api/mcp/requirement-pool/import', () =>
+    page.getByRole('button', { name: '导入到 MCP 配置', exact: true }).click())
+  await expectResponse(page, '/api/mcp/requirement-pool/status', () =>
+    page.getByRole('button', { name: '执行连接测试', exact: true }).click())
+  await page.getByText('需求池连接测试通过', { exact: true }).waitFor()
+  await page.getByText('身份：MCP UI Smoke').waitFor()
+  assert.ok(calls.some((item) => item.name === 'requirements.test' && item.authorization === 'Bearer v075-ui-smoke-token'))
+
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.goto(`${base}/settings/mcp`)
+    await page.waitForLoadState('networkidle')
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `settings MCP overflow ${width}`)
+  }
+
+  assert.deepEqual(errors, [])
+  console.log(JSON.stringify({
+    passed: true,
+    checks: ['template-load', 'manifest-preview', 'import', 'missing-secret-ui', 'env-secret-probe', 'desktop-mobile-layout', 'page-errors'],
+    viewportWidths: [1440, 390]
+  }))
+} finally {
+  await browser?.close()
+  await appServer?.close()
+  await closeServer(mcpServer)
+  fs.rmSync(root, { recursive: true, force: true })
+}
+
+function manifestWithKeychainSecret(url) {
+  return {
+    manifestVersion: '2026-09',
+    platform: { id: 'ui-pool', name: 'UI Requirement Pool' },
+    project: { id: 'safe-prod' },
+    transport: {
+      type: 'http',
+      url,
+      timeoutMs: 5000,
+      headers: { Authorization: 'Bearer ${secret:ui-smoke-token}' }
+    },
+    tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+    fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
+    statuses: { open: '待处理' },
+    secrets: [{ name: 'ui-smoke-token', label: 'UI Smoke Token' }],
+    safety: { readOnly: true, writes: [], dangerous: [] }
+  }
+}
+
+function manifestWithEnvSecret(url) {
+  return {
+    ...manifestWithKeychainSecret(url),
+    transport: {
+      type: 'http',
+      url,
+      timeoutMs: 5000,
+      headers: { Authorization: 'Bearer ${env:FLOWLARK_V075_UI_TOKEN}' }
+    },
+    secrets: []
+  }
+}
+
+function startFakeRequirementPool() {
+  const server = http.createServer(async (req, res) => {
+    let raw = ''
+    for await (const chunk of req) raw += chunk
+    res.setHeader('Content-Type', 'application/json')
+    if (req.method !== 'POST' || req.url !== '/mcp') {
+      res.statusCode = 404
+      res.end(JSON.stringify({ message: 'not found' }))
+      return
+    }
+    const body = JSON.parse(raw)
+    const name = body.params?.name
+    const authorization = req.headers.authorization || ''
+    calls.push({ name, authorization })
+    if (authorization !== 'Bearer v075-ui-smoke-token') {
+      res.statusCode = 401
+      res.end(JSON.stringify({ message: 'missing or invalid token' }))
+      return
+    }
+    if (name === 'requirements.test') {
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: { name: 'MCP UI Smoke' } } }))
+      return
+    }
+    if (name === 'requirements.search') {
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: { items: [] } } }))
+      return
+    }
+    if (name === 'requirements.get') {
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: null } }))
+      return
+    }
+    res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { structuredContent: {} } }))
+  })
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)))
+}
+
+async function expectResponse(page, suffix, action) {
+  const responsePromise = page.waitForResponse((response) =>
+    response.url().endsWith(suffix) && response.request().method() !== 'GET')
+  await action()
+  const response = await responsePromise
+  assert.ok(response.ok(), `${suffix} returned ${response.status()}`)
+  await page.waitForLoadState('networkidle')
+  return response
+}
+
+async function assertEnabled(locator) {
+  await locator.waitFor()
+  assert.equal(await locator.isDisabled(), false)
+}
+
+function closeServer(server) {
+  if (!server) return Promise.resolve()
+  return new Promise((resolve) => server.close(resolve))
+}
