@@ -36,32 +36,55 @@ try {
     finalReadiness
   }, null, 2)}\n`)
 } catch (error) {
-  process.stdout.write(`${JSON.stringify({
+  const result = {
     passed: false,
     targetVersion: TARGET_VERSION,
     failedStep: error?.step || 'release:v075:finalize',
     message: String(error?.message || error),
     next: ['Commit, stash or remove unrelated worktree changes, then rerun release:v075:finalize with accepted v0.7.5 evidence.']
-  }, null, 2)}\n`)
+  }
+  if (error?.childResult) result.childResult = error.childResult
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
   process.exit(1)
 }
 
 function runReadiness(phase) {
-  const output = execFileSync(process.execPath, [
-    readinessScript,
-    '--phase', phase,
-    ...forwardedArgs()
-  ], {
-    cwd: process.cwd(),
-    env: process.env,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
+  let output = ''
+  try {
+    output = execFileSync(process.execPath, [
+      readinessScript,
+      '--phase', phase,
+      ...forwardedArgs()
+    ], {
+      cwd: process.cwd(),
+      env: process.env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+  } catch (error) {
+    const wrapped = new Error(`v0.7.5 ${phase} readiness failed`)
+    wrapped.step = `${phase}-readiness`
+    const childResult = parseJsonOutput(error.stdout)
+    if (childResult) wrapped.childResult = childResult
+    throw wrapped
+  }
   const result = JSON.parse(output)
   if (result.passed !== true) {
-    throw new Error(`v0.7.5 ${phase} readiness failed`)
+    const error = new Error(`v0.7.5 ${phase} readiness failed`)
+    error.step = `${phase}-readiness`
+    error.childResult = result
+    throw error
   }
   return result
+}
+
+function parseJsonOutput(value) {
+  if (!value) return null
+  try {
+    return JSON.parse(String(value))
+  } catch {
+    return null
+  }
 }
 
 function bumpVersions(root) {

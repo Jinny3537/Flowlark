@@ -60,13 +60,15 @@ try {
     finalReadiness: finalizer.finalReadiness || null
   }, 0)
 } catch (error) {
-  finish({
+  const result = {
     passed: false,
     targetVersion: TARGET_VERSION,
     failedStep: error?.step || 'upgrade:v075',
     message: String(error?.message || error),
     next: ['Inspect the failed step, provide the missing v0.7.5 release evidence, then rerun upgrade:v075.']
-  }, 1)
+  }
+  if (error?.childResult) result.childResult = error.childResult
+  finish(result, 1)
 }
 
 function checkPreflight({ manifest, smokeResult, uiSmokeResult }) {
@@ -139,7 +141,18 @@ function runExec(step, command, values) {
   } catch (error) {
     const wrapped = new Error(`${step} failed with exit ${error.status ?? 'unknown'}`)
     wrapped.step = step
+    const childResult = parseJsonOutput(error.stdout)
+    if (childResult) wrapped.childResult = childResult
     throw wrapped
+  }
+}
+
+function parseJsonOutput(value) {
+  if (!value) return null
+  try {
+    return JSON.parse(String(value))
+  } catch {
+    return null
   }
 }
 

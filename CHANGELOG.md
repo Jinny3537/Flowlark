@@ -35,6 +35,7 @@
 - `check:v075:readiness` 的 `next` 提示会按失败项收敛；本机 UI smoke 通过后不再继续提示浏览器验收，只保留真实平台 smoke 缺口。
 - 新增 `upgrade:v075` 一键升级编排入口：有真实 manifest、凭据和 Playwright 时先确认 Git 工作区干净，再自动执行 Web 构建、浏览器 smoke、真实平台 smoke、pre-bump readiness、受保护 finalizer 和 final readiness；已有合格 smoke 证据时支持显式复用，并在 preflight 阶段校验复用证据文件存在。
 - `upgrade:v075`、`release:v075:finalize` 和 `check:v075:readiness` 支持 `--playwright-module`，可直接传入 Playwright `index.mjs`，不必依赖全局 `PLAYWRIGHT_MODULE` 环境变量。
+- `upgrade:v075` 和 `release:v075:finalize` 在 readiness 子步骤失败时会透传 `childResult`，保留具体失败 check，避免真实验收失败后只能看到 exit code。
 - 新增 `release:v075:finalize`，在 pre-bump readiness 通过后一次性提升根包、Web 包和两个 lockfile 的版本号，再执行 final readiness。
 - v0.7.5 真实平台验收脚本新增 `--inspect-only`，可在不启动服务、不连接平台的情况下校验 manifest 合同。
 - 需求页“从需求池导入”弹窗新增配置 JSON 加载、预览、导入、本机密钥补录和只读连接测试入口，MCP 中心保留为高级设置和诊断入口。

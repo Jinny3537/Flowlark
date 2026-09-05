@@ -116,6 +116,25 @@ function stableJson(value) {
   return JSON.stringify(value)
 }
 
+function writeV075ReleasePackageTree(directory) {
+  fs.mkdirSync(path.join(directory, 'web'), { recursive: true })
+  writeJson(path.join(directory, 'package.json'), {
+    name: 'flowlark',
+    version: '0.7.0',
+    type: 'module',
+    scripts: {
+      'check:v075:readiness': 'node scripts/check-v075-readiness.mjs',
+      'upgrade:v075': 'node scripts/upgrade-v075.mjs',
+      'release:v075:finalize': 'node scripts/finalize-v075-release.mjs',
+      'smoke:v075:requirement-pool': 'node scripts/smoke-v075-requirement-pool.mjs',
+      'smoke:v075:mcp-ui': 'node scripts/smoke-v075-mcp-ui.mjs'
+    }
+  })
+  writeJson(path.join(directory, 'web/package.json'), { name: 'flowlark-web', version: '0.7.0', type: 'module' })
+  writeJson(path.join(directory, 'package-lock.json'), { name: 'flowlark', version: '0.7.0', lockfileVersion: 3, packages: { '': { name: 'flowlark', version: '0.7.0' } } })
+  writeJson(path.join(directory, 'web/package-lock.json'), { name: 'flowlark-web', version: '0.7.0', lockfileVersion: 3, packages: { '': { name: 'flowlark-web', version: '0.7.0' } } })
+}
+
 describe('v0.7 升级能力', () => {
   test('从新旧 HTML 生成变更和规格草稿', (t) => {
     const { root, hub } = newHub()
@@ -853,6 +872,109 @@ describe('v0.7 升级能力', () => {
         t.assert.strictEqual(result.passed, false)
         t.assert.strictEqual(result.phase, 'preflight')
         t.assert.ok(result.missing.some((item) => item.includes('clean release worktree') && item.includes('dirty.txt')))
+        return true
+      }
+    )
+  })
+
+  test('v0.7.5 release scripts include child readiness JSON on child failures', async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-child-result-test-'))
+    dirs.push(directory)
+    writeV075ReleasePackageTree(directory)
+
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000, headers: { Authorization: 'Bearer ${secret:fixture-token}' } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
+      statuses: { open: '待处理' },
+      safety: { readOnly: true, writes: [], dangerous: [] }
+    }
+    const manifestFile = path.join(directory, 'requirement-pool.json')
+    const smokeResultFile = path.join(directory, 'smoke-result.json')
+    const legacySmokeResultFile = path.join(directory, 'legacy-smoke-result.json')
+    const uiSmokeResultFile = path.join(directory, 'ui-smoke-result.json')
+    writeJson(manifestFile, manifest)
+    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence(manifest))
+    writeJson(legacySmokeResultFile, {
+      passed: true,
+      requirement: 'REQ-7',
+      snapshot: 'delivery-123',
+      requirementSource: {
+        source: 'requirement-pool',
+        key: 'REQ-7',
+        status: 'open',
+        syncedAt: '2026-09-05T08:00:00.000Z'
+      }
+    })
+    writeJson(uiSmokeResultFile, {
+      passed: true,
+      checks: [
+        'requirements-direct-config-import',
+        'requirements-secret-ui',
+        'requirements-env-secret-probe',
+        'requirements-search-import',
+        'settings-advanced-entrypoint',
+        'desktop-mobile-layout',
+        'page-errors'
+      ]
+    })
+
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        path.resolve('scripts/finalize-v075-release.mjs'),
+        '--manifest', manifestFile,
+        '--smoke-result', smokeResultFile,
+        '--ui-smoke-result', uiSmokeResultFile
+      ], {
+        cwd: directory,
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          PLAYWRIGHT_MODULE: '',
+          FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(result.failedStep, 'pre-bump-readiness')
+        t.assert.strictEqual(result.childResult.phase, 'pre-bump')
+        t.assert.strictEqual(result.childResult.checks.find((item) => item.key === 'playwright-module').status, 'fail')
+        t.assert.doesNotMatch(error.stdout, /fixture-secret-value/)
+        return true
+      }
+    )
+
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        path.resolve('scripts/upgrade-v075.mjs'),
+        '--manifest', manifestFile,
+        '--smoke-result', legacySmokeResultFile,
+        '--ui-smoke-result', uiSmokeResultFile,
+        '--playwright-module', process.execPath,
+        '--reuse-real-smoke-result',
+        '--reuse-ui-smoke-result'
+      ], {
+        cwd: directory,
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          PLAYWRIGHT_MODULE: '',
+          FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(result.failedStep, 'pre-bump-readiness')
+        t.assert.strictEqual(result.childResult.phase, 'pre-bump')
+        t.assert.strictEqual(result.childResult.checks.find((item) => item.key === 'real-smoke-result').status, 'fail')
+        t.assert.doesNotMatch(error.stdout, /fixture-secret-value/)
         return true
       }
     )
