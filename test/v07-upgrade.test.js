@@ -320,6 +320,33 @@ describe('v0.7 升级能力', () => {
     t.assert.strictEqual(preBumpResult.passed, true)
     t.assert.strictEqual(preBumpResult.phase, 'pre-bump')
     t.assert.strictEqual(preBumpResult.checks.find((item) => item.key === 'package-version').status, 'pass')
+    t.assert.match(preBumpResult.checks.find((item) => item.key === 'playwright-module').message, /PLAYWRIGHT_MODULE found:/)
+
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        'scripts/check-v075-readiness.mjs',
+        '--phase', 'pre-bump',
+        '--manifest', manifestFile,
+        '--ui-smoke-result', uiSmokeResultFile
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          PLAYWRIGHT_MODULE: process.execPath,
+          FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(result.checks.find((item) => item.key === 'real-smoke-result').status, 'fail')
+        t.assert.ok(result.next.some((item) => item.includes('real-platform smoke')))
+        t.assert.ok(!result.next.some((item) => item.includes('browser MCP UI smoke')))
+        return true
+      }
+    )
   })
 
   test('v0.7.5 finalize script bumps package versions only after readiness passes', async (t) => {

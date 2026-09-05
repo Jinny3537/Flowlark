@@ -35,7 +35,7 @@ const result = {
   phase,
   checks,
   next: failed.length
-    ? nextActions()
+    ? nextActions(failed)
     : []
 }
 
@@ -124,8 +124,9 @@ function checkHeaderCredentialEnvironment(preview) {
 
 function checkPlaywright() {
   const modulePath = process.env.PLAYWRIGHT_MODULE || ''
-  addCheck('playwright-module', Boolean(modulePath && fs.existsSync(path.resolve(modulePath))),
-    modulePath ? `PLAYWRIGHT_MODULE not found: ${modulePath}` : 'PLAYWRIGHT_MODULE is required for smoke:v075:mcp-ui')
+  const found = Boolean(modulePath && fs.existsSync(path.resolve(modulePath)))
+  addCheck('playwright-module', found,
+    found ? `PLAYWRIGHT_MODULE found: ${path.resolve(modulePath)}` : modulePath ? `PLAYWRIGHT_MODULE not found: ${modulePath}` : 'PLAYWRIGHT_MODULE is required for smoke:v075:mcp-ui')
 }
 
 function checkSmokeResult() {
@@ -226,13 +227,26 @@ function envSuffix(value) {
   return String(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
 }
 
-function nextActions() {
-  const actions = [
-    'Run the real-platform smoke against a disposable requirement-pool project and save its JSON output.',
-    'Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set and save its JSON output.'
-  ]
-  if (phase === 'pre-bump') actions.push('Bump package.json and web/package.json to 0.7.5 only after this pre-bump readiness check passes.')
-  else actions.push('If pre-bump readiness has passed, bump package.json and web/package.json to 0.7.5, then rerun the final readiness check.')
+function nextActions(failedChecks) {
+  const failedKeys = new Set(failedChecks.map((item) => item.key))
+  const actions = []
+  if (['manifest-present', 'manifest-inspect', 'manifest-credentials'].some((key) => failedKeys.has(key))) {
+    actions.push('Provide an accepted requirement-pool manifest and required local credential environment variables.')
+  }
+  if (failedKeys.has('real-smoke-result')) {
+    actions.push('Run the real-platform smoke against a disposable requirement-pool project and save its JSON output.')
+  }
+  if (failedKeys.has('playwright-module') || failedKeys.has('ui-smoke-result')) {
+    actions.push('Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set and save its JSON output.')
+  }
+  if (['smoke-requirement-pool-script', 'smoke-mcp-ui-script', 'finalize-v075-script'].some((key) => failedKeys.has(key))) {
+    actions.push('Restore the v0.7.5 readiness, finalize and smoke npm script entries in package.json.')
+  }
+  if (['package-version', 'web-package-version', 'package-lock-version', 'web-package-lock-version'].some((key) => failedKeys.has(key))) {
+    if (phase === 'pre-bump') actions.push('Restore package-lock.json and web/package-lock.json before rerunning pre-bump readiness.')
+    else actions.push('After pre-bump readiness passes, run release:v075:finalize to bump package and lockfile versions to 0.7.5.')
+  }
+  if (!actions.length) actions.push('Inspect failed readiness checks and provide the missing release evidence before rerunning.')
   return actions
 }
 
