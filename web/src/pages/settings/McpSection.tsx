@@ -338,6 +338,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
   const [manifestText, setManifestText] = useState('');
   const [manifestPreview, setManifestPreview] = useState<RequirementPoolManifestPreview | null>(null);
   const [requirementPoolStatus, setRequirementPoolStatus] = useState<RequirementPoolStatus | null>(null);
+  const [requirementPoolSecrets, setRequirementPoolSecrets] = useState<Record<string, string>>({});
   const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
   const serverId = Form.useWatch('id', serverAntForm) || '';
   const serverType = Form.useWatch('type', serverAntForm) || 'http';
@@ -363,6 +364,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       setDiscoveredTools([]);
       setManifestPreview(null);
       setRequirementPoolStatus(null);
+      setRequirementPoolSecrets({});
       serverAntForm.resetFields();
       extensionAntForm.resetFields();
     } catch (error) {
@@ -531,6 +533,23 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       message.error(errorText(error, '需求池接入状态检查失败'));
     } finally {
       setTesting('');
+    }
+  };
+
+  const saveRequirementPoolSecret = async (name: string) => {
+    const value = requirementPoolSecrets[name] || '';
+    if (!name || !value) return;
+    setSaving(`requirementPoolSecret:${name}`);
+    try {
+      await api.setMcpServerSecret(name, value);
+      setRequirementPoolSecrets((current) => ({ ...current, [name]: '' }));
+      const result = await api.requirementPoolStatus(false) as RequirementPoolStatus;
+      setRequirementPoolStatus(result);
+      message.success(`本机密钥 ${name} 已保存`);
+    } catch (error) {
+      message.error(errorText(error, '需求池本机密钥保存失败'));
+    } finally {
+      setSaving('');
     }
   };
 
@@ -801,7 +820,35 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                       </div>
                       {requirementPoolStatus.missingSecrets?.length ? (
                         <ul>
-                          {requirementPoolStatus.missingSecrets.map((item) => <li key={`secret:${item.kind}:${item.name}`}>缺少{item.label || item.name}</li>)}
+                          {requirementPoolStatus.missingSecrets.map((item) => {
+                            const name = item.name || '';
+                            return (
+                              <li key={`secret:${item.kind}:${name}`}>
+                                <Space wrap>
+                                  <span>缺少{item.label || name}</span>
+                                  {item.kind === 'keychain' ? (
+                                    <>
+                                      <Input.Password
+                                        size="small"
+                                        autoComplete="new-password"
+                                        placeholder="输入后只保存到本机"
+                                        value={requirementPoolSecrets[name] || ''}
+                                        onChange={(event) => setRequirementPoolSecrets((current) => ({ ...current, [name]: event.target.value }))}
+                                      />
+                                      <Button
+                                        size="small"
+                                        disabled={!canWrite || Boolean(saving) || !requirementPoolSecrets[name]}
+                                        loading={saving === `requirementPoolSecret:${name}`}
+                                        onClick={() => void saveRequirementPoolSecret(name)}
+                                      >
+                                        保存密钥
+                                      </Button>
+                                    </>
+                                  ) : <span className="fl-muted">请在环境变量中配置</span>}
+                                </Space>
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : null}
                       {requirementPoolStatus.blockers?.length ? (
