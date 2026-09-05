@@ -135,6 +135,13 @@ function writeV075ReleasePackageTree(directory) {
   writeJson(path.join(directory, 'web/package-lock.json'), { name: 'flowlark-web', version: '0.7.0', lockfileVersion: 3, packages: { '': { name: 'flowlark-web', version: '0.7.0' } } })
 }
 
+function writeFakePlaywrightModule(directory) {
+  const file = path.join(directory, 'node_modules/playwright/index.mjs')
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, 'export const chromium = null\n', 'utf8')
+  return file
+}
+
 describe('v0.7 升级能力', () => {
   test('从新旧 HTML 生成变更和规格草稿', (t) => {
     const { root, hub } = newHub()
@@ -507,6 +514,7 @@ describe('v0.7 升级能力', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-finalize-test-'))
     dirs.push(directory)
     fs.mkdirSync(path.join(directory, 'web'), { recursive: true })
+    writeFakePlaywrightModule(directory)
     const rootPackage = {
       name: 'flowlark',
       version: '0.7.0',
@@ -559,8 +567,7 @@ describe('v0.7 升级能力', () => {
       path.resolve('scripts/finalize-v075-release.mjs'),
       '--manifest', manifestFile,
       '--smoke-result', smokeResultFile,
-      '--ui-smoke-result', uiSmokeResultFile,
-      '--playwright-module', process.execPath
+      '--ui-smoke-result', uiSmokeResultFile
     ], {
       cwd: directory,
       encoding: 'utf8',
@@ -574,6 +581,7 @@ describe('v0.7 升级能力', () => {
     const result = JSON.parse(stdout)
     t.assert.strictEqual(result.passed, true)
     t.assert.strictEqual(result.finalReadiness.phase, 'final')
+    t.assert.match(result.finalReadiness.checks.find((item) => item.key === 'playwright-module').message, /node_modules\/playwright\/index\.mjs/)
     for (const file of ['package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json']) {
       const json = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'))
       t.assert.strictEqual(json.version, '0.7.5')
@@ -670,6 +678,7 @@ describe('v0.7 升级能力', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-upgrade-test-'))
     dirs.push(directory)
     fs.mkdirSync(path.join(directory, 'web'), { recursive: true })
+    writeFakePlaywrightModule(directory)
     writeJson(path.join(directory, 'package.json'), {
       name: 'flowlark',
       version: '0.7.0',
@@ -720,7 +729,6 @@ describe('v0.7 升级能力', () => {
       '--manifest', manifestFile,
       '--smoke-result', smokeResultFile,
       '--ui-smoke-result', uiSmokeResultFile,
-      '--playwright-module', process.execPath,
       '--reuse-real-smoke-result',
       '--reuse-ui-smoke-result'
     ], {
@@ -742,6 +750,7 @@ describe('v0.7 升级能力', () => {
       'finalize:pass'
     ])
     t.assert.strictEqual(result.finalReadiness.phase, 'final')
+    t.assert.match(result.finalReadiness.checks.find((item) => item.key === 'playwright-module').message, /node_modules\/playwright\/index\.mjs/)
     for (const file of ['package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json']) {
       const json = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'))
       t.assert.strictEqual(json.version, '0.7.5')

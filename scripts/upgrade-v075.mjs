@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -14,7 +15,8 @@ try {
     usage()
     process.exit(0)
   }
-  if (args.playwrightModule) process.env.PLAYWRIGHT_MODULE = args.playwrightModule
+  const playwrightModule = resolvePlaywrightModulePath(args.playwrightModule || process.env.PLAYWRIGHT_MODULE || '')
+  if (playwrightModule) process.env.PLAYWRIGHT_MODULE = playwrightModule
   const manifest = args.manifest || process.env.FLOWLARK_V075_MANIFEST || ''
   const smokeResult = args.smokeResult || process.env.FLOWLARK_V075_SMOKE_RESULT || '.flowlark/cache/v075-requirement-pool-smoke.json'
   const uiSmokeResult = args.uiSmokeResult || process.env.FLOWLARK_V075_UI_SMOKE_RESULT || '.flowlark/cache/v075-mcp-ui-smoke.json'
@@ -43,7 +45,7 @@ try {
   }
 
   const forwarded = ['--manifest', manifest, '--smoke-result', smokeResult, '--ui-smoke-result', uiSmokeResult]
-  if (args.playwrightModule) forwarded.push('--playwright-module', args.playwrightModule)
+  if (playwrightModule) forwarded.push('--playwright-module', playwrightModule)
   const preBump = runNodeJson('pre-bump-readiness', path.join(scriptDir, 'check-v075-readiness.mjs'), ['--phase', 'pre-bump', ...forwarded])
   steps.push({ key: 'pre-bump-readiness', status: 'pass' })
   const finalizer = runNodeJson('finalize', path.join(scriptDir, 'finalize-v075-release.mjs'), forwarded)
@@ -94,6 +96,27 @@ function checkPreflight({ manifest, smokeResult, uiSmokeResult }) {
       ? ['Provide the missing manifest, Playwright module or reusable smoke result files, then rerun upgrade:v075.']
       : []
   }
+}
+
+function resolvePlaywrightModulePath(explicit) {
+  if (explicit) return explicit
+  return playwrightModuleCandidates().find((candidate) => fs.existsSync(candidate)) || ''
+}
+
+function playwrightModuleCandidates() {
+  const root = process.cwd()
+  const candidates = [
+    path.join(root, 'node_modules/playwright/index.mjs'),
+    path.join(root, 'web/node_modules/playwright/index.mjs')
+  ]
+  try {
+    for (const entry of fs.readdirSync(os.tmpdir(), { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name.startsWith('flowlark-playwright-')) {
+        candidates.push(path.join(os.tmpdir(), entry.name, 'node_modules/playwright/index.mjs'))
+      }
+    }
+  } catch {}
+  return candidates
 }
 
 function gitDirtyEntries(root) {

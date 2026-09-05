@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { inspectRequirementPoolManifest } from '../src/core/mcp-config.js'
 
@@ -21,7 +22,7 @@ const root = process.cwd()
 const manifestPath = args.manifest || process.env.FLOWLARK_V075_MANIFEST || ''
 const smokeResultPath = args.smokeResult || process.env.FLOWLARK_V075_SMOKE_RESULT || ''
 const uiSmokeResultPath = args.uiSmokeResult || process.env.FLOWLARK_V075_UI_SMOKE_RESULT || ''
-const playwrightModulePath = args.playwrightModule || process.env.PLAYWRIGHT_MODULE || ''
+const playwrightModulePath = resolvePlaywrightModulePath(args.playwrightModule || process.env.PLAYWRIGHT_MODULE || '')
 
 checkPackageVersions()
 checkNpmScripts()
@@ -279,6 +280,26 @@ function stableJson(value) {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`
   }
   return JSON.stringify(value)
+}
+
+function resolvePlaywrightModulePath(explicit) {
+  if (explicit) return explicit
+  return playwrightModuleCandidates().find((candidate) => fs.existsSync(candidate)) || ''
+}
+
+function playwrightModuleCandidates() {
+  const candidates = [
+    path.join(root, 'node_modules/playwright/index.mjs'),
+    path.join(root, 'web/node_modules/playwright/index.mjs')
+  ]
+  try {
+    for (const entry of fs.readdirSync(os.tmpdir(), { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name.startsWith('flowlark-playwright-')) {
+        candidates.push(path.join(os.tmpdir(), entry.name, 'node_modules/playwright/index.mjs'))
+      }
+    }
+  } catch {}
+  return candidates
 }
 
 function nextActions(failedChecks) {
