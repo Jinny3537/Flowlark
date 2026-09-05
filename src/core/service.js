@@ -65,6 +65,7 @@ import {
 } from './milestone-sync.js'
 import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
 import { appendSyncAudit, listSyncAudit as readSyncAudit, sanitizeSyncValue } from './sync-audit.js'
+import { preflightMilestoneFormalRelease as preflightFormalRelease } from './formal-release-service.js'
 import {
   cancelSyncRecord as cancelQueuedSyncRecord,
   findSyncRecord,
@@ -633,8 +634,7 @@ export class Hub {
   }
 
   async preflightMilestoneFormalRelease(name, slug, versionNo, input = {}) {
-    this.#assertMilestoneFormalReleaseTarget(name, slug, versionNo)
-    return publicFormalReleasePreflight(await this.#prepareFormalRelease(slug, versionNo, input))
+    return preflightFormalRelease(this.#formalReleaseContext(), name, slug, versionNo, input)
   }
 
   async formalReleaseMilestoneVersion(name, slug, versionNo, input = {}) {
@@ -2359,6 +2359,25 @@ export class Hub {
       out.push(`已写入 git config user.email`)
     }
     return out
+  }
+
+  #formalReleaseContext() {
+    return {
+      root: this.root,
+      settings: this.settings,
+      wecomMcp: this.wecomMcp,
+      gitSyncOverride: this.gitSyncOverride,
+      gitIdentity: () => this.gitIdentity(),
+      gitConflicts: () => this.gitConflicts(),
+      gitInProgress: () => this.gitInProgress(),
+      gitRemote: () => this.gitRemote(),
+      gitSync: (options) => this.gitSync(options),
+      listVersions: (slug, options) => this.listVersions(slug, options),
+      setBaseline: (slug, versionNo) => this.setBaseline(slug, versionNo),
+      getVersion: (slug, versionNo) => this.getVersion(slug, versionNo),
+      appendLog: (...args) => this.#log(...args),
+      withLock: (key, fn) => withMilestoneSyncLock(this.root, key, fn)
+    }
   }
 
   // ==================== Git ====================
