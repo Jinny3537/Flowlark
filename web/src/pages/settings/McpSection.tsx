@@ -16,10 +16,10 @@ import {
 } from 'antd';
 import type { FormInstance } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
-import { capabilityPayload, parseHeaders, parseRequirementPoolManifestText, serverForm, serverPayload } from './mcpModel.js';
+import { capabilityPayload, parseHeaders, parseRequirementPoolManifestText, serverForm, serverPayload, validateRequirementPoolManifestFile } from './mcpModel.js';
 import { McpRuntimeFields } from './McpRuntimeFields';
 
 type McpServer = {
@@ -338,6 +338,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
   const [manifestText, setManifestText] = useState('');
   const [manifestPreview, setManifestPreview] = useState<RequirementPoolManifestPreview | null>(null);
   const [requirementPoolStatus, setRequirementPoolStatus] = useState<RequirementPoolStatus | null>(null);
+  const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
   const serverId = Form.useWatch('id', serverAntForm) || '';
   const serverType = Form.useWatch('type', serverAntForm) || 'http';
   const runtimeProfile = Form.useWatch('runtimeProfile', serverAntForm) || '';
@@ -438,6 +439,22 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       message.error(errorText(error, 'MCP 工具发现失败'));
     } finally {
       setTesting('');
+    }
+  };
+
+  const loadRequirementPoolManifestFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      validateRequirementPoolManifestFile(file);
+      const text = await file.text();
+      parseRequirementPoolManifestText(text);
+      setManifestText(text);
+      setManifestPreview(null);
+      message.success(`已读取 ${file.name || '配置文件'}，请预览后导入`);
+    } catch (error) {
+      message.error(errorText(error, '读取需求池配置文件失败'));
     }
   };
 
@@ -686,6 +703,14 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
             <div className="fl-mcp-editor">
               <div className="fl-mcp-subtitle">导入需求池 MCP 配置 JSON</div>
               <p className="fl-muted">v0.7.5 只导入平台声明、服务地址、工具映射、字段/状态映射和密钥占位；不会从配置文件保存明文密钥，也不会执行写回。</p>
+              <input
+                ref={manifestFileInputRef}
+                type="file"
+                accept="application/json,.json"
+                aria-label="选择需求池配置 JSON 文件"
+                style={{ display: 'none' }}
+                onChange={(event) => void loadRequirementPoolManifestFile(event)}
+              />
               <Input.TextArea
                 rows={8}
                 className="fl-mono"
@@ -699,6 +724,9 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                 }}
               />
               <Space wrap className="fl-mcp-result">
+                <Button disabled={!canWrite} onClick={() => manifestFileInputRef.current?.click()}>
+                  选择 JSON 文件
+                </Button>
                 <Button loading={testing === 'requirementPoolManifest'} disabled={!canWrite || Boolean(testing) || !manifestText.trim()} onClick={() => void inspectRequirementPoolManifest()}>
                   预览配置
                 </Button>

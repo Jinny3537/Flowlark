@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { capabilityPayload, parseHeaders, parseRequirementPoolManifestText, runtimeDiagnosticStatus, serverForm, serverPayload } from './mcpModel.js'
+import { capabilityPayload, parseHeaders, parseRequirementPoolManifestText, runtimeDiagnosticStatus, serverForm, serverPayload, validateRequirementPoolManifestFile } from './mcpModel.js'
 
 test('round-trips server fields and headers', () => {
   const form = serverForm({ id: 'req', name: '需求', url: 'https://mcp.test', enabled: false, timeoutMs: 5000, headers: { Authorization: 'Bearer ${secret}' } })
@@ -26,6 +26,13 @@ test('parses requirement pool manifest text as an object', () => {
   assert.deepEqual(parseRequirementPoolManifestText('{"manifestVersion":"2026-09"}'), { manifestVersion: '2026-09' })
   assert.throws(() => parseRequirementPoolManifestText(''), /请先粘贴/)
   assert.throws(() => parseRequirementPoolManifestText('[]'), /JSON 对象/)
+})
+
+test('validates requirement pool manifest upload files', () => {
+  assert.equal(validateRequirementPoolManifestFile({ name: 'pool.json', type: '', size: 120 }), true)
+  assert.equal(validateRequirementPoolManifestFile({ name: 'pool.txt', type: 'application/json', size: 120 }), true)
+  assert.throws(() => validateRequirementPoolManifestFile({ name: 'pool.txt', type: 'text/plain', size: 120 }), /JSON 配置文件/)
+  assert.throws(() => validateRequirementPoolManifestFile({ name: 'pool.json', type: 'application/json', size: 300 * 1024 }), /不能超过 256KB/)
 })
 
 test('round-trips stdio logical server fields without URL or headers', () => {

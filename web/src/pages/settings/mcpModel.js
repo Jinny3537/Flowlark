@@ -56,6 +56,17 @@ export function parseRequirementPoolManifestText(text) {
   return value
 }
 
+export const REQUIREMENT_POOL_MANIFEST_MAX_BYTES = 256 * 1024
+
+export function validateRequirementPoolManifestFile(file = {}) {
+  const name = String(file.name || '').trim()
+  const type = String(file.type || '').trim().toLowerCase()
+  const size = Number(file.size || 0)
+  if (size > REQUIREMENT_POOL_MANIFEST_MAX_BYTES) throw new Error('需求池配置 JSON 文件不能超过 256KB')
+  if (!name.toLowerCase().endsWith('.json') && !type.includes('json')) throw new Error('请选择 JSON 配置文件')
+  return true
+}
+
 export function runtimeDiagnosticStatus(value = {}) {
   const blockers = Array.isArray(value.blockers) ? value.blockers : []
   const warnings = Array.isArray(value.warnings) ? value.warnings : []

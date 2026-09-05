@@ -77,7 +77,7 @@ Remaining v0.7.4 scope:
 - Inline plaintext secrets in secret fields, Authorization headers and URL credentials are rejected. Missing field/status mappings remain warnings because they degrade the integration to raw read-only references instead of corrupting data.
 - Import writes the existing `mcp.json` structure only: a MCP server plus the built-in `requirements` capability with platform, field, status and safety metadata under capability options.
 - HTTP endpoints expose the same rules at `/api/mcp/requirement-pool/inspect` and `/api/mcp/requirement-pool/import`; `/api/mcp/requirement-pool/status` reports configured platform, bound server, required tools, missing local secrets, warnings and optional read-only connection-test results.
-- MCP Center now has a minimal paste-and-preview UI for requirement-pool configuration JSON. It shows platform/server/tool/secrets summary, blockers and warnings, imports only when the preview is not blocked, and provides a separate integration status/connection-test check.
+- MCP Center now has a minimal file-or-paste preview UI for requirement-pool configuration JSON. It validates uploaded JSON file type and a 256KB size limit, shows platform/server/tool/secrets summary, blockers and warnings, imports only when the preview is not blocked, and provides a separate integration status/connection-test check.
 - Formal delivery snapshots now freeze requirement-pool source summaries (`code`, title, provider, external key, URL, status and sync time) alongside scoped requirements, so accepted delivery evidence can be traced back to the imported external requirement object.
 - Delivery Detail now shows the frozen requirement source list for formal deliveries, with local/external source tags, external ID, sync time and source URL when available.
 - External requirements can now be refreshed one by one from the requirement pool. A failed refresh preserves local data and records a redacted `external.syncStatus=failed` failure with code, message, hint and attempt time; the requirement list and detail page surface that state.
@@ -89,7 +89,8 @@ Remaining v0.7.4 scope:
 - Focused verification for delivery snapshot source freezing and formal release mail flow: 24/24 passed.
 - Focused verification for single external requirement refresh, unreachable remote persistence, HTTP route and list projection: 42/42 passed.
 - Focused verification for requirement-pool list refresh, remote-missing marking and source projection: 10/10 passed.
-- Full suite after the requirement-pool configuration foundation, MCP Center import UI, delivery source freezing, integration diagnostics, single-requirement refresh, requirement-pool list refresh and remote-missing marking: 703/703 passed, zero failures.
+- Focused verification for requirement-pool manifest file validation and MCP settings model parsing: 7/7 passed.
+- Full suite after the requirement-pool configuration foundation, MCP Center import UI, delivery source freezing, integration diagnostics, single-requirement refresh, requirement-pool list refresh, remote-missing marking and manifest file selection: 704/704 passed, zero failures.
 - `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
 
 This does not complete real platform acceptance. A real v0.7.5 exit still requires a sample platform JSON, credentials entered locally, connection test, requirement list/detail pull, manual version association and delivery snapshot evidence against a test requirement pool.
