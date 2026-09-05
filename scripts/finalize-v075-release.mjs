@@ -136,6 +136,7 @@ function parseArgs(values) {
     else if (item === '--manifest') out.manifest = values[++index]
     else if (item === '--smoke-result') out.smokeResult = values[++index]
     else if (item === '--ui-smoke-result') out.uiSmokeResult = values[++index]
+    else if (item === '--playwright-module') out.playwrightModule = values[++index]
     else throw new Error(`未知参数：${item}`)
   }
   return out
@@ -146,6 +147,7 @@ function forwardedArgs() {
   if (args.manifest) out.push('--manifest', args.manifest)
   if (args.smokeResult) out.push('--smoke-result', args.smokeResult)
   if (args.uiSmokeResult) out.push('--ui-smoke-result', args.uiSmokeResult)
+  if (args.playwrightModule) out.push('--playwright-module', args.playwrightModule)
   return out
 }
 
@@ -154,12 +156,12 @@ function usage() {
   FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \\
   FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \\
   FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \\
-  PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \\
-  npm run release:v075:finalize
+  npm run release:v075:finalize -- --playwright-module /absolute/path/to/playwright/index.mjs
 
 Options:
   --manifest <file>       Requirement-pool MCP manifest JSON.
   --smoke-result <file>   JSON output saved from smoke:v075:requirement-pool -- --output.
   --ui-smoke-result <file> JSON output saved from smoke:v075:mcp-ui -- --output.
+  --playwright-module <file> Playwright index.mjs path for final readiness.
 `)
 }

@@ -14,6 +14,7 @@ try {
     usage()
     process.exit(0)
   }
+  if (args.playwrightModule) process.env.PLAYWRIGHT_MODULE = args.playwrightModule
   const manifest = args.manifest || process.env.FLOWLARK_V075_MANIFEST || ''
   const smokeResult = args.smokeResult || process.env.FLOWLARK_V075_SMOKE_RESULT || '.flowlark/cache/v075-requirement-pool-smoke.json'
   const uiSmokeResult = args.uiSmokeResult || process.env.FLOWLARK_V075_UI_SMOKE_RESULT || '.flowlark/cache/v075-mcp-ui-smoke.json'
@@ -42,6 +43,7 @@ try {
   }
 
   const forwarded = ['--manifest', manifest, '--smoke-result', smokeResult, '--ui-smoke-result', uiSmokeResult]
+  if (args.playwrightModule) forwarded.push('--playwright-module', args.playwrightModule)
   const preBump = runNodeJson('pre-bump-readiness', path.join(scriptDir, 'check-v075-readiness.mjs'), ['--phase', 'pre-bump', ...forwarded])
   steps.push({ key: 'pre-bump-readiness', status: 'pass' })
   const finalizer = runNodeJson('finalize', path.join(scriptDir, 'finalize-v075-release.mjs'), forwarded)
@@ -71,7 +73,7 @@ function checkPreflight({ manifest, smokeResult, uiSmokeResult }) {
   const missing = []
   if (!manifest) missing.push('FLOWLARK_V075_MANIFEST or --manifest')
   else if (!fs.existsSync(path.resolve(manifest))) missing.push(`manifest file: ${path.resolve(manifest)}`)
-  if (!process.env.PLAYWRIGHT_MODULE) missing.push('PLAYWRIGHT_MODULE')
+  if (!process.env.PLAYWRIGHT_MODULE) missing.push('PLAYWRIGHT_MODULE or --playwright-module')
   else if (!fs.existsSync(path.resolve(process.env.PLAYWRIGHT_MODULE))) missing.push(`PLAYWRIGHT_MODULE file: ${path.resolve(process.env.PLAYWRIGHT_MODULE)}`)
   if (args.reuseRealSmokeResult && !fs.existsSync(path.resolve(smokeResult))) {
     missing.push(`real-platform smoke result file: ${path.resolve(smokeResult)}`)
@@ -156,6 +158,7 @@ function parseArgs(values) {
     else if (item === '--requirement') out.requirement = readValue(values, ++index, item)
     else if (item === '--smoke-result') out.smokeResult = readValue(values, ++index, item)
     else if (item === '--ui-smoke-result') out.uiSmokeResult = readValue(values, ++index, item)
+    else if (item === '--playwright-module') out.playwrightModule = readValue(values, ++index, item)
     else if (item === '--reuse-real-smoke-result') out.reuseRealSmokeResult = true
     else if (item === '--reuse-ui-smoke-result') out.reuseUiSmokeResult = true
     else if (item === '--keep') out.keep = true
@@ -175,8 +178,7 @@ function usage() {
   FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \\
   FLOWLARK_V075_QUERY="safe test requirement" \\
   FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \\
-  PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \\
-  npm run upgrade:v075
+  npm run upgrade:v075 -- --playwright-module /absolute/path/to/playwright/index.mjs
 
 Direct:
   node scripts/upgrade-v075.mjs
@@ -187,6 +189,7 @@ Options:
   --requirement <code>           Require a specific external requirement code/key.
   --smoke-result <file>          Real-platform smoke JSON output. Defaults to .flowlark/cache/v075-requirement-pool-smoke.json.
   --ui-smoke-result <file>       Browser smoke JSON output. Defaults to .flowlark/cache/v075-mcp-ui-smoke.json.
+  --playwright-module <file>     Playwright index.mjs path. Alternative to PLAYWRIGHT_MODULE.
   --reuse-real-smoke-result      Reuse an existing real-platform smoke result instead of rerunning it.
   --reuse-ui-smoke-result        Reuse an existing browser smoke result instead of rebuilding Web and rerunning browser smoke.
   --keep                         Keep the temporary repository created by the real-platform smoke.

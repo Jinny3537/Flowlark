@@ -234,8 +234,7 @@ npm run smoke:v075:requirement-pool -- \
 
 ```bash
 npm run build:web
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
 ```
 
 该浏览器 smoke 覆盖模板加载、manifest 预检/导入、缺失本机密钥提示、环境变量密钥连接测试、页面错误和桌面/移动端横向溢出。它不会点击本机钥匙串保存动作。
@@ -250,8 +249,7 @@ npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_QUERY="safe test requirement" \
 FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-npm run upgrade:v075
+npm run upgrade:v075 -- --playwright-module /absolute/path/to/playwright/index.mjs
 ```
 
 如果已经保存过合格 smoke 证据，可以复用结果继续最终升级：
@@ -260,8 +258,7 @@ npm run upgrade:v075
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
 FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-npm run upgrade:v075 -- --reuse-real-smoke-result --reuse-ui-smoke-result
+npm run upgrade:v075 -- --playwright-module /absolute/path/to/playwright/index.mjs --reuse-real-smoke-result --reuse-ui-smoke-result
 ```
 
 分步诊断时，最终发布前可以运行只读门禁，确认 manifest、凭据环境变量、真实 smoke 结果文件、浏览器 smoke 入口和版本号都已满足。真实平台与浏览器 smoke 证据齐全后，先跑 `pre-bump`；它通过后再把版本号提升到 `0.7.5`，并跑 `final`：
@@ -270,20 +267,17 @@ npm run upgrade:v075 -- --reuse-real-smoke-result --reuse-ui-smoke-result
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
 FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-npm run check:v075:readiness -- --phase pre-bump
+npm run check:v075:readiness -- --phase pre-bump --playwright-module /absolute/path/to/playwright/index.mjs
 
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
 FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-npm run release:v075:finalize
+npm run release:v075:finalize -- --playwright-module /absolute/path/to/playwright/index.mjs
 
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
 FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-npm run check:v075:readiness -- --phase final
+npm run check:v075:readiness -- --phase final --playwright-module /absolute/path/to/playwright/index.mjs
 ```
 
 ## v0.7.5 完成标准

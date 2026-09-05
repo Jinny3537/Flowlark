@@ -21,6 +21,7 @@ const root = process.cwd()
 const manifestPath = args.manifest || process.env.FLOWLARK_V075_MANIFEST || ''
 const smokeResultPath = args.smokeResult || process.env.FLOWLARK_V075_SMOKE_RESULT || ''
 const uiSmokeResultPath = args.uiSmokeResult || process.env.FLOWLARK_V075_UI_SMOKE_RESULT || ''
+const playwrightModulePath = args.playwrightModule || process.env.PLAYWRIGHT_MODULE || ''
 
 checkPackageVersions()
 checkNpmScripts()
@@ -126,10 +127,9 @@ function checkHeaderCredentialEnvironment(preview) {
 }
 
 function checkPlaywright() {
-  const modulePath = process.env.PLAYWRIGHT_MODULE || ''
-  const found = Boolean(modulePath && fs.existsSync(path.resolve(modulePath)))
+  const found = Boolean(playwrightModulePath && fs.existsSync(path.resolve(playwrightModulePath)))
   addCheck('playwright-module', found,
-    found ? `PLAYWRIGHT_MODULE found: ${path.resolve(modulePath)}` : modulePath ? `PLAYWRIGHT_MODULE not found: ${modulePath}` : 'PLAYWRIGHT_MODULE is required for smoke:v075:mcp-ui')
+    found ? `PLAYWRIGHT_MODULE found: ${path.resolve(playwrightModulePath)}` : playwrightModulePath ? `PLAYWRIGHT_MODULE not found: ${playwrightModulePath}` : 'PLAYWRIGHT_MODULE or --playwright-module is required for smoke:v075:mcp-ui')
 }
 
 function checkSmokeResult() {
@@ -247,6 +247,7 @@ function parseArgs(values) {
     else if (item === '--manifest') out.manifest = values[++index]
     else if (item === '--smoke-result') out.smokeResult = values[++index]
     else if (item === '--ui-smoke-result') out.uiSmokeResult = values[++index]
+    else if (item === '--playwright-module') out.playwrightModule = values[++index]
     else throw new Error(`未知参数：${item}`)
   }
   return out
@@ -290,7 +291,7 @@ function nextActions(failedChecks) {
     actions.push('Run the real-platform smoke against a disposable requirement-pool project and save its JSON output.')
   }
   if (failedKeys.has('playwright-module') || failedKeys.has('ui-smoke-result')) {
-    actions.push('Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set and save its JSON output.')
+    actions.push('Run the browser MCP UI smoke with PLAYWRIGHT_MODULE or --playwright-module set and save its JSON output.')
   }
   if (['smoke-requirement-pool-script', 'smoke-mcp-ui-script', 'finalize-v075-script', 'upgrade-v075-script'].some((key) => failedKeys.has(key))) {
     actions.push('Restore the v0.7.5 readiness, upgrade, finalize and smoke npm script entries in package.json.')
@@ -310,8 +311,7 @@ function usage() {
   FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \\
   FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \\
   FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \\
-  PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \\
-  npm run check:v075:readiness -- --phase pre-bump
+  npm run check:v075:readiness -- --phase pre-bump --playwright-module /absolute/path/to/playwright/index.mjs
 
   npm run check:v075:readiness -- --phase final
 
@@ -320,5 +320,6 @@ Options:
   --manifest <file>       Requirement-pool MCP manifest JSON.
   --smoke-result <file>   JSON output saved from smoke:v075:requirement-pool -- --output.
   --ui-smoke-result <file> JSON output saved from smoke:v075:mcp-ui -- --output.
+  --playwright-module <file> Playwright index.mjs path for smoke:v075:mcp-ui evidence.
 `)
 }

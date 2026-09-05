@@ -383,14 +383,15 @@ describe('v0.7 升级能力', () => {
         '--phase', 'pre-bump',
         '--manifest', manifestFile,
         '--smoke-result', legacySmokeResultFile,
-        '--ui-smoke-result', uiSmokeResultFile
+        '--ui-smoke-result', uiSmokeResultFile,
+        '--playwright-module', process.execPath
       ], {
         cwd: process.cwd(),
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
         env: {
           ...process.env,
-          PLAYWRIGHT_MODULE: process.execPath,
+          PLAYWRIGHT_MODULE: '',
           FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
         }
       }),
@@ -410,14 +411,15 @@ describe('v0.7 升级能力', () => {
         '--phase', 'pre-bump',
         '--manifest', manifestFile,
         '--smoke-result', mismatchSmokeResultFile,
-        '--ui-smoke-result', uiSmokeResultFile
+        '--ui-smoke-result', uiSmokeResultFile,
+        '--playwright-module', process.execPath
       ], {
         cwd: process.cwd(),
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
         env: {
           ...process.env,
-          PLAYWRIGHT_MODULE: process.execPath,
+          PLAYWRIGHT_MODULE: '',
           FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
         }
       }),
@@ -436,14 +438,15 @@ describe('v0.7 升级能力', () => {
       '--phase', 'pre-bump',
       '--manifest', manifestFile,
       '--smoke-result', smokeResultFile,
-      '--ui-smoke-result', uiSmokeResultFile
+      '--ui-smoke-result', uiSmokeResultFile,
+      '--playwright-module', process.execPath
     ], {
       cwd: process.cwd(),
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
       env: {
         ...process.env,
-        PLAYWRIGHT_MODULE: process.execPath,
+        PLAYWRIGHT_MODULE: '',
         FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
       }
     })
@@ -458,14 +461,15 @@ describe('v0.7 升级能力', () => {
         'scripts/check-v075-readiness.mjs',
         '--phase', 'pre-bump',
         '--manifest', manifestFile,
-        '--ui-smoke-result', uiSmokeResultFile
+        '--ui-smoke-result', uiSmokeResultFile,
+        '--playwright-module', process.execPath
       ], {
         cwd: process.cwd(),
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
         env: {
           ...process.env,
-          PLAYWRIGHT_MODULE: process.execPath,
+          PLAYWRIGHT_MODULE: '',
           FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
         }
       }),
@@ -536,14 +540,15 @@ describe('v0.7 升级能力', () => {
       path.resolve('scripts/finalize-v075-release.mjs'),
       '--manifest', manifestFile,
       '--smoke-result', smokeResultFile,
-      '--ui-smoke-result', uiSmokeResultFile
+      '--ui-smoke-result', uiSmokeResultFile,
+      '--playwright-module', process.execPath
     ], {
       cwd: directory,
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
       env: {
         ...process.env,
-        PLAYWRIGHT_MODULE: process.execPath,
+        PLAYWRIGHT_MODULE: '',
         FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
       }
     })
@@ -619,14 +624,15 @@ describe('v0.7 升级能力', () => {
         path.resolve('scripts/finalize-v075-release.mjs'),
         '--manifest', manifestFile,
         '--smoke-result', smokeResultFile,
-        '--ui-smoke-result', uiSmokeResultFile
+        '--ui-smoke-result', uiSmokeResultFile,
+        '--playwright-module', process.execPath
       ], {
         cwd: directory,
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
         env: {
           ...process.env,
-          PLAYWRIGHT_MODULE: process.execPath,
+          PLAYWRIGHT_MODULE: '',
           FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
         }
       }),
@@ -695,6 +701,7 @@ describe('v0.7 升级能力', () => {
       '--manifest', manifestFile,
       '--smoke-result', smokeResultFile,
       '--ui-smoke-result', uiSmokeResultFile,
+      '--playwright-module', process.execPath,
       '--reuse-real-smoke-result',
       '--reuse-ui-smoke-result'
     ], {
@@ -703,7 +710,7 @@ describe('v0.7 升级能力', () => {
       maxBuffer: 1024 * 1024,
       env: {
         ...process.env,
-        PLAYWRIGHT_MODULE: process.execPath,
+        PLAYWRIGHT_MODULE: '',
         FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
       }
     })
@@ -773,6 +780,7 @@ describe('v0.7 升级能力', () => {
         '--manifest', manifestFile,
         '--smoke-result', missingSmokeResultFile,
         '--ui-smoke-result', uiSmokeResultFile,
+        '--playwright-module', process.execPath,
         '--reuse-real-smoke-result',
         '--reuse-ui-smoke-result'
       ], {
@@ -781,7 +789,7 @@ describe('v0.7 升级能力', () => {
         maxBuffer: 1024 * 1024,
         env: {
           ...process.env,
-          PLAYWRIGHT_MODULE: process.execPath
+          PLAYWRIGHT_MODULE: ''
         }
       }),
       (error) => {
@@ -828,6 +836,7 @@ describe('v0.7 升级能力', () => {
         '--manifest', dirtyManifestFile,
         '--smoke-result', dirtySmokeResultFile,
         '--ui-smoke-result', dirtyUiSmokeResultFile,
+        '--playwright-module', process.execPath,
         '--reuse-real-smoke-result',
         '--reuse-ui-smoke-result'
       ], {
@@ -836,7 +845,7 @@ describe('v0.7 升级能力', () => {
         maxBuffer: 1024 * 1024,
         env: {
           ...process.env,
-          PLAYWRIGHT_MODULE: process.execPath
+          PLAYWRIGHT_MODULE: ''
         }
       }),
       (error) => {
