@@ -269,6 +269,10 @@ export const api = {
   milestoneSyncJournal: (name: string) => get<any>(`/api/milestones/${enc(name)}/sync-journal`),
   milestoneExecutionSummary: (name: string) => get<any>(`/api/milestones/${enc(name)}/execution`),
   planMilestoneSync: (name: string, body: unknown = {}) => post<any>(`/api/milestones/${enc(name)}/sync-plan`, body),
+  planMilestoneDeliveryCompletion: (name: string, body: unknown = {}) =>
+    post<any>(`/api/milestones/${enc(name)}/delivery-completion/plan`, body),
+  executeMilestoneDeliveryCompletion: (name: string, body: unknown) =>
+    post<any>(`/api/milestones/${enc(name)}/delivery-completion/execute`, body),
   executeMilestoneSync: (name: string, body: unknown) => post<any>(`/api/milestones/${enc(name)}/sync-execute`, body),
   resumeMilestoneSync: (name: string, body: unknown = {}) => post<any>(`/api/milestones/${enc(name)}/sync-resume`, body),
   transitionMilestone: (name: string, body: unknown) => post<any>(`/api/milestones/${enc(name)}/transition`, body),

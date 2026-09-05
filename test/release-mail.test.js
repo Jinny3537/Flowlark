@@ -346,6 +346,17 @@ test('正式交付后的验收结论会推进需求生命周期', async (t) => {
   }
   assert.equal(approved.hub.deliveryAcceptance(release.snapshot).ready, true)
   assert.equal(approved.hub.getRequirement('REQ-2').status, 'completed')
+  assert.deepEqual(approved.hub.getRequirement('REQ-2').deliveries.map((item) => ({
+    milestone: item.milestone,
+    snapshot: item.snapshot,
+    acceptanceStatus: item.acceptance.status,
+    acceptanceReady: item.acceptance.ready
+  })), [{
+    milestone: approved.milestone.name,
+    snapshot: release.snapshot,
+    acceptanceStatus: 'approved',
+    acceptanceReady: true
+  }])
 
   const rejected = releaseFixture(t)
   const rejectedRelease = await rejected.hub.formalReleaseMilestoneVersion(rejected.milestone.name, rejected.project.slug, 'v2')

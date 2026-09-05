@@ -83,7 +83,9 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
     setBusy(action ? `plan:${action}` : 'plan');
     setOperationError('');
     try {
-      const next = await api.planMilestoneSync(name, { action: action || null, resolutions: nextResolutions });
+      const next = action === 'end'
+        ? await api.planMilestoneDeliveryCompletion(name, { resolutions: nextResolutions })
+        : await api.planMilestoneSync(name, { action: action || null, resolutions: nextResolutions });
       setPlan(next);
       setPlanAction(action);
       setResolutions(nextResolutions);
@@ -102,7 +104,8 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
     setBusy('execute');
     setOperationError('');
     try {
-      await api.executeMilestoneSync(name, {
+      const executePlan = planAction === 'end' ? api.executeMilestoneDeliveryCompletion : api.executeMilestoneSync;
+      await executePlan(name, {
         planHash: plan.hash,
         action: planAction || null,
         confirmed: true,
@@ -286,6 +289,14 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
           <Tag color={groups.conflict.length ? 'error' : 'default'}>冲突 {groups.conflict.length}</Tag>
           <Tag color={groups.lifecycle.length ? 'blue' : 'default'}>状态操作 {groups.lifecycle.length}</Tag>
         </Space>
+        {plan?.deliveryCompletion ? (
+          <Alert
+            type={plan.deliveryCompletion.ready ? 'success' : 'warning'}
+            showIcon
+            message={plan.deliveryCompletion.ready ? '交付验收门禁已通过' : '交付验收门禁未通过'}
+            description={`${plan.deliveryCompletion.deliveries?.length || 0} 个正式交付快照已纳入本次外部完成计划。`}
+          />
+        ) : null}
         {blockers.length ? <Alert type="error" showIcon message={`仍有 ${blockers.length} 个阻塞项，不能执行`} description={blockers.map((item: any) => item.message).join('；')} /> : null}
         <Table
           rowKey="key"

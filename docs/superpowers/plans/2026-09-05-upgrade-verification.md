@@ -51,6 +51,7 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node scripts/smoke-v074
 - Mail retry now links back to the release-run, so a pending mail can complete the existing run without replaying baseline, Git or snapshot work.
 - Acceptance decisions now update requirement lifecycle: all required approvals with no blocking feedback move requirements to `completed`; a required rejection moves pending requirements back to `developing`.
 - Delivery completion now has a dedicated service/API wrapper: it blocks until frozen delivery evidence passes local acceptance, then reuses the sync queue to preview managed task status updates and Sprint end execution with plan hash, revision, lock, read-back and audit protection.
+- Milestone detail now routes the delivered-but-not-externally-closed state to the delivery-completion plan, and requirement detail shows delivery snapshot, acceptance and external read-back summaries from response-layer derived data.
 - Milestone archive is now gated by every scoped delivery snapshot passing acceptance, all scoped requirements being `completed`, a verified ended external Sprint status, and verified closed external task statuses.
 - Git synchronization now treats `requirements`, `milestones`, `snapshots`, `acceptances` and `views` as Flowlark-owned paths. This is required for release commits to contain the milestone scope and requirement specifications used by immutable delivery snapshots.
 - Verified focused release, acceptance, archive, delivery-completion and lifecycle runs: 19/19, 23/23, 55/55, 28/28 and 71/71 passed.
@@ -67,4 +68,4 @@ git diff --check
 Remaining v0.7.4 scope:
 
 - Failure injection currently covers Git and mail for formal release and existing sync-center remote operation recovery. Snapshot, lifecycle and delivery-completion/archive step-specific failures still need dedicated recovery tests.
-- Milestone and requirement UI summaries for formal release continuation are still incomplete.
+- Complete browser workflow verification at 1440×900 and 390×844 is still pending for the release-continuation and delivery-completion UI.

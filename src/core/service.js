@@ -486,7 +486,7 @@ export class Hub {
   }
 
   getRequirement(code) {
-    return this.#requirementSyncView(reqx.requirementDetail(this.root, code), readSyncRecords(this.root))
+    return this.#requirementSyncView(reqx.requirementDetail(this.root, code), readSyncRecords(this.root), { includeDeliveries: true })
   }
 
   createRequirement(input) {
@@ -2980,9 +2980,10 @@ export class Hub {
     })
   }
 
-  #requirementSyncView(item, records) {
+  #requirementSyncView(item, records, { includeDeliveries = false } = {}) {
     return {
       ...item,
+      ...(includeDeliveries ? { deliveries: this.#requirementDeliverySummaries(item.code) } : {}),
       externalTasks: (item.externalTasks || []).map((binding) => {
         const relevant = records.filter((record) =>
           record.plan?.server === binding.server && Number(record.plan?.projectId) === Number(binding.projectId) &&
@@ -2999,6 +3000,50 @@ export class Hub {
         }
       })
     }
+  }
+
+  #requirementDeliverySummaries(code) {
+    const out = []
+    for (const milestone of milestones.listMilestones(this.root)) {
+      const scopedVersions = (milestone.items || []).filter((entry) => entry.requirement === code)
+      if (!scopedVersions.length) continue
+      const deliveries = milestone.deliveries || []
+      for (const scoped of scopedVersions) {
+        const delivery = deliveries.find((entry) => entry.project === scoped.project && entry.version === scoped.version)
+        if (!delivery) continue
+        let acceptance = null
+        try {
+          const result = this.deliveryAcceptance(delivery.snapshot)
+          acceptance = {
+            status: result.status,
+            ready: result.ready,
+            blockers: result.blockers,
+            snapshotHash: result.snapshotHash
+          }
+        } catch (error) {
+          acceptance = {
+            status: 'invalid',
+            ready: false,
+            blockers: [{ code: error?.code || 'DELIVERY_SNAPSHOT_INVALID', message: error?.message || '交付快照无法验证' }],
+            snapshotHash: ''
+          }
+        }
+        out.push({
+          milestone: milestone.name,
+          milestoneTitle: milestone.title,
+          milestoneStatus: milestone.status,
+          project: scoped.project,
+          version: scoped.version,
+          snapshot: delivery.snapshot,
+          deliveredAt: delivery.deliveredAt,
+          releaseRunId: delivery.releaseRunId || '',
+          external: milestone.external || null,
+          acceptance
+        })
+      }
+    }
+    return out.sort((left, right) => String(right.deliveredAt || '').localeCompare(String(left.deliveredAt || '')) ||
+      String(left.milestone).localeCompare(String(right.milestone)))
   }
 
   #milestoneVersionSources(milestone) {

@@ -23,13 +23,27 @@ export function milestoneStatusMeta(value) {
 }
 
 export function allowedMilestoneActions(item = {}) {
+  if ((item.status || 'planning') === 'delivered' && needsExternalDeliveryCompletion(item)) {
+    return ['end', 'archive']
+  }
   return [...(ACTIONS[item.status || 'planning'] || [])]
 }
 
 export function milestonePrimaryAction(item = {}) {
-  return item.status === 'reviewing'
-    ? { key: 'freeze', label: '预览并冻结', planAction: 'freeze' }
-    : null
+  if (item.status === 'reviewing') return { key: 'freeze', label: '预览并冻结', planAction: 'freeze' }
+  if (item.status === 'delivered' && needsExternalDeliveryCompletion(item)) return { key: 'end', label: '结束交付', planAction: 'end' }
+  if (item.status === 'delivered') return { key: 'archive', label: '归档', planAction: null }
+  return null
+}
+
+export function needsExternalDeliveryCompletion(item = {}) {
+  if (!item?.external?.sprintId) return true
+  return !closedExternalStatus(item.external.remoteStatus)
+}
+
+function closedExternalStatus(value) {
+  return ['done', 'complete', 'completed', 'closed', 'finished', 'ended', 'archived', '已完成', '完成', '已关闭', '关闭', '已结束', '结束', '已归档', '归档']
+    .includes(String(value || '').trim().toLowerCase())
 }
 
 export function isHighRiskAction(action) {

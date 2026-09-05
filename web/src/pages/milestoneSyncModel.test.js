@@ -13,9 +13,17 @@ import {
 test('returns lifecycle actions for each state', () => {
   assert.deepEqual(allowedMilestoneActions({ status: 'frozen', ready: true }), ['start', 'unfreeze', 'cancel'])
   assert.deepEqual(allowedMilestoneActions({ status: 'active' }), ['end', 'cancel'])
+  assert.deepEqual(allowedMilestoneActions({ status: 'delivered', external: { sprintId: 10, remoteStatus: 'active' } }), ['end', 'archive'])
+  assert.deepEqual(allowedMilestoneActions({ status: 'delivered', external: { sprintId: 10, remoteStatus: 'ended' } }), ['archive'])
   assert.deepEqual(allowedMilestoneActions({ status: 'archived' }), [])
   assert.deepEqual(milestonePrimaryAction({ status: 'reviewing' }), {
     key: 'freeze', label: '预览并冻结', planAction: 'freeze'
+  })
+  assert.deepEqual(milestonePrimaryAction({ status: 'delivered', external: { sprintId: 10, remoteStatus: 'active' } }), {
+    key: 'end', label: '结束交付', planAction: 'end'
+  })
+  assert.deepEqual(milestonePrimaryAction({ status: 'delivered', external: { sprintId: 10, remoteStatus: 'ended' } }), {
+    key: 'archive', label: '归档', planAction: null
   })
   assert.equal(milestonePrimaryAction({ status: 'planning' }), null)
 })

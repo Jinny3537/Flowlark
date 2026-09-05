@@ -317,6 +317,33 @@ export default function RequirementDetail() {
             </section>
 
             <section className="fl-detail-section">
+              <div className="fl-section-head">
+                <div><h2>交付与验收</h2><p>来自正式交付快照，不写入需求文件。</p></div>
+                <Tag>{item?.deliveries?.length || 0} 个</Tag>
+              </div>
+              <List size="small" locale={{ emptyText: '尚未形成正式交付' }} dataSource={item?.deliveries || []} renderItem={(delivery: any) => (
+                <List.Item actions={[<Button key="view" type="link" onClick={() => navigate(`/deliveries/${encodeURIComponent(delivery.snapshot)}`)}>查看</Button>]}>
+                  <List.Item.Meta
+                    title={<span>{delivery.project} / {delivery.version}</span>}
+                    description={(
+                      <Space direction="vertical" size={2}>
+                        <span>{delivery.milestoneTitle || delivery.milestone} · {delivery.deliveredAt ? fmtTime(delivery.deliveredAt) : '正式交付'}</span>
+                        <Space size={4} wrap>
+                          <Tag color={delivery.acceptance?.ready ? 'success' : delivery.acceptance?.status === 'rejected' ? 'error' : 'warning'}>
+                            {delivery.acceptance?.ready ? '验收通过' : delivery.acceptance?.status === 'rejected' ? '验收拒绝' : '待验收'}
+                          </Tag>
+                          <Tag color={delivery.external?.remoteStatus ? 'blue' : 'default'}>
+                            {delivery.external?.remoteStatus ? `外部 ${delivery.external.remoteStatus}` : '外部未回读'}
+                          </Tag>
+                        </Space>
+                      </Space>
+                    )}
+                  />
+                </List.Item>
+              )} />
+            </section>
+
+            <section className="fl-detail-section">
               <div className="fl-section-head"><div><h2>所属迭代</h2><p>需求进入开发后，以迭代为执行上下文。</p></div><Tag>{memberships.length} 个</Tag></div>
               <List size="small" locale={{ emptyText: '尚未加入迭代' }} dataSource={memberships} renderItem={(milestone: any) => {
                 const name = milestoneName(milestone);
