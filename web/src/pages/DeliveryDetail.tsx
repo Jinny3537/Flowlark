@@ -242,6 +242,22 @@ export default function DeliveryDetail() {
           </section>
 
           {formal && <section className="fl-detail-section">
+            <h2>需求池来源</h2>
+            <Paragraph type="secondary">以下来源摘要冻结于正式发版提交，用于追溯交付范围对应的外部需求池对象。</Paragraph>
+            <List dataSource={item?.requirementSources || []} locale={{ emptyText: '本次交付没有外部需求池来源摘要' }} renderItem={(source: any) => <List.Item>
+              <Space wrap>
+                <Link to={`/requirements/${encodeURIComponent(source.code)}`}>{source.code}</Link>
+                <Text>{source.title}</Text>
+                <Tag color={source.source === 'requirement-pool' ? 'blue' : 'default'}>{source.source === 'requirement-pool' ? '需求池' : '本地'}</Tag>
+                {source.key && <Text type="secondary">外部 ID：<span className="fl-mono">{source.key}</span></Text>}
+                {source.status && <Tag>{source.status}</Tag>}
+                {source.syncedAt && <Text type="secondary">同步于 {fmtTime(source.syncedAt)}</Text>}
+                {source.url && <a href={source.url} target="_blank" rel="noreferrer">打开来源</a>}
+              </Space>
+            </List.Item>} />
+          </section>}
+
+          {formal && <section className="fl-detail-section">
             <h2>验收历史</h2>
             <List dataSource={[...(acceptance?.records || [])].reverse()} rowKey="id" locale={{ emptyText: acceptanceError ? '验收历史暂不可用，请重新加载' : '还没有验收记录' }} renderItem={(record) => <List.Item><div style={fullWidth}>
               <Space wrap><Text strong>{roles.find((role: any) => role.id === record.role)?.name || record.role}</Text><Verdict value={record.verdict} /><Text type="secondary">{textOf(record.actor)} · {fmtTime(record.at)}</Text></Space>

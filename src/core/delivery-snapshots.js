@@ -48,6 +48,7 @@ export function createDeliverySnapshot(root, { milestone, project, version, rele
     if (!spec.trim()) throw err.conflict('DELIVERY_REQUIREMENT_SPEC_REQUIRED', `需求 ${code} 缺少验收规格`)
     return { ...item, spec }
   })
+  const requirementSources = requirements.map(requirementSourceSummary)
   const materialPaths = [`projects/${project}/versions/${version}.html`]
   const attachmentNames = new Set()
   for (const attachment of versionData.attachments || []) {
@@ -64,7 +65,7 @@ export function createDeliverySnapshot(root, { milestone, project, version, rele
   })
   const payload = {
     kind: 'delivery', schemaVersion: 1, name, title: `${iteration.title || milestone} · ${projectData.name || project} / ${version}`,
-    ...identity, items, specification, changes: versionData.changes || [], requirements,
+    ...identity, items, specification, changes: versionData.changes || [], requirements, requirementSources,
     acceptance: normalizeAcceptanceRules(projectData.acceptance), materials,
     createdAt: new Date().toISOString(), createdBy: currentUser()
   }
@@ -108,6 +109,12 @@ function assertSnapshotIntegrity(snapshot, name) {
         !snapshot.requirements.some((requirement) => requirement.code === item.requirement && typeof requirement.spec === 'string' && requirement.spec.trim()))) {
     throw err.conflict('DELIVERY_INTEGRITY_FAILED', '交付快照缺少范围或验收规格')
   }
+  if (snapshot.requirementSources !== undefined &&
+      (!Array.isArray(snapshot.requirementSources) || snapshot.requirementSources.some((source) =>
+        !source || typeof source.code !== 'string' ||
+        !snapshot.requirements.some((requirement) => requirement.code === source.code)))) {
+    throw err.conflict('DELIVERY_INTEGRITY_FAILED', '交付快照需求来源摘要无效')
+  }
   const materialPaths = new Set()
   for (const material of snapshot.materials) {
     const bytes = Buffer.from(String(material.content || ''), 'base64')
@@ -119,6 +126,23 @@ function assertSnapshotIntegrity(snapshot, name) {
   }
   if (!materialPaths.has(`projects/${snapshot.project}/versions/${snapshot.version}.html`)) {
     throw err.conflict('DELIVERY_INTEGRITY_FAILED', '交付快照缺少原型材料')
+  }
+}
+
+function requirementSourceSummary(requirement) {
+  const external = requirement.external || null
+  if (!external) {
+    return { code: requirement.code, title: requirement.title || requirement.code, source: 'local' }
+  }
+  return {
+    code: requirement.code,
+    title: requirement.title || requirement.code,
+    source: 'requirement-pool',
+    provider: String(external.provider || ''),
+    key: String(external.key || requirement.code),
+    url: String(external.url || requirement.url || ''),
+    status: String(external.status || ''),
+    syncedAt: String(external.syncedAt || '')
   }
 }
 

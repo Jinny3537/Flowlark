@@ -5,6 +5,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { newHub, cleanup, html } from './helpers.js'
 import * as milestones from '../src/core/milestones.js'
+import * as requirements from '../src/core/requirements.js'
 import { createDeliverySnapshot, readDeliverySnapshot, verifyDeliverySnapshot } from '../src/core/delivery-snapshots.js'
 
 function fixture(t) {
@@ -64,6 +65,33 @@ test('binary attachments remain retrievable after working-tree deletion', (t) =>
   const material = snapshot.materials.find((item) => item.path.endsWith('/evidence.bin'))
   assert.deepEqual(Buffer.from(material.content, 'base64'), original)
   assert.equal(verifyDeliverySnapshot(root, snapshot.name).materialCount, 2)
+})
+
+test('delivery freezes requirement pool source summaries', (t) => {
+  const { root, input, commit } = fixture(t)
+  requirements.updateRequirement(root, 'REQ-1', {
+    external: {
+      provider: 'mcp',
+      key: 'POOL-1',
+      url: 'https://pool.example/requirements/POOL-1',
+      status: 'ready-for-delivery',
+      syncedAt: '2026-09-05T08:00:00.000Z'
+    }
+  }, { trusted: true, now: '2026-09-05T08:01:00.000Z' })
+  input.releaseCommit = commit()
+
+  const snapshot = createDeliverySnapshot(root, input)
+  assert.deepEqual(snapshot.requirementSources, [{
+    code: 'REQ-1',
+    title: 'Release requirement',
+    source: 'requirement-pool',
+    provider: 'mcp',
+    key: 'POOL-1',
+    url: 'https://pool.example/requirements/POOL-1',
+    status: 'ready-for-delivery',
+    syncedAt: '2026-09-05T08:00:00.000Z'
+  }])
+  assert.equal(snapshot.requirements[0].external.key, 'POOL-1')
 })
 
 test('delivery rejects tampered payload and legacy snapshot identities', (t) => {

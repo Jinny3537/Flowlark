@@ -78,8 +78,11 @@ Remaining v0.7.4 scope:
 - Import writes the existing `mcp.json` structure only: a MCP server plus the built-in `requirements` capability with platform, field, status and safety metadata under capability options.
 - HTTP endpoints expose the same rules at `/api/mcp/requirement-pool/inspect` and `/api/mcp/requirement-pool/import`; the Web API client has matching methods.
 - MCP Center now has a minimal paste-and-preview UI for requirement-pool configuration JSON. It shows platform/server/tool/secrets summary, blockers and warnings, and imports only when the preview is not blocked.
+- Formal delivery snapshots now freeze requirement-pool source summaries (`code`, title, provider, external key, URL, status and sync time) alongside scoped requirements, so accepted delivery evidence can be traced back to the imported external requirement object.
+- Delivery Detail now shows the frozen requirement source list for formal deliveries, with local/external source tags, external ID, sync time and source URL when available.
 - Focused verification for MCP config import, existing requirement MCP search/import/comment, HTTP routing and UI manifest parsing: 51/51 passed.
-- Full suite after the requirement-pool configuration foundation and MCP Center import UI: 695/695 passed, zero failures.
+- Focused verification for delivery snapshot source freezing and formal release mail flow: 24/24 passed.
+- Full suite after the requirement-pool configuration foundation, MCP Center import UI and delivery source freezing: 696/696 passed, zero failures.
 - `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
 
 This does not complete real platform acceptance. A real v0.7.5 exit still requires a sample platform JSON, credentials entered locally, connection test, requirement list/detail pull, manual version association and delivery snapshot evidence against a test requirement pool.
