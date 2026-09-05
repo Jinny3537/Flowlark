@@ -311,11 +311,12 @@ function formatMissingSecret(item) {
 function assertRequirementSourceFrozen(source, requirement) {
   assert.ok(source, `交付快照缺少需求 ${requirement.code} 的需求池来源摘要`)
   assert.equal(source.code, requirement.code)
+  assert.equal(source.title, requirement.title || requirement.code)
   assert.equal(source.source, 'requirement-pool')
   assert.equal(source.provider, requirement.external?.provider || 'mcp')
-  assert.ok(source.title, '交付快照缺少需求池标题摘要')
-  assert.ok(source.key, '交付快照缺少需求池来源 ID')
-  assert.ok(source.status, '交付快照缺少需求池状态摘要')
+  assert.equal(source.key, requirement.external?.key || requirement.code)
+  assert.equal(source.status, requirement.external?.status || '')
+  assert.equal(source.syncedAt, requirement.external?.syncedAt || '')
   assert.match(source.syncedAt || '', /^\d{4}-\d{2}-\d{2}T/, '交付快照缺少需求池同步时间')
   if (requirement.external?.url) assert.equal(source.url, requirement.external.url)
 }
