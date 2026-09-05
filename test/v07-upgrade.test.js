@@ -591,6 +591,76 @@ describe('v0.7 升级能力', () => {
     t.assert.doesNotMatch(stdout, /fixture-secret-value/)
   })
 
+  test('v0.7.5 upgrade script reports preflight and argument failures as JSON', async (t) => {
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        'scripts/upgrade-v075.mjs',
+        '--unknown'
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(result.failedStep, 'upgrade:v075')
+        t.assert.match(result.message, /未知参数：--unknown/)
+        return true
+      }
+    )
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-upgrade-preflight-test-'))
+    dirs.push(directory)
+    const manifestFile = path.join(directory, 'requirement-pool.json')
+    const missingSmokeResultFile = path.join(directory, 'missing-smoke-result.json')
+    const uiSmokeResultFile = path.join(directory, 'ui-smoke-result.json')
+    writeJson(manifestFile, {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000 },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' }
+    })
+    writeJson(uiSmokeResultFile, {
+      passed: true,
+      checks: [
+        'requirements-direct-config-import',
+        'requirements-secret-ui',
+        'requirements-env-secret-probe',
+        'requirements-search-import',
+        'settings-advanced-entrypoint',
+        'desktop-mobile-layout',
+        'page-errors'
+      ]
+    })
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        'scripts/upgrade-v075.mjs',
+        '--manifest', manifestFile,
+        '--smoke-result', missingSmokeResultFile,
+        '--ui-smoke-result', uiSmokeResultFile,
+        '--reuse-real-smoke-result',
+        '--reuse-ui-smoke-result'
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          PLAYWRIGHT_MODULE: process.execPath
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(result.phase, 'preflight')
+        t.assert.ok(result.missing.some((item) => item.includes('real-platform smoke result file:')))
+        return true
+      }
+    )
+  })
+
   test('v0.7.5 验收脚本可从 Header 占位符推导本机密钥环境变量', async (t) => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-smoke-secret-test-'))
     dirs.push(directory)

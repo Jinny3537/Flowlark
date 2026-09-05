@@ -33,7 +33,7 @@
 - v0.7.5 真实平台 smoke 输出升级为 `v075-requirement-pool-smoke/v1` 审计证据，记录生成脚本、live 模式、manifest 摘要、连接证明和关键链路步骤；readiness 会拒绝缺少这些字段的旧版最小结果。
 - 新增 `check:v075:readiness` 只读发布门禁，支持 `pre-bump` 和 `final` 两个阶段，检查最终交付前的版本号、manifest、凭据环境变量、真实平台 smoke 结果、浏览器 smoke 结果和 Playwright 入口，避免未完成真实验收时误标 v0.7.5。
 - `check:v075:readiness` 的 `next` 提示会按失败项收敛；本机 UI smoke 通过后不再继续提示浏览器验收，只保留真实平台 smoke 缺口。
-- 新增 `upgrade:v075` 一键升级编排入口：有真实 manifest、凭据和 Playwright 时自动执行 Web 构建、浏览器 smoke、真实平台 smoke、pre-bump readiness、受保护 finalizer 和 final readiness；已有合格 smoke 证据时支持显式复用。
+- 新增 `upgrade:v075` 一键升级编排入口：有真实 manifest、凭据和 Playwright 时自动执行 Web 构建、浏览器 smoke、真实平台 smoke、pre-bump readiness、受保护 finalizer 和 final readiness；已有合格 smoke 证据时支持显式复用，并在 preflight 阶段校验复用证据文件存在。
 - 新增 `release:v075:finalize`，在 pre-bump readiness 通过后一次性提升根包、Web 包和两个 lockfile 的版本号，再执行 final readiness。
 - v0.7.5 真实平台验收脚本新增 `--inspect-only`，可在不启动服务、不连接平台的情况下校验 manifest 合同。
 - 需求页“从需求池导入”弹窗新增配置 JSON 加载、预览、导入、本机密钥补录和只读连接测试入口，MCP 中心保留为高级设置和诊断入口。

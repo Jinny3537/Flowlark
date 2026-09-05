@@ -6,18 +6,18 @@ import { fileURLToPath } from 'node:url'
 
 const TARGET_VERSION = '0.7.5'
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
-const args = parseArgs(process.argv.slice(2))
-
-if (args.help) {
-  usage()
-  process.exit(0)
-}
+let args = {}
 
 try {
+  args = parseArgs(process.argv.slice(2))
+  if (args.help) {
+    usage()
+    process.exit(0)
+  }
   const manifest = args.manifest || process.env.FLOWLARK_V075_MANIFEST || ''
   const smokeResult = args.smokeResult || process.env.FLOWLARK_V075_SMOKE_RESULT || '.flowlark/cache/v075-requirement-pool-smoke.json'
   const uiSmokeResult = args.uiSmokeResult || process.env.FLOWLARK_V075_UI_SMOKE_RESULT || '.flowlark/cache/v075-mcp-ui-smoke.json'
-  const preflight = checkPreflight({ manifest, uiSmokeResult })
+  const preflight = checkPreflight({ manifest, smokeResult, uiSmokeResult })
   if (!preflight.passed) finish(preflight, 2)
 
   const steps = []
@@ -67,12 +67,15 @@ try {
   }, 1)
 }
 
-function checkPreflight({ manifest, uiSmokeResult }) {
+function checkPreflight({ manifest, smokeResult, uiSmokeResult }) {
   const missing = []
   if (!manifest) missing.push('FLOWLARK_V075_MANIFEST or --manifest')
   else if (!fs.existsSync(path.resolve(manifest))) missing.push(`manifest file: ${path.resolve(manifest)}`)
   if (!process.env.PLAYWRIGHT_MODULE) missing.push('PLAYWRIGHT_MODULE')
   else if (!fs.existsSync(path.resolve(process.env.PLAYWRIGHT_MODULE))) missing.push(`PLAYWRIGHT_MODULE file: ${path.resolve(process.env.PLAYWRIGHT_MODULE)}`)
+  if (args.reuseRealSmokeResult && !fs.existsSync(path.resolve(smokeResult))) {
+    missing.push(`real-platform smoke result file: ${path.resolve(smokeResult)}`)
+  }
   if (args.reuseUiSmokeResult && !fs.existsSync(path.resolve(uiSmokeResult))) {
     missing.push(`UI smoke result file: ${path.resolve(uiSmokeResult)}`)
   }
@@ -82,7 +85,7 @@ function checkPreflight({ manifest, uiSmokeResult }) {
     phase: 'preflight',
     missing,
     next: missing.length
-      ? ['Provide the missing manifest, Playwright module or reusable UI smoke result, then rerun upgrade:v075.']
+      ? ['Provide the missing manifest, Playwright module or reusable smoke result files, then rerun upgrade:v075.']
       : []
   }
 }
