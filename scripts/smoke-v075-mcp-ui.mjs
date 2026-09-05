@@ -51,8 +51,25 @@ try {
   await page.goto(`${base}/requirements`)
   await page.waitForLoadState('networkidle')
   await button(page, '从需求池导入').click()
-  await button(page, '打开集成配置').click()
   const main = page.locator('#main-content')
+  const importDialog = page.getByRole('dialog', { name: /从需求池导入/ })
+  await importDialog.getByText('先导入平台提供的需求池配置 JSON，再搜索和导入需求。', { exact: true }).waitFor()
+
+  await button(importDialog, '加载示例配置').click()
+  await importDialog.getByText('需求池平台').waitFor()
+
+  const requirementManifestEditor = importDialog.locator('.fl-requirement-pool-config textarea').first()
+  await requirementManifestEditor.fill(JSON.stringify(manifestWithKeychainSecret(mcpUrl), null, 2))
+  await expectResponse(page, '/api/mcp/requirement-pool/inspect', () =>
+    button(importDialog, '预览配置').click())
+  await importDialog.getByText('配置可导入', { exact: true }).waitFor()
+  await importDialog.getByText('需本机补录密钥：UI Smoke Token').waitFor()
+
+  await expectResponse(page, '/api/mcp/requirement-pool/import', () =>
+    button(importDialog, '导入配置').click())
+  await importDialog.getByText('配置可导入', { exact: true }).waitFor()
+
+  await button(importDialog, '高级 MCP 设置').click()
   await main.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
   assert.ok(page.url().endsWith('#/settings/mcp'))
 
@@ -100,7 +117,7 @@ try {
   assert.deepEqual(errors, [])
   console.log(JSON.stringify({
     passed: true,
-    checks: ['requirements-entrypoint', 'template-load', 'manifest-preview', 'import', 'missing-secret-ui', 'env-secret-probe', 'desktop-mobile-layout', 'page-errors'],
+    checks: ['requirements-direct-config-import', 'settings-advanced-entrypoint', 'template-load', 'manifest-preview', 'import', 'missing-secret-ui', 'env-secret-probe', 'desktop-mobile-layout', 'page-errors'],
     viewportWidths: [1440, 390]
   }))
 } finally {
@@ -214,7 +231,8 @@ Direct:
   PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node scripts/smoke-v075-mcp-ui.mjs
 
 Checks:
-  - Requirements import dialog routes to /settings/mcp.
+  - Requirements import dialog can load, preview and import a requirement-pool manifest.
+  - Requirements import dialog can route to advanced MCP Settings.
   - Requirement-pool manifest template, preview and import work in MCP Settings.
   - Missing keychain secret placeholders show an inline local secret entry.
   - Env-based header credentials can pass a read-only connection probe.

@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { Alert, App, Button, Col, DatePicker, Form, Input, List, Modal, Row, Select, Space, Statistic, Table, Tag } from 'antd';
+import { Alert, App, Button, Col, DatePicker, Divider, Form, Input, List, Modal, Row, Select, Space, Statistic, Table, Tag } from 'antd';
 import { CloudDownloadOutlined, PlusOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { useAppRuntime } from '@/runtime/AppRuntime';
@@ -16,11 +16,21 @@ import {
   PROTOTYPE_PROGRESS_OPTIONS,
   REQUIREMENT_STATUS_OPTIONS,
 } from './requirementLifecycleModel.js';
+import { parseRequirementPoolManifestText, validateRequirementPoolManifestFile } from './settings/mcpModel.js';
 
 type ExternalState = {
   provider: string;
   token: string;
   query: string;
+};
+
+type RequirementPoolManifestPreview = {
+  platform?: { name?: string; id?: string };
+  server?: { id?: string; name?: string };
+  capability?: { tools?: Record<string, string> };
+  secrets?: { name: string; label?: string; required?: boolean }[];
+  warnings?: { code?: string; message?: string }[];
+  blockers?: { code?: string; message?: string }[];
 };
 
 export default function Requirements() {
@@ -46,7 +56,12 @@ export default function Requirements() {
   const [externalResults, setExternalResults] = useState<any[]>([]);
   const [importingCode, setImportingCode] = useState('');
   const [external, setExternal] = useState<ExternalState>({ provider: 'mcp', token: '', query: '' });
+  const [manifestText, setManifestText] = useState('');
+  const [manifestPreview, setManifestPreview] = useState<RequirementPoolManifestPreview | null>(null);
+  const [manifestAction, setManifestAction] = useState('');
+  const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
   const [form] = Form.useForm();
+  const manifestBlocked = Boolean(manifestPreview?.blockers?.length);
 
   const projectOptions = useMemo(
     () => [...new Set(items.map((item) => item.project).filter(Boolean))].sort().map((value) => ({ value, label: value })),
@@ -153,6 +168,77 @@ export default function Requirements() {
       setImportingCode('');
     }
   }, [external.provider, external.token, load, message, navigate]);
+
+  const loadRequirementPoolManifestTemplate = useCallback(async () => {
+    setManifestAction('template');
+    try {
+      const template = await api.requirementPoolManifestTemplate();
+      setManifestText(JSON.stringify(template, null, 2));
+      setManifestPreview(null);
+      message.success('已加载需求池配置示例');
+    } catch (nextError) {
+      message.error(errorText(nextError, '加载需求池配置示例失败'));
+    } finally {
+      setManifestAction('');
+    }
+  }, [message]);
+
+  const loadRequirementPoolManifestFile = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      validateRequirementPoolManifestFile(file);
+      const text = await file.text();
+      parseRequirementPoolManifestText(text);
+      setManifestText(text);
+      setManifestPreview(null);
+      message.success(`已读取 ${file.name}`);
+    } catch (nextError) {
+      message.error(errorText(nextError, '读取需求池配置失败'));
+    }
+  }, [message]);
+
+  const inspectRequirementPoolManifest = useCallback(async () => {
+    let manifest: unknown;
+    try {
+      manifest = parseRequirementPoolManifestText(manifestText);
+    } catch (nextError) {
+      message.error(errorText(nextError, '需求池配置 JSON 不合法'));
+      return;
+    }
+    setManifestAction('inspect');
+    try {
+      const preview = await api.inspectRequirementPoolManifest(manifest) as RequirementPoolManifestPreview;
+      setManifestPreview(preview);
+      if (preview.blockers?.length) message.warning(`发现 ${preview.blockers.length} 个阻塞项`);
+      else message.success('配置 JSON 可导入');
+    } catch (nextError) {
+      message.error(errorText(nextError, '需求池配置预览失败'));
+    } finally {
+      setManifestAction('');
+    }
+  }, [manifestText, message]);
+
+  const importRequirementPoolManifest = useCallback(async () => {
+    let manifest: unknown;
+    try {
+      manifest = parseRequirementPoolManifestText(manifestText);
+    } catch (nextError) {
+      message.error(errorText(nextError, '需求池配置 JSON 不合法'));
+      return;
+    }
+    setManifestAction('import');
+    try {
+      const result = await api.importRequirementPoolManifest(manifest) as { imported?: RequirementPoolManifestPreview };
+      setManifestPreview(result.imported || null);
+      message.success('需求池 MCP 配置已导入；密钥仍需在本机单独保存');
+    } catch (nextError) {
+      message.error(errorText(nextError, '需求池配置导入失败'));
+    } finally {
+      setManifestAction('');
+    }
+  }, [manifestText, message]);
 
   const syncPool = useCallback(async () => {
     setSyncing(true);
@@ -329,6 +415,72 @@ export default function Requirements() {
 
       <Modal title="从需求池导入" open={externalOpen} footer={null} onCancel={() => setExternalOpen(false)} width={720}>
         <Form layout="vertical">
+          <Alert
+            type="info"
+            showIcon
+            message="先导入平台提供的需求池配置 JSON，再搜索和导入需求。"
+            description="配置文件只保存平台、服务、工具和字段映射；Token 等敏感信息需要在本机单独填写。"
+          />
+          <div className="fl-mcp-editor fl-requirement-pool-config">
+            <input
+              ref={manifestFileInputRef}
+              type="file"
+              accept="application/json,.json"
+              aria-label="选择需求池配置 JSON 文件"
+              style={{ display: 'none' }}
+              onChange={(event) => void loadRequirementPoolManifestFile(event)}
+            />
+            <Form.Item label="需求池配置 JSON">
+              <Input.TextArea
+                rows={6}
+                className="fl-mono"
+                spellCheck={false}
+                value={manifestText}
+                placeholder={'{\n  "manifestVersion": "2026-09",\n  "platform": { "id": "demand-pool", "name": "需求池平台" },\n  "transport": { "type": "http", "url": "https://mcp.example/api" },\n  "tools": { "test": "requirements.test", "search": "requirements.search", "get": "requirements.get" }\n}'}
+                onChange={(event) => {
+                  setManifestText(event.target.value);
+                  setManifestPreview(null);
+                }}
+              />
+            </Form.Item>
+            <Space className="fl-external-actions" wrap>
+              <Button loading={manifestAction === 'template'} disabled={Boolean(manifestAction)} onClick={() => void loadRequirementPoolManifestTemplate()}>
+                加载示例配置
+              </Button>
+              <Button onClick={() => manifestFileInputRef.current?.click()}>
+                选择配置 JSON
+              </Button>
+              <Button loading={manifestAction === 'inspect'} disabled={Boolean(manifestAction) || !manifestText.trim()} onClick={() => void inspectRequirementPoolManifest()}>
+                预览配置
+              </Button>
+              <Button type="primary" loading={manifestAction === 'import'} disabled={Boolean(manifestAction) || !manifestText.trim() || manifestBlocked} onClick={() => void importRequirementPoolManifest()}>
+                导入配置
+              </Button>
+              <Button icon={<SettingOutlined />} onClick={() => navigate('/settings/mcp')}>高级 MCP 设置</Button>
+            </Space>
+            {manifestPreview ? (
+              <div className="fl-mcp-result">
+                <Alert
+                  showIcon
+                  type={manifestBlocked ? 'error' : 'success'}
+                  message={manifestBlocked ? '配置存在阻塞项，暂不能导入' : '配置可导入'}
+                  description={[
+                    manifestPreview.platform?.name ? `平台：${manifestPreview.platform.name}（${manifestPreview.platform.id || '未命名'}）` : '',
+                    manifestPreview.server?.id ? `服务：${manifestPreview.server.name || manifestPreview.server.id}（${manifestPreview.server.id}）` : '',
+                    manifestPreview.capability?.tools ? `工具：${Object.values(manifestPreview.capability.tools).filter(Boolean).join('、')}` : '',
+                    manifestPreview.secrets?.length ? `需本机补录密钥：${manifestPreview.secrets.map((item) => item.label || item.name).join('、')}` : '',
+                  ].filter(Boolean).join('；')}
+                />
+                {(manifestPreview.blockers || []).map((item) => (
+                  <Alert key={`blocker-${item.code || item.message}`} className="fl-mcp-result" type="error" showIcon message={item.message || item.code} />
+                ))}
+                {(manifestPreview.warnings || []).map((item) => (
+                  <Alert key={`warning-${item.code || item.message}`} className="fl-mcp-result" type="warning" showIcon message={item.message || item.code} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <Divider orientation="left">搜索需求池</Divider>
           <Row gutter={12}>
             <Col xs={24} md={8}>
               <Form.Item label="接入方式"><Select value={external.provider} options={[{ value: 'mcp', label: 'MCP' }]} onChange={(provider) => setExternal((current) => ({ ...current, provider }))} /></Form.Item>
@@ -348,7 +500,6 @@ export default function Requirements() {
           />
           <Space className="fl-external-actions" wrap>
             <Button disabled={!external.token.trim()} onClick={saveExternalToken}>保存 Token</Button>
-            <Button icon={<SettingOutlined />} onClick={() => navigate('/settings/mcp')}>打开集成配置</Button>
           </Space>
         </Form>
         <List

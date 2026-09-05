@@ -233,7 +233,7 @@ Flowlark 启动时会自动管理一个只监听 `127.0.0.1` 的企业微信 MCP
 
 ### 需求池 MCP 接入 — 外部需求作为来源
 
-需求池接入走「设置 → MCP 集成 → 需求池配置导入」。平台方提供一份配置 JSON，Flowlark 先做本地预检，再写入仓库的 `mcp.json`。完整 manifest 合同见 [需求池 MCP 配置合同](docs/REQUIREMENT-POOL-MCP.md)：
+需求池接入默认走「需求 → 从需求池导入 → 需求池配置 JSON」。平台方提供一份配置 JSON，Flowlark 先做本地预检，再写入仓库的 `mcp.json`；「设置 → MCP 中心」仍作为高级配置和诊断入口。完整 manifest 合同见 [需求池 MCP 配置合同](docs/REQUIREMENT-POOL-MCP.md)：
 
 - 必须声明平台、MCP server、HTTP/SSE endpoint，以及 `test`、`search`、`get` 三个只读工具映射。
 - Header 里的凭据只能写 `${secret:name}` 或 `${env:NAME}` 占位符；明文 Token、URL 用户名密码和明文 Authorization 会被拒绝。
