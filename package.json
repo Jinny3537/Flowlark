@@ -32,6 +32,8 @@
   "scripts": {
     "test": "node --test",
     "build:web": "cd web && npm install && npm run build",
+    "smoke:v075:requirement-pool": "node scripts/smoke-v075-requirement-pool.mjs",
+    "smoke:v075:mcp-ui": "node scripts/smoke-v075-mcp-ui.mjs",
     "start": "bash ./start.sh",
     "serve": "node bin/flowlark.js serve",
     "prepublishOnly": "npm run build:web && npm test"

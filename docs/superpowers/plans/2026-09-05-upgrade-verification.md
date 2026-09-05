@@ -94,6 +94,7 @@ Remaining v0.7.4 scope:
 - The real-platform smoke harness now reports missing header credentials as actionable environment variable names, so a failed probe caused by `${secret:name}` tells the operator to set the matching `FLOWLARK_V075_SECRET_NAME` instead of returning an empty blocker summary.
 - `scripts/smoke-v075-mcp-ui.mjs` now defines a browser smoke for the MCP Settings requirement-pool path: template load, manifest preview/import, missing secret UI, environment-secret connection probe, page errors and desktop/mobile overflow. It intentionally does not click the Keychain save action, to avoid writing secrets to the operator machine during smoke verification.
 - The Requirements import dialog now routes “打开集成配置” directly to `/settings/mcp`, and the MCP UI smoke includes that entrypoint so users do not land on the generic workspace settings page when setup is required.
+- `package.json` now exposes `smoke:v075:requirement-pool` and `smoke:v075:mcp-ui` so the real-platform and browser acceptance harnesses are discoverable through npm scripts.
 - Focused verification for MCP config import, existing requirement MCP search/import/comment, HTTP routing and UI manifest parsing: 51/51 passed.
 - Focused verification for requirement-pool status diagnostics, missing local secret gating, HTTP status routing and MCP Center parsing: 53/53 passed.
 - Focused verification for delivery snapshot source freezing and formal release mail flow: 24/24 passed.
@@ -114,6 +115,8 @@ Remaining v0.7.4 scope:
 - Full suite after smoke harness missing-secret diagnostics: `node --test` passed 712/712, zero failures.
 - Syntax/dependency guard verification for the MCP Settings UI smoke: `node --check scripts/smoke-v075-mcp-ui.mjs` passed; running without `PLAYWRIGHT_MODULE` exits 2 with a clear dependency message. Browser execution is still pending because Playwright is not installed in the current environment.
 - Focused verification after routing the Requirements import dialog to MCP settings: `npm run build:web` passed, `node --check scripts/smoke-v075-mcp-ui.mjs` passed and `node --test test/v07-upgrade.test.js` passed 8/8. The browser path in `scripts/smoke-v075-mcp-ui.mjs` is still pending real execution because Playwright is not installed in the current environment.
+- Smoke script entrypoint verification: `package.json` parses, `node --check scripts/smoke-v075-mcp-ui.mjs` and `node --check scripts/smoke-v075-requirement-pool.mjs` passed, `npm run smoke:v075:requirement-pool -- --help` and `npm run smoke:v075:mcp-ui -- --help` both exit 0, and `npm run smoke:v075:mcp-ui` without `PLAYWRIGHT_MODULE` exits 2 with the documented dependency message.
+- Focused and full verification after adding npm smoke entrypoints: `npm run build:web` passed, `node --test test/v07-upgrade.test.js` passed 8/8, `git diff --check` passed and `node --test` passed 712/712, zero failures.
 - `scripts/smoke-v075-requirement-pool.mjs` now provides the real-platform acceptance harness. Given a platform manifest and local credentials, it runs the product path in a temporary repository: manifest inspect/import, connection probe, list refresh, single detail refresh, version linking, iteration scoping and formal delivery snapshot source verification. The harness itself is covered by a local MCP fixture test.
 - `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
 
@@ -125,5 +128,5 @@ Run the real-platform acceptance harness only with a disposable requirement-pool
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_QUERY="safe test requirement" \
 FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \
-node scripts/smoke-v075-requirement-pool.mjs --keep
+npm run smoke:v075:requirement-pool -- --keep
 ```

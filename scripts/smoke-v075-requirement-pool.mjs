@@ -155,6 +155,9 @@ function usage() {
   FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \\
   FLOWLARK_V075_QUERY="keyword" \\
   FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \\
+  npm run smoke:v075:requirement-pool
+
+Direct:
   node scripts/smoke-v075-requirement-pool.mjs
 
 Options:

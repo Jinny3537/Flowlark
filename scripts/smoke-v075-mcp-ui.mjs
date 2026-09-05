@@ -10,8 +10,14 @@ import { initRepo } from '../src/core/repo.js'
 import { startServer } from '../src/server/index.js'
 import { unavailableWecomMcp } from '../src/core/wecom-mcp-manager.js'
 
+const args = new Set(process.argv.slice(2))
+if (args.has('--help') || args.has('-h')) {
+  usage()
+  process.exit(0)
+}
+
 if (!process.env.PLAYWRIGHT_MODULE) {
-  console.error('PLAYWRIGHT_MODULE is required, for example /path/to/playwright/index.mjs')
+  usage()
   process.exit(2)
 }
 
@@ -189,4 +195,20 @@ async function assertEnabled(locator) {
 function closeServer(server) {
   if (!server) return Promise.resolve()
   return new Promise((resolve) => server.close(resolve))
+}
+
+function usage() {
+  console.error(`Usage:
+  PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs npm run smoke:v075:mcp-ui
+
+Direct:
+  PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node scripts/smoke-v075-mcp-ui.mjs
+
+Checks:
+  - Requirements import dialog routes to /settings/mcp.
+  - Requirement-pool manifest template, preview and import work in MCP Settings.
+  - Missing keychain secret placeholders show an inline local secret entry.
+  - Env-based header credentials can pass a read-only connection probe.
+  - Settings MCP has no page errors or desktop/mobile horizontal overflow.
+`)
 }
