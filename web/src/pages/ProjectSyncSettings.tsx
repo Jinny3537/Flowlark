@@ -195,9 +195,9 @@ export default function ProjectSyncSettings() {
                   <Radio value="manual">
                     <span><strong>手动确认</strong><small>生成计划、审阅差异，再由用户确认执行。</small></span>
                   </Radio>
-                  <Radio value="trusted-auto" disabled>
-                    <span><strong>可信自动（尚未开放）</strong><small>预计 v0.7.5 提供；当前不可选择或保存。</small></span>
-                  </Radio>
+                <Radio value="trusted-auto" disabled>
+                    <span><strong>可信自动（尚未开放）</strong><small>后续版本完成资格验证和回读验收后开放；当前不可选择或保存。</small></span>
+                </Radio>
                 </Radio.Group>
               </Form.Item>
 

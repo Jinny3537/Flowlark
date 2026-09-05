@@ -27,6 +27,7 @@ test('keeps trusted-auto visible but never saves it as an operational mode', () 
   assert.equal(projectSyncForm({ mode: 'trusted-auto' }).mode, 'manual')
   assert.equal(projectSyncPayload({ mode: 'trusted-auto' }).sync.mode, 'manual')
   assert.doesNotMatch(trustedModeMessage({ ready: false }), /v0\.7\.2/)
+  assert.doesNotMatch(trustedModeMessage({ ready: false }), /v0\.7\.5/)
   assert.match(trustedModeMessage({ ready: false }), /不可启用|尚未开放/)
 })
 
@@ -60,5 +61,6 @@ test('provides labels for every managed field', () => {
 })
 
 test('explains that trusted mode is not active', () => {
-  assert.match(trustedModeMessage({ ready: true }), /v0\.7\.5/)
+  assert.match(trustedModeMessage({ ready: true }), /后续版本完成资格验证和回读验收/)
+  assert.doesNotMatch(trustedModeMessage({ ready: true }), /v0\.7\.5/)
 })

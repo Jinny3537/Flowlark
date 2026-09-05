@@ -29,7 +29,7 @@ export function projectSyncPayload(values = {}) {
 
 export function trustedModeMessage({ ready = false } = {}) {
   const readiness = ready ? '当前连接条件已满足。' : '仍需验证连接与平台写权限。'
-  return `${readiness} trusted-auto 尚未开放，当前版本不可启用或保存；自动执行最早在 v0.7.5 激活。`
+  return `${readiness} trusted-auto 尚未开放，当前版本不可启用或保存；自动执行需在后续版本完成资格验证和回读验收后单独开放。`
 }
 
 export function projectSyncChanged(saved = {}, draft = {}) {
