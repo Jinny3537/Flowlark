@@ -13,6 +13,7 @@ import { ApiOutlined, SaveOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
+import { ProjectAcceptanceRules } from '@/components/ProjectAcceptanceRules';
 import { State } from '@/components/State';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
@@ -209,8 +210,8 @@ export default function ProjectSyncSettings() {
                     placeholder={mcpError ? '服务列表暂不可用' : '选择已启用的 MCP 服务'}
                   />
                 </Form.Item>
-                <Form.Item name="projectId" label="外部项目 ID">
-                  <Input maxLength={200} placeholder="例如：42 或 PROJECT-KEY" />
+                <Form.Item name="projectId" label="外部项目 ID" rules={[{ validator: (_, value) => !value || (/^[0-9]+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0) ? Promise.resolve() : Promise.reject(new Error('Assess Task 项目 ID 必须是正整数')) }]}>
+                  <Input maxLength={16} inputMode="numeric" placeholder="例如：42" />
                 </Form.Item>
               </div>
 
@@ -266,6 +267,7 @@ export default function ProjectSyncSettings() {
             <Button block icon={<ApiOutlined />} onClick={() => navigate('/settings/mcp')}>前往 MCP 中心验证</Button>
           </aside>
         </div>
+        <ProjectAcceptanceRules slug={slug} value={project?.acceptance} writable={writable} onSaved={setProject} />
       </State>
     </main>
   );

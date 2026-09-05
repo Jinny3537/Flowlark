@@ -54,6 +54,18 @@ test('later project rule edits cannot change the frozen acceptance contract', (t
   assert.deepEqual(readDeliverySnapshot(root, snapshot.name).acceptance, snapshot.acceptance)
 })
 
+test('binary attachments remain retrievable after working-tree deletion', (t) => {
+  const { root, hub, input, commit } = fixture(t)
+  const original = Buffer.from([0, 255, 128, 1, 10])
+  hub.addAttachment('release', 'v1', { name: 'evidence.bin', content: original, contentType: 'application/octet-stream' })
+  input.releaseCommit = commit()
+  fs.unlinkSync(path.join(root, 'projects/release/versions/v1.files/evidence.bin'))
+  const snapshot = createDeliverySnapshot(root, input)
+  const material = snapshot.materials.find((item) => item.path.endsWith('/evidence.bin'))
+  assert.deepEqual(Buffer.from(material.content, 'base64'), original)
+  assert.equal(verifyDeliverySnapshot(root, snapshot.name).materialCount, 2)
+})
+
 test('delivery rejects tampered payload and legacy snapshot identities', (t) => {
   const { root, input } = fixture(t)
   const snapshot = createDeliverySnapshot(root, input)

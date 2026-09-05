@@ -253,6 +253,16 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   })
   r.get('/api/snapshots/:name', async (req, res, p) => sendJson(res, 200, hub.getSnapshot(p.name)))
   r.get('/api/snapshots/:name/acceptance', async (req, res, p) => sendJson(res, 200, hub.deliveryAcceptance(p.name)))
+  r.get('/api/snapshots/:name/materials/:index', async (req, res, p) => {
+    const material = hub.deliveryMaterial(p.name, Number(p.index))
+    res.writeHead(200, {
+      'Content-Type': 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(material.name)}`,
+      'Content-Length': material.content.length
+    })
+    res.end(material.content)
+  })
   r.post('/api/snapshots/:name/acceptances', async (req, res, p) =>
     sendJson(res, 201, hub.recordAcceptance(p.name, await readJson(req, maxBody))))
   r.get('/api/snapshots/:name/feedback', async (req, res, p) => sendJson(res, 200, hub.listDeliveryFeedback(p.name)))

@@ -43,6 +43,32 @@ export type ConfigResponse = {
   problems: string[];
 };
 
+export type AcceptanceVerdict = 'pending' | 'approved' | 'rejected' | 'conditional' | 'waived';
+export type AcceptanceCondition = { id: string; text: string; closed: boolean };
+export type AcceptanceRecord = {
+  id: string; snapshot: string; snapshotHash: string; role: string; verdict: AcceptanceVerdict;
+  note: string; conditions: AcceptanceCondition[]; actor: string; at: string;
+};
+export type AcceptanceInput = {
+  role: string; verdict: AcceptanceVerdict; note: string;
+  conditions: AcceptanceCondition[]; expectedSnapshotHash: string;
+};
+export type DeliveryFeedbackInput = {
+  title: string; description: string; severity: 'blocker' | 'important' | 'normal'; requirement?: string;
+};
+export type DeliveryFeedback = DeliveryFeedbackInput & {
+  id: string; actor: string; at: string; status: 'open' | 'resolved';
+  resolution: { reason: string; actor: string; at: string } | null;
+};
+export type DeliveryAcceptance = {
+  snapshot: string; snapshotHash: string;
+  integrity: { ready: boolean; materialCount?: number };
+  records: AcceptanceRecord[]; feedback: DeliveryFeedback[];
+  status: 'pending' | 'approved' | 'rejected'; ready: boolean;
+  roles: Array<{ id: string; name: string; required: boolean; latest: AcceptanceRecord | null; status: 'pending' | 'approved' | 'rejected' }>;
+  blockers: Array<{ code: string; message: string; role?: string; count?: number }>;
+};
+
 export type RequirementLifecycleStatus =
   | 'draft'
   | 'confirmed'
@@ -262,6 +288,14 @@ export const api = {
   exportMilestone: (name: string, outputDir?: string) => post(`/api/export/milestone/${enc(name)}`, { outputDir }),
   listSnapshots: () => get<any[]>('/api/snapshots'),
   getSnapshot: (name: string) => get<any>(`/api/snapshots/${enc(name)}`),
+  deliveryAcceptance: (name: string) => get<DeliveryAcceptance>(`/api/snapshots/${enc(name)}/acceptance`),
+  recordAcceptance: (name: string, body: AcceptanceInput) =>
+    post<AcceptanceRecord>(`/api/snapshots/${enc(name)}/acceptances`, body),
+  listDeliveryFeedback: (name: string) => get<DeliveryFeedback[]>(`/api/snapshots/${enc(name)}/feedback`),
+  createDeliveryFeedback: (name: string, body: DeliveryFeedbackInput) =>
+    post<DeliveryFeedback>(`/api/snapshots/${enc(name)}/feedback`, body),
+  resolveDeliveryFeedback: (name: string, id: string, reason: string) =>
+    post<DeliveryFeedback>(`/api/snapshots/${enc(name)}/feedback/${enc(id)}/resolve`, { reason }),
   inspectSnapshot: (body: unknown) => post('/api/snapshots/inspect', body),
   createSnapshot: (body: unknown) => post<any>('/api/snapshots', body),
   suggestImpact: (changes: unknown[]) => post('/api/impact', { changes }),

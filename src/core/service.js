@@ -1156,6 +1156,13 @@ export class Hub {
 
   listSnapshots() { return snapshots.listSnapshots(this.root) }
   getSnapshot(name) { return snapshots.readSnapshot(this.root, name) }
+  deliveryMaterial(name, index) {
+    const snapshot = readDeliverySnapshot(this.root, name)
+    if (!Number.isSafeInteger(index) || index < 0) throw err.bad('DELIVERY_MATERIAL_INDEX_INVALID', '交付材料序号不合法')
+    const material = snapshot.materials[index]
+    if (!material) throw err.notFound('交付材料')
+    return { name: path.basename(material.path), content: Buffer.from(material.content, 'base64') }
+  }
   deliveryAcceptance(name) {
     const snapshot = readDeliverySnapshot(this.root, name)
     const records = listAcceptances(this.root, name)

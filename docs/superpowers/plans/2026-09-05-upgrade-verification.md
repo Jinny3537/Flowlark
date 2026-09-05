@@ -27,3 +27,15 @@ The previous interrupted final-review agent did not deliver a final report. Do n
 - Full suite after integrating the data foundation: 678/678 passed, zero failures.
 - New tests prove that uncommitted edits cannot enter committed release snapshots, later project rules cannot alter historical rules, and required approvals remain blocked until blocking feedback is resolved.
 - Release continuation, delivery lifecycle/remote completion integration and v0.7.5 automatic execution are not yet implemented by this foundation.
+
+## v0.7.4 acceptance UI
+
+- `scripts/smoke-v074.mjs` seeds a committed delivery snapshot and verifies actual browser submissions from all three required roles.
+- Adding a blocking feedback item changes readiness to false; resolving it with a reason restores readiness. Both operations were performed through the UI.
+- Delivery and project settings have no page-level horizontal overflow at 1440×900 and 390×844. Mirror mode disables decision and feedback writes. No page JavaScript errors were observed.
+- Frozen material downloads return verified bytes as attachments, including in read-only mode. Binary attachment preservation after local deletion is covered by a storage test.
+- The smoke does not yet exercise formal release creation of that snapshot; that integration remains Task 5.
+
+```sh
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node scripts/smoke-v074.mjs
+```

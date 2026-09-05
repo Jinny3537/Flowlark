@@ -113,6 +113,11 @@ test('acceptance HTTP routes reject forged inputs and mirror writes, while histo
   assert.equal((await call(mirror.port, 'acceptances', 'POST', decision)).status, 403)
   assert.equal((await call(server.port, 'acceptances', 'POST', decision)).status, 201)
   assert.equal((await call(server.port, 'acceptances', 'DELETE')).status, 404)
+  const material = await call(mirror.port, 'materials/0')
+  assert.equal(material.status, 200)
+  assert.equal(material.headers.get('content-type'), 'application/octet-stream')
+  assert.match(material.headers.get('content-disposition'), /^attachment;/)
+  assert.equal(await material.text(), html())
   assert.equal((await (await call(mirror.port, 'acceptance')).json()).records.length, 1)
   const feedback = { title: 'A', description: 'B', severity: 'blocker' }
   assert.equal((await call(mirror.port, 'feedback', 'POST', feedback)).status, 403)
