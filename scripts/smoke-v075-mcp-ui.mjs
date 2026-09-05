@@ -10,8 +10,8 @@ import { initRepo } from '../src/core/repo.js'
 import { startServer } from '../src/server/index.js'
 import { unavailableWecomMcp } from '../src/core/wecom-mcp-manager.js'
 
-const args = new Set(process.argv.slice(2))
-if (args.has('--help') || args.has('-h')) {
+const args = parseArgs(process.argv.slice(2))
+if (args.help) {
   usage()
   process.exit(0)
 }
@@ -147,16 +147,37 @@ try {
   }
 
   assert.deepEqual(errors, [])
-  console.log(JSON.stringify({
+  emitResult({
     passed: true,
     checks: ['requirements-direct-config-import', 'requirements-secret-ui', 'requirements-env-secret-probe', 'requirements-search-import', 'settings-advanced-entrypoint', 'template-load', 'manifest-preview', 'import', 'missing-secret-ui', 'env-secret-probe', 'desktop-mobile-layout', 'page-errors'],
     viewportWidths: [1440, 390]
-  }))
+  })
 } finally {
   await browser?.close()
   await appServer?.close()
   await closeServer(mcpServer)
   fs.rmSync(root, { recursive: true, force: true })
+}
+
+function parseArgs(values) {
+  const out = {}
+  for (let index = 0; index < values.length; index++) {
+    const item = values[index]
+    if (item === '--help' || item === '-h') out.help = true
+    else if (item === '--output') out.output = values[++index]
+    else throw new Error(`未知参数：${item}`)
+  }
+  return out
+}
+
+function emitResult(result) {
+  const text = `${JSON.stringify(result)}\n`
+  if (args.output) {
+    const target = path.resolve(args.output)
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, text, 'utf8')
+  }
+  process.stdout.write(text)
 }
 
 function manifestWithKeychainSecret(url) {
@@ -283,6 +304,9 @@ function usage() {
 
 Direct:
   PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node scripts/smoke-v075-mcp-ui.mjs
+
+Options:
+  --output <file>   Write the JSON result to a file for release readiness evidence.
 
 Checks:
   - Requirements import dialog can load, preview and import a requirement-pool manifest.

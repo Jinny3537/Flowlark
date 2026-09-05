@@ -15,12 +15,14 @@ const checks = []
 const root = process.cwd()
 const manifestPath = args.manifest || process.env.FLOWLARK_V075_MANIFEST || ''
 const smokeResultPath = args.smokeResult || process.env.FLOWLARK_V075_SMOKE_RESULT || ''
+const uiSmokeResultPath = args.uiSmokeResult || process.env.FLOWLARK_V075_UI_SMOKE_RESULT || ''
 
 checkPackageVersions()
 checkNpmScripts()
 checkManifest()
 checkPlaywright()
 checkSmokeResult()
+checkUiSmokeResult()
 
 const failed = checks.filter((item) => item.status === 'fail')
 const result = {
@@ -28,11 +30,11 @@ const result = {
   targetVersion: TARGET_VERSION,
   checks,
   next: failed.length
-    ? [
-        'Run the real-platform smoke against a disposable requirement-pool project and save its JSON output.',
-        'Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set.',
-        'Bump package.json and web/package.json to 0.7.5 only after the real-platform and browser smoke evidence exists.'
-      ]
+      ? [
+          'Run the real-platform smoke against a disposable requirement-pool project and save its JSON output.',
+          'Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set and save its JSON output.',
+          'Bump package.json and web/package.json to 0.7.5 only after the real-platform and browser smoke evidence exists.'
+        ]
     : []
 }
 
@@ -128,6 +130,36 @@ function checkSmokeResult() {
   }
 }
 
+function checkUiSmokeResult() {
+  if (!uiSmokeResultPath) {
+    addCheck('ui-smoke-result', false, 'FLOWLARK_V075_UI_SMOKE_RESULT or --ui-smoke-result is required')
+    return
+  }
+  const resolved = path.resolve(uiSmokeResultPath)
+  if (!fs.existsSync(resolved)) {
+    addCheck('ui-smoke-result', false, `UI smoke result file does not exist: ${resolved}`)
+    return
+  }
+  try {
+    const result = readJsonFile(resolved)
+    const checks = new Set(Array.isArray(result?.checks) ? result.checks : [])
+    const required = [
+      'requirements-direct-config-import',
+      'requirements-secret-ui',
+      'requirements-env-secret-probe',
+      'requirements-search-import',
+      'settings-advanced-entrypoint',
+      'desktop-mobile-layout',
+      'page-errors'
+    ]
+    const missing = required.filter((item) => !checks.has(item))
+    addCheck('ui-smoke-result', result?.passed === true && missing.length === 0,
+      missing.length ? `UI smoke result is missing checks: ${missing.join(', ')}` : 'UI smoke evidence accepted')
+  } catch (error) {
+    addCheck('ui-smoke-result', false, `UI smoke result parse failed: ${error?.message || error}`)
+  }
+}
+
 function addCheck(key, passed, message, extra = {}) {
   checks.push({ key, status: passed ? 'pass' : 'fail', message, ...extra })
 }
@@ -143,6 +175,7 @@ function parseArgs(values) {
     if (item === '--help' || item === '-h') out.help = true
     else if (item === '--manifest') out.manifest = values[++index]
     else if (item === '--smoke-result') out.smokeResult = values[++index]
+    else if (item === '--ui-smoke-result') out.uiSmokeResult = values[++index]
     else throw new Error(`未知参数：${item}`)
   }
   return out
@@ -170,11 +203,13 @@ function usage() {
   FLOWLARK_V075_QUERY="safe test requirement" \\
   FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \\
   FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \\
+  FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \\
   PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \\
   npm run check:v075:readiness
 
 Options:
   --manifest <file>       Requirement-pool MCP manifest JSON.
   --smoke-result <file>   JSON output saved from smoke:v075:requirement-pool -- --output.
+  --ui-smoke-result <file> JSON output saved from smoke:v075:mcp-ui -- --output.
 `)
 }

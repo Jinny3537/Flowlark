@@ -234,7 +234,8 @@ npm run smoke:v075:requirement-pool -- \
 
 ```bash
 npm run build:web
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs npm run smoke:v075:mcp-ui
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
 ```
 
 该浏览器 smoke 覆盖模板加载、manifest 预检/导入、缺失本机密钥提示、环境变量密钥连接测试、页面错误和桌面/移动端横向溢出。它不会点击本机钥匙串保存动作。
@@ -246,6 +247,7 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs npm run smoke:v075:mcp-
 ```bash
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
+FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run check:v075:readiness
 ```
@@ -262,4 +264,4 @@ npm run check:v075:readiness
 - 正式交付快照冻结了需求池来源摘要。
 - `npm run smoke:v075:requirement-pool -- --keep` 在真实测试平台跑通。
 - `npm run smoke:v075:mcp-ui` 在安装 Playwright 的本机跑通。
-- 保存真实平台 smoke 结果并完成最终版本号提升后，`npm run check:v075:readiness` 通过。
+- 保存真实平台 smoke 和浏览器 smoke 结果，并完成最终版本号提升后，`npm run check:v075:readiness` 通过。

@@ -242,6 +242,7 @@ describe('v0.7 升级能力', () => {
     }
     const manifestFile = path.join(directory, 'requirement-pool.json')
     const smokeResultFile = path.join(directory, 'smoke-result.json')
+    const uiSmokeResultFile = path.join(directory, 'ui-smoke-result.json')
     fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8')
     fs.writeFileSync(smokeResultFile, JSON.stringify({
       passed: true,
@@ -254,12 +255,25 @@ describe('v0.7 升级能力', () => {
         syncedAt: '2026-09-05T08:00:00.000Z'
       }
     }), 'utf8')
+    fs.writeFileSync(uiSmokeResultFile, JSON.stringify({
+      passed: true,
+      checks: [
+        'requirements-direct-config-import',
+        'requirements-secret-ui',
+        'requirements-env-secret-probe',
+        'requirements-search-import',
+        'settings-advanced-entrypoint',
+        'desktop-mobile-layout',
+        'page-errors'
+      ]
+    }), 'utf8')
 
     await t.assert.rejects(
       execFileAsync(process.execPath, [
         'scripts/check-v075-readiness.mjs',
         '--manifest', manifestFile,
-        '--smoke-result', smokeResultFile
+        '--smoke-result', smokeResultFile,
+        '--ui-smoke-result', uiSmokeResultFile
       ], {
         cwd: process.cwd(),
         encoding: 'utf8',
@@ -275,6 +289,7 @@ describe('v0.7 升级能力', () => {
         t.assert.strictEqual(result.checks.find((item) => item.key === 'manifest-inspect').status, 'pass')
         t.assert.strictEqual(result.checks.find((item) => item.key === 'manifest-credentials').status, 'pass')
         t.assert.strictEqual(result.checks.find((item) => item.key === 'real-smoke-result').status, 'pass')
+        t.assert.strictEqual(result.checks.find((item) => item.key === 'ui-smoke-result').status, 'pass')
         t.assert.strictEqual(result.checks.find((item) => item.key === 'package-version').status, 'fail')
         t.assert.doesNotMatch(error.stdout, /fixture-secret-value/)
         return true
