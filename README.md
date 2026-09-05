@@ -231,6 +231,39 @@ Flowlark 启动时会自动管理一个只监听 `127.0.0.1` 的企业微信 MCP
 
 企业微信官方提示 AI Agent 操作内部应用存在数据泄露和权限提升风险。首次接入应使用测试企业、测试项目和测试收件人验证权限范围；确认邮件内容和收件人均正确后，再用于正式项目。
 
+### 需求池 MCP 接入 — 外部需求作为来源
+
+需求池接入走「设置 → MCP 集成 → 需求池配置导入」。平台方提供一份配置 JSON，Flowlark 先做本地预检，再写入仓库的 `mcp.json`：
+
+- 必须声明平台、MCP server、HTTP/SSE endpoint，以及 `test`、`search`、`get` 三个只读工具映射。
+- Header 里的凭据只能写 `${secret:name}` 或 `${env:NAME}` 占位符；明文 Token、URL 用户名密码和明文 Authorization 会被拒绝。
+- 字段和状态映射缺失只降级为警告，不会阻塞导入；导入后可以单独执行连接测试。
+
+本机缺少 `${secret:name}` 时，设置页会显示缺失项并允许直接录入本机密钥。密钥使用已有 MCP server secret 存储，不写入 `mcp.json`，也不进入 Git。
+
+导入完成后，需求页提供两条路径：
+
+- 「刷新需求池列表」：从外部需求池拉取列表，创建或更新本地外部需求引用；远端消失的需求会标记为不可用，不会删除本地记录。
+- 需求详情「刷新」：按外部 ID 重新拉取单条需求；失败会保留旧数据，并记录脱敏错误码、提示和时间。
+
+外部需求仍然不是 Flowlark 的本地主数据。关联版本、加入迭代和正式交付快照保存的是本地引用与冻结时的来源摘要：编号、标题、平台、外部 ID、URL、状态和同步时间。后续自动写回、自动关闭外部需求或结束外部 Sprint，必须经过单独的计划、人工确认和回读验证。
+
+真实平台验收使用一次性测试项目运行：
+
+```bash
+FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
+FLOWLARK_V075_QUERY="safe test requirement" \
+FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \
+npm run smoke:v075:requirement-pool -- --keep
+```
+
+设置页浏览器验收需要本机提供 Playwright：
+
+```bash
+npm run build:web
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs npm run smoke:v075:mcp-ui
+```
+
 ### 3.5 Git 助手 — 从不让用户去敲 git
 
 这个产品的使用者是产品经理和研发，不是所有人都熟 rebase。以前遇到「没纳入 Git」「同步卡住了」，界面只会印一行命令让人自己去终端处理 —— 那等于在最需要帮忙的时刻把人推开。
@@ -468,9 +501,9 @@ docs/V2-BLUEPRINT.md  v2.0 蓝图：需求驱动的全链路
 
 ## 不做
 
-截图 diff / 源码 diff · 自建账号体系 · 多人实时协同 · 需求池 API 对接 · 云端托管 · 桌面客户端
+截图 diff / 源码 diff · 自建账号体系 · 多人实时协同 · 需求池写回自动化 · 云端托管 · 桌面客户端
 
-需求池只存编号 + URL 做跳转，标题是录入时的快照，不与外部系统同步。
+需求池接入只做受控读取和本地引用：列表、详情和交付快照可同步来源摘要，但不会在没有计划预览、人工确认和回读验证的情况下写回外部系统。
 
 ## 已知限制
 
