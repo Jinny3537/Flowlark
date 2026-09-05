@@ -35,26 +35,28 @@ aggregateAcceptance(rules, records, { blockingFeedback: 0 })
 // { status, ready, roles, blockers }
 ```
 
-- [ ] Reject invalid/duplicate roles, unsupported rules, missing required roles and malformed decisions.
-- [ ] Latest valid record per role wins. Resolve equal timestamps deterministically by record ID.
-- [ ] Any required rejection fails acceptance; required pending or open conditions prevent passing. Optional decisions never block.
-- [ ] Waivers require a reason. Conditional approval needs every condition closed. Unresolved blocking feedback prevents passing.
-- [ ] Verify input immutability and every aggregation branch with `node --test test/acceptance-rules.test.js`.
+- [x] Reject invalid/duplicate roles, unsupported rules, missing required roles and malformed decisions.
+- [x] Latest valid record per role wins. Resolve equal timestamps deterministically by record ID.
+- [x] Any required rejection fails acceptance; required pending or open conditions prevent passing. Optional decisions never block.
+- [x] Waivers require a reason. Conditional approval needs every condition closed. Unresolved blocking feedback prevents passing.
+- [x] Verify input immutability and every aggregation branch with `node --test test/acceptance-rules.test.js`.
 
 ## 2. Schema 5 and project rules
 
 Files: `src/core/repo.js`, `migrate.js`, `service.js`, `json.js`, `test/migrate.test.js`, `test/projects-api.test.js`.
 
-- [ ] Add `project.acceptance` defaults, milestone `deliveries: []`, and distinguish legacy snapshots without inventing historical evidence.
-- [ ] Add schema 4→5 migration using the existing metadata backup and whole-chain rollback. Validate snapshot and acceptance references before advancing the schema.
-- [ ] Reject symlinked metadata paths; preserve HTML, version specs, requirement specs and attachments byte-for-byte.
-- [ ] Expose validated rules through project reads/writes. Historical snapshots retain their copied rules after project settings change.
+- [x] Add `project.acceptance` defaults, milestone `deliveries: []`, and distinguish legacy snapshots without inventing historical evidence.
+- [x] Add schema 4→5 migration using the existing metadata backup and whole-chain rollback. Validate snapshot and acceptance references before advancing the schema.
+- [x] Reject symlinked metadata paths; preserve HTML, version specs, requirement specs and attachments byte-for-byte.
+- [x] Expose validated rules through project reads/writes. Historical snapshots retain their copied rules after project settings change.
 
 ```sh
-node --test test/migrate.test.js test/metadata-backup.test.js test/project-api.test.js
+node --test test/migrate.test.js test/migrate-schema5.test.js test/metadata-backup.test.js test/acceptance-rules-api.test.js
 ```
 
 ## 3. Immutable delivery materials
+
+Core storage is implemented in `delivery-snapshots.js` and covered by `delivery-snapshots.test.js`; release-run integration remains in Task 5.
 
 Files: add `src/core/delivery-snapshots.js`, `test/delivery-snapshots.test.js`; integrate `snapshots.js` and the formal release service.
 
@@ -73,9 +75,9 @@ verifyDeliverySnapshot(root, name)
 
 Files: add `src/core/acceptances.js`, `delivery-feedback.js` and corresponding tests; extend `store.js`, `service.js`, `routes.js`.
 
-- [ ] Append decisions under `acceptances/<snapshot>/<record-id>.json`; derive actor/time/ID server-side and bind each decision to the snapshot hash and frozen role definition.
-- [ ] No decision edit/delete route. Revisions are new records; condition closure also creates a new decision.
-- [ ] Persist feedback against a delivery snapshot with blocker/important/normal severity. Resolve with actor, timestamp and reason; preserve history.
+- [x] Append decisions under `acceptances/<snapshot>/<record-id>.json`; derive actor/time/ID server-side and bind each decision to the snapshot hash and frozen role definition.
+- [x] No decision edit/delete route. Revisions are new records; condition closure also creates a new decision.
+- [x] Persist feedback against a delivery snapshot with blocker/important/normal severity. Resolve with actor, timestamp and reason; preserve history.
 - [ ] Validate all bodies and references; preserve read-only access and reject writes in LAN/mirror/Git read-only modes.
 
 ```text

@@ -19,6 +19,8 @@ import {
 } from './metadata-backup.js'
 import { normalizeSyncPolicy } from './sync-policy.js'
 import { REQUIREMENT_STATUSES } from './requirement-lifecycle.js'
+import { aggregateAcceptance, normalizeAcceptanceRules } from './acceptance-rules.js'
+import { readDeliverySnapshot } from './delivery-snapshots.js'
 
 const MIGRATION_TRACKED_PATHS = [
   REPO_FILE,
@@ -53,6 +55,7 @@ function trackedDirty(root) {
 export function preflightMigration(root) {
   assertMigrationTopLevelFilesAreNotSymlinks(root)
   assertRequirementPathsAreNotSymlinks(root)
+  assertMigrationMetadataPaths(root)
   const config = parse(fs.readFileSync(path.join(root, REPO_FILE), 'utf8'), REPO_FILE)
   const from = Number(config.schemaVersion || 1)
   return { from, to: SCHEMA_VERSION, needed: from < SCHEMA_VERSION, dirty: trackedDirty(root) }
@@ -124,7 +127,61 @@ function assertRequirementPathsAreNotSymlinks(root) {
     if (entry.isSymbolicLink()) {
       throw requirementSymlinkError(`requirements/${entry.name}/`)
     }
+    if (entry.isDirectory()) {
+      const relative = `requirements/${entry.name}/requirement.json`
+      try {
+        if (fs.lstatSync(path.join(root, relative)).isSymbolicLink()) throw requirementSymlinkError(relative)
+      } catch (error) { if (error.code !== 'ENOENT') throw error }
+    }
   }
+}
+
+function migrationPathStat(root, relative) {
+  try {
+    const stat = fs.lstatSync(path.join(root, relative))
+    if (stat.isSymbolicLink()) {
+      throw err.conflict('MIGRATION_METADATA_SYMLINK', `迁移拒绝读取或写入符号链接：${relative}`)
+    }
+    return stat
+  } catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw error
+  }
+}
+
+function migrationJsonFiles(root, relative, recursive = false) {
+  const stat = migrationPathStat(root, relative)
+  if (!stat) return []
+  if (!stat.isDirectory()) throw err.bad('MIGRATION_METADATA_INVALID', `${relative} 必须是普通目录`)
+  const files = []
+  for (const entry of fs.readdirSync(path.join(root, relative), { withFileTypes: true })) {
+    const child = `${relative}/${entry.name}`
+    if (entry.isSymbolicLink()) migrationPathStat(root, child)
+    if (entry.isDirectory() && recursive) files.push(...migrationJsonFiles(root, child, true))
+    if (entry.name.endsWith('.json')) {
+      if (!entry.isFile()) throw err.bad('MIGRATION_METADATA_INVALID', `${child} 必须是普通文件`)
+      files.push(child)
+    }
+  }
+  return files.sort()
+}
+
+function assertMigrationMetadataPaths(root) {
+  const projects = migrationPathStat(root, 'projects')
+  if (projects && !projects.isDirectory()) throw err.bad('MIGRATION_METADATA_INVALID', 'projects 必须是普通目录')
+  if (projects) {
+    for (const entry of fs.readdirSync(path.join(root, 'projects'), { withFileTypes: true })) {
+      const relative = `projects/${entry.name}`
+      if (entry.isSymbolicLink()) migrationPathStat(root, relative)
+      if (!entry.isDirectory()) continue
+      const file = migrationPathStat(root, `${relative}/project.json`)
+      if (file && !file.isFile()) throw err.bad('MIGRATION_METADATA_INVALID', `${relative}/project.json 必须是普通文件`)
+      migrationJsonFiles(root, `${relative}/versions`)
+    }
+  }
+  migrationJsonFiles(root, 'milestones')
+  migrationJsonFiles(root, 'snapshots')
+  migrationJsonFiles(root, 'acceptances', true)
 }
 
 export function migrateToSchema2(root) {
@@ -307,6 +364,111 @@ export function migrateToSchema4(root, options = {}) {
   }
 }
 
+function migrationMetadata(root, relative) {
+  const value = parse(fs.readFileSync(path.join(root, relative), 'utf8'), relative)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw err.bad('MIGRATION_METADATA_INVALID', `${relative} 必须包含元数据对象`)
+  }
+  return value
+}
+
+function schema5Metadata(root) {
+  const writes = []
+  const snapshots = new Map()
+  for (const relative of migrationJsonFiles(root, 'snapshots')) {
+    const snapshot = migrationMetadata(root, relative)
+    const name = path.basename(relative, '.json')
+    if (snapshot.kind === undefined) {
+      snapshot.kind = 'legacy'
+      writes.push({ relative, value: snapshot, schema: 'snapshot' })
+    } else if (!['legacy', 'delivery'].includes(snapshot.kind)) {
+      throw err.bad('MIGRATION_SNAPSHOT_KIND_INVALID', `${relative} 的快照类型不合法`)
+    }
+    if (snapshot.kind === 'delivery') {
+      if (!Object.hasOwn(snapshot, 'acceptance')) {
+        throw err.bad('MIGRATION_DELIVERY_RULES_MISSING', `${relative} 缺少冻结验收规则`)
+      }
+      readDeliverySnapshot(root, name)
+    }
+    snapshots.set(name, snapshot)
+  }
+  for (const slug of store.listProjectSlugs(root)) {
+    const relative = `projects/${slug}/project.json`
+    const project = migrationMetadata(root, relative)
+    project.acceptance = normalizeAcceptanceRules(project.acceptance)
+    writes.push({ relative, value: project, schema: 'project' })
+  }
+  for (const relative of migrationJsonFiles(root, 'milestones')) {
+    const milestone = migrationMetadata(root, relative)
+    const name = path.basename(relative, '.json')
+    if (milestone.deliveries === undefined) milestone.deliveries = []
+    if (!Array.isArray(milestone.deliveries)) {
+      throw err.bad('MIGRATION_DELIVERIES_INVALID', `${relative} 的交付引用必须是数组`)
+    }
+    const scopes = new Set()
+    for (const delivery of milestone.deliveries) {
+      if (!delivery || typeof delivery !== 'object' || Array.isArray(delivery) ||
+          typeof delivery.project !== 'string' || !store.SLUG_RE.test(delivery.project) ||
+          typeof delivery.version !== 'string' || !store.VERSION_NO_RE.test(delivery.version) ||
+          typeof delivery.snapshot !== 'string' || !/^delivery-[a-f0-9]{48}$/.test(delivery.snapshot) ||
+          (delivery.releaseRunId !== undefined && (typeof delivery.releaseRunId !== 'string' || !delivery.releaseRunId.trim()))) {
+        throw err.bad('MIGRATION_DELIVERIES_INVALID', `${relative} 包含无效的交付引用`)
+      }
+      const snapshot = snapshots.get(delivery.snapshot)
+      const scope = `${delivery.project}/${delivery.version}`
+      if (scopes.has(scope) || snapshot?.kind !== 'delivery' || snapshot.milestone !== name ||
+          snapshot.project !== delivery.project || snapshot.version !== delivery.version) {
+        throw err.bad('MIGRATION_DELIVERY_REFERENCE_INVALID', `${relative} 的交付引用重复、缺失或与快照不一致`)
+      }
+      scopes.add(scope)
+    }
+    writes.push({ relative, value: milestone, schema: 'milestone' })
+  }
+  for (const relative of migrationJsonFiles(root, 'acceptances', true)) {
+    const parts = relative.split('/')
+    // Nested feedback metadata has a separate contract; only direct decisions belong here.
+    if (parts.length !== 3) continue
+    const record = migrationMetadata(root, relative)
+    const snapshot = snapshots.get(parts[1])
+    if (snapshot?.kind !== 'delivery' || record.snapshot !== parts[1] ||
+        record.id !== path.basename(parts[2], '.json') || record.snapshotHash !== snapshot.contentHash) {
+      throw err.bad('MIGRATION_ACCEPTANCE_REFERENCE_INVALID', `${relative} 的验收记录与交付快照不一致`)
+    }
+    aggregateAcceptance(snapshot.acceptance, [record])
+  }
+  return writes
+}
+
+export function migrateToSchema5(root, options = {}) {
+  const check = preflightMigration(root)
+  if (check.from >= 5) return { migrated: false, from: check.from, to: 5 }
+  if (check.from < 4) throw err.bad('MIGRATION_ORDER_INVALID', 'Schema 5 迁移必须先完成 Schema 4 迁移')
+  if (!options[SKIP_DIRTY_CHECK]) assertClean(check)
+  const backup = createMetadataBackup(root, { from: 4, to: 5 })
+  try {
+    const writes = schema5Metadata(root)
+    for (const { relative, value, schema } of writes) {
+      fs.writeFileSync(path.join(root, relative), stringify(value, schema), 'utf8')
+    }
+    options.afterSchema5Write?.()
+    assertMigrationTopLevelFilesAreNotSymlinks(root)
+    assertRequirementPathsAreNotSymlinks(root)
+    assertMigrationMetadataPaths(root)
+    for (const { relative, value, schema } of schema5Metadata(root)) {
+      if (fs.readFileSync(path.join(root, relative), 'utf8') !== stringify(value, schema)) {
+        throw err.bad('MIGRATION_SCHEMA5_INCOMPLETE', `${relative} 的 Schema 5 字段未完整写入`)
+      }
+    }
+    const config = parse(fs.readFileSync(path.join(root, REPO_FILE), 'utf8'), REPO_FILE)
+    config.schemaVersion = 5
+    fs.writeFileSync(path.join(root, REPO_FILE), stringify(config, 'repo'))
+    return { migrated: true, from: check.from, to: 5, projectCount: store.listProjectSlugs(root).length, backup }
+  } catch (error) {
+    restoreMetadataBackup(root, backup)
+    throw error
+  }
+}
+
 export function migrateToLatest(root, options = {}) {
   let from = preflightMigration(root).from
   const reports = []
@@ -330,7 +492,13 @@ export function migrateToLatest(root, options = {}) {
       initialBackup ||= report.backup
       from = 4
     }
-    return { migrated: reports.some((item) => item.migrated), from: reports[0]?.from ?? from, to: 4, reports }
+    if (from < 5) {
+      const report = migrateToSchema5(root, { ...options, [SKIP_DIRTY_CHECK]: reports.length > 0 })
+      reports.push(report)
+      initialBackup ||= report.backup
+      from = 5
+    }
+    return { migrated: reports.some((item) => item.migrated), from: reports[0]?.from ?? from, to: from, reports }
   } catch (error) {
     if (initialBackup) restoreMetadataBackup(root, initialBackup)
     throw error

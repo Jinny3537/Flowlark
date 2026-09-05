@@ -58,8 +58,8 @@ test('schema 2 projects gain normalized manual sync policy', (t) => {
 
   const report = migrateToLatest(root)
   t.assert.strictEqual(report.migrated, true)
-  t.assert.strictEqual(report.to, 4)
-  t.assert.strictEqual(JSON.parse(fs.readFileSync(configFile, 'utf8')).schemaVersion, 4)
+  t.assert.strictEqual(report.to, 5)
+  t.assert.strictEqual(JSON.parse(fs.readFileSync(configFile, 'utf8')).schemaVersion, 5)
   t.assert.strictEqual(store.readProject(root, 'orders').sync.mode, 'manual')
 })
 
@@ -153,7 +153,7 @@ test('schema 4 rejects a symlinked requirements root without touching its extern
   t.assert.strictEqual(fs.readlinkSync(requirements), outside)
 })
 
-test('schema 1 migrates through schema 2, schema 3, and schema 4', (t) => {
+test('schema 1 migrates through schema 2, schema 3, schema 4, and schema 5', (t) => {
   const { root, hub } = newHub()
   dirs.push(root)
   hub.createProject({ name: '订单', code: 'orders' })
@@ -171,7 +171,7 @@ test('schema 1 migrates through schema 2, schema 3, and schema 4', (t) => {
   store.writeVersion(root, 'orders', version)
 
   const report = migrateToLatest(root)
-  t.assert.strictEqual(report.to, 4)
+  t.assert.strictEqual(report.to, 5)
   t.assert.deepStrictEqual(store.readVersion(root, 'orders', 'v1').requirements, ['REQ-1'])
   t.assert.strictEqual(store.readProject(root, 'orders').sync.mode, 'manual')
 })

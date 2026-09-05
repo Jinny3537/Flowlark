@@ -20,3 +20,10 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node scripts/smoke-v073
 ```
 
 The previous interrupted final-review agent did not deliver a final report. Do not mark that review complete based only on its dispatch.
+
+## v0.7.4 data foundation
+
+- Schema 5 migration, backup, rules, committed snapshot materials, decision history and feedback/API focused run: 77/77 passed.
+- Full suite after integrating the data foundation: 678/678 passed, zero failures.
+- New tests prove that uncommitted edits cannot enter committed release snapshots, later project rules cannot alter historical rules, and required approvals remain blocked until blocking feedback is resolved.
+- Release continuation, delivery lifecycle/remote completion integration and v0.7.5 automatic execution are not yet implemented by this foundation.

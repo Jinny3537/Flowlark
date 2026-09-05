@@ -53,6 +53,12 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   // ---- 项目 ----
   r.get('/api/projects', async (req, res) => sendJson(res, 200, hub.listProjects()))
   r.get('/api/projects/:slug', async (req, res, p) => sendJson(res, 200, hub.getProject(p.slug)))
+  r.get('/api/projects/:slug/acceptance-rules', async (req, res, p) =>
+    sendJson(res, 200, hub.getProject(p.slug).acceptance))
+  r.put('/api/projects/:slug/acceptance-rules', async (req, res, p) => {
+    const acceptance = await readJson(req, maxBody)
+    sendJson(res, 200, hub.updateProject(p.slug, { acceptance }).acceptance)
+  })
 
   r.post('/api/projects', async (req, res) => {
     const body = await readJson(req, maxBody)
@@ -246,6 +252,14 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 201, { ...result, notificationResults })
   })
   r.get('/api/snapshots/:name', async (req, res, p) => sendJson(res, 200, hub.getSnapshot(p.name)))
+  r.get('/api/snapshots/:name/acceptance', async (req, res, p) => sendJson(res, 200, hub.deliveryAcceptance(p.name)))
+  r.post('/api/snapshots/:name/acceptances', async (req, res, p) =>
+    sendJson(res, 201, hub.recordAcceptance(p.name, await readJson(req, maxBody))))
+  r.get('/api/snapshots/:name/feedback', async (req, res, p) => sendJson(res, 200, hub.listDeliveryFeedback(p.name)))
+  r.post('/api/snapshots/:name/feedback', async (req, res, p) =>
+    sendJson(res, 201, hub.createDeliveryFeedback(p.name, await readJson(req, maxBody))))
+  r.post('/api/snapshots/:name/feedback/:id/resolve', async (req, res, p) =>
+    sendJson(res, 200, hub.resolveDeliveryFeedback(p.name, p.id, await readJson(req, maxBody))))
   r.post('/api/snapshots/inspect', async (req, res) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.inspectSnapshot(body))

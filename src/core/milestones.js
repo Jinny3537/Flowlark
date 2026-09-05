@@ -54,6 +54,7 @@ export function createMilestone(root, input, { system = false } = {}) {
     startAt: input.startAt || null,
     endAt: input.endAt || null,
     items: normalizeMilestoneItems(root, input.items),
+    deliveries: [],
     external: system ? input.external || null : null,
     createdAt: now,
     updatedAt: now
@@ -190,6 +191,7 @@ export function inspectMilestone(root, input) {
 function normalizeStoredMilestone(input = {}) {
   return {
     ...input,
+    deliveries: input.deliveries || [],
     goal: String(input.goal || ''),
     owner: String(input.owner || ''),
     status: normalizeMilestoneStatus(input.status),

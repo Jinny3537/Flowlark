@@ -26,6 +26,10 @@ import * as milestones from './milestones.js'
 import * as savedViews from './views.js'
 import * as exporter from './exporter.js'
 import * as snapshots from './snapshots.js'
+import { normalizeAcceptanceRules, aggregateAcceptance } from './acceptance-rules.js'
+import { readDeliverySnapshot, verifyDeliverySnapshot } from './delivery-snapshots.js'
+import { appendAcceptance, listAcceptances } from './acceptances.js'
+import { createDeliveryFeedback, listDeliveryFeedback, resolveDeliveryFeedback } from './delivery-feedback.js'
 import { suggestImpact as runImpact } from './impact.js'
 import * as notifications from './notifications.js'
 import * as releaseMail from './release-mail.js'
@@ -178,6 +182,7 @@ export class Hub {
       priority: project.priority || '',
       archived: project.archived === true,
       sync: normalizeSyncPolicy(project.sync),
+      acceptance: normalizeAcceptanceRules(project.acceptance),
       baselineVersionNo: baselineNo,
       versionCount: nos.length,
       latestVersion: latest ? {
@@ -215,6 +220,7 @@ export class Hub {
       archived: projectx.normalizeArchived(archived),
       releaseMail: releaseMail.normalizeReleaseMail(releaseMailInput),
       sync: normalizeSyncPolicy(),
+      acceptance: normalizeAcceptanceRules(),
       createdAt: now,
       createdBy: who,
       updatedAt: now,
@@ -246,10 +252,12 @@ export class Hub {
     if (patch.archived !== undefined) next.archived = projectx.normalizeArchived(patch.archived)
     if (patch.releaseMail !== undefined) next.releaseMail = releaseMail.normalizeReleaseMail(patch.releaseMail)
     if (patch.sync !== undefined) next.sync = assertSyncPolicy(patch.sync)
+    if (patch.acceptance !== undefined) next.acceptance = normalizeAcceptanceRules(patch.acceptance)
     if (next.priority === undefined) next.priority = ''
     if (next.archived === undefined) next.archived = false
     if (next.releaseMail === undefined) next.releaseMail = releaseMail.normalizeReleaseMail()
     if (next.sync === undefined) next.sync = normalizeSyncPolicy()
+    if (next.acceptance === undefined) next.acceptance = normalizeAcceptanceRules()
 
     next.updatedAt = new Date().toISOString()
     next.updatedBy = currentUser()
@@ -1148,6 +1156,31 @@ export class Hub {
 
   listSnapshots() { return snapshots.listSnapshots(this.root) }
   getSnapshot(name) { return snapshots.readSnapshot(this.root, name) }
+  deliveryAcceptance(name) {
+    const snapshot = readDeliverySnapshot(this.root, name)
+    const records = listAcceptances(this.root, name)
+    const feedback = listDeliveryFeedback(this.root, name)
+    const blockingFeedback = feedback.filter((item) => item.severity === 'blocker' && item.status === 'open').length
+    return { snapshot: name, snapshotHash: snapshot.contentHash, integrity: verifyDeliverySnapshot(this.root, name),
+      records, feedback, ...aggregateAcceptance(snapshot.acceptance, records, { blockingFeedback }) }
+  }
+
+  recordAcceptance(name, input) {
+    this.#assertWritable('提交验收结论')
+    return appendAcceptance(this.root, name, input)
+  }
+
+  listDeliveryFeedback(name) { return listDeliveryFeedback(this.root, name) }
+
+  createDeliveryFeedback(name, input) {
+    this.#assertWritable('记录交付反馈')
+    return createDeliveryFeedback(this.root, name, input)
+  }
+
+  resolveDeliveryFeedback(name, id, input) {
+    this.#assertWritable('解决交付反馈')
+    return resolveDeliveryFeedback(this.root, name, id, input)
+  }
   inspectSnapshot(input) { return snapshots.inspectSnapshotInput(this.root, input) }
   createSnapshot(input) {
     this.#assertWritable('创建交付快照')

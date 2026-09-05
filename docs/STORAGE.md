@@ -10,7 +10,7 @@
 
 ```
 my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
-├── flowlark.json                 仓库配置（schemaVersion: 4 / 仓库名 / 设置）
+├── flowlark.json                 仓库配置（schemaVersion: 5 / 仓库名 / 设置）
 ├── .gitattributes                原型 HTML 标记为二进制，避免污染 diff
 ├── projects/
 │   └── order-center/             ← 项目 slug，即目录名
@@ -29,7 +29,7 @@ my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
 │       └── spec.md               需求规格与验收边界
 ├── milestones/                  迭代范围、生命周期与外部 Sprint 绑定
 ├── snapshots/                   不可变交付快照
-├── acceptances/                 后续版本使用的验收记录目录
+├── acceptances/                 每个正式交付快照的验收结论与反馈
 └── .flowlark/
     ├── oplog.ndjson              操作日志，append-only
     ├── sync-audit.ndjson         同步审计，追加写入、递归脱敏并进入 Git
@@ -38,6 +38,18 @@ my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
     ├── backup/                   Schema 迁移恢复数据，不进入 Git
     └── trash/                    逻辑删除的版本移动到这里
 ```
+
+## Schema 5 验收数据
+
+项目增加 `acceptance.roles` 和 `acceptance.rule`，默认产品、研发、测试全部必选，当前通过规则为 `all-required`。同一角色的最新记录参与聚合；必选拒绝、未关闭的条件或未解决的阻断反馈会阻止通过。
+
+正式交付快照 `kind: delivery` 通过完整 Git 提交 ID 固化范围、版本规格、需求规格和验收规则。原型和附件保存提交中的实际字节（Base64）及 SHA-256，因此后续工作区改动不会改变历史材料。快照发布采用排他创建，重复同一发版返回原快照，内容不匹配则拒绝读取。
+
+每条验收结论追加到 `acceptances/<snapshot>/<uuid>.json`，绑定 `snapshotHash`，由服务端生成操作者、时间和 ID。反馈创建记录位于 `feedback/<uuid>.json`，解决记录位于 `feedback-resolutions/<uuid>.json`；解决操作保留原反馈字节。当前 API 没有验收历史的更新和删除入口。
+
+Schema 4→5 为旧项目补规则，为里程碑补 `deliveries`，把未分类旧快照标记为 `legacy`。旧快照不能作为正式验收依据。迁移保留正式快照和材料字节，验证引用并拒绝符号链接；失败恢复到迁移链开始前的状态。
+
+正式发版续跑与生命周期收尾仍在接入该数据层；以下 Schema 3/4 章节保留其引入版本背景。
 
 ## Schema 3 保存项目同步策略
 

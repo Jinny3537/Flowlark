@@ -6,7 +6,7 @@ import { err } from './errors.js'
 import { stringify, parse } from './json.js'
 import * as cfg from './config.js'
 
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 export const REPO_FILE = 'flowlark.json'
 export const INTERNAL_DIR = '.flowlark'
 
