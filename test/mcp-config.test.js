@@ -139,6 +139,19 @@ describe('MCP 配置文件', () => {
     t.assert.doesNotMatch(JSON.stringify(template), /real-token|api[_-]?key=|password=/i)
   })
 
+  test('需求池配置示例文件保持可导入且不含明文密钥', (t) => {
+    const file = path.resolve('docs/examples/requirement-pool-manifest.example.json')
+    const example = JSON.parse(fs.readFileSync(file, 'utf8'))
+    const preview = inspectRequirementPoolManifest(example)
+    t.assert.deepStrictEqual(preview.blockers, [])
+    t.assert.deepStrictEqual(preview.warnings, [])
+    t.assert.strictEqual(preview.manifestVersion, '2026-09')
+    t.assert.strictEqual(preview.server.headers.Authorization, 'Bearer ${secret:demand-pool-mcp}')
+    t.assert.strictEqual(preview.capability.tools.search, 'requirements.search')
+    t.assert.strictEqual(preview.capability.options.safety.readOnly, true)
+    t.assert.doesNotMatch(JSON.stringify(example), /real-token|api[_-]?key=|password=/i)
+  })
+
   test('需求池配置 Schema 覆盖导入必需契约和模板字段', (t) => {
     const schema = requirementPoolManifestSchema()
     const template = requirementPoolManifestTemplate()

@@ -24,6 +24,8 @@ POST /api/mcp/requirement-pool/status
 
 ## Manifest 示例
 
+可复制的示例文件在 [`docs/examples/requirement-pool-manifest.example.json`](examples/requirement-pool-manifest.example.json)。该文件会被测试读取并通过当前 manifest 预检。
+
 ```json
 {
   "manifestVersion": "2026-09",
@@ -241,4 +243,3 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs npm run smoke:v075:mcp-
 - 正式交付快照冻结了需求池来源摘要。
 - `npm run smoke:v075:requirement-pool -- --keep` 在真实测试平台跑通。
 - `npm run smoke:v075:mcp-ui` 在安装 Playwright 的本机跑通。
-
