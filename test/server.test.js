@@ -256,6 +256,13 @@ describe('配置与局域网 API', () => {
     t.assert.strictEqual(r.body.secrets[0].name, 'demand-pool-mcp')
   })
 
+  test('HTTP 可获取需求池 MCP 配置 Schema', async (t) => {
+    const r = await api.get('/api/mcp/requirement-pool/schema')
+    t.assert.strictEqual(r.status, 200)
+    t.assert.deepStrictEqual(r.body.required, ['manifestVersion', 'platform', 'transport', 'tools'])
+    t.assert.deepStrictEqual(r.body.properties.tools.required, ['test', 'search', 'get'])
+  })
+
   test('HTTP 可导入需求池 MCP 配置 JSON', async (t) => {
     const manifest = {
       manifestVersion: '2026-09',

@@ -741,6 +741,9 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                 <Button loading={testing === 'requirementPoolTemplate'} disabled={!canWrite || Boolean(testing)} onClick={() => void loadRequirementPoolManifestTemplate()}>
                   加载示例
                 </Button>
+                <Button href="/api/mcp/requirement-pool/schema" target="_blank" rel="noreferrer">
+                  查看 Schema
+                </Button>
                 <Button disabled={!canWrite} onClick={() => manifestFileInputRef.current?.click()}>
                   选择 JSON 文件
                 </Button>

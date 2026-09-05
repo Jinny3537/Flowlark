@@ -3,7 +3,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cleanup, newHub } from './helpers.js'
-import { inspectRequirementPoolManifest, inspectRequirementPoolStatus, requirementPoolManifestTemplate, resolveCapability } from '../src/core/mcp-config.js'
+import { inspectRequirementPoolManifest, inspectRequirementPoolStatus, requirementPoolManifestSchema, requirementPoolManifestTemplate, resolveCapability } from '../src/core/mcp-config.js'
 
 const dirs = []
 let server
@@ -137,6 +137,17 @@ describe('MCP 配置文件', () => {
     t.assert.strictEqual(preview.secrets[0].name, 'demand-pool-mcp')
     t.assert.strictEqual(preview.capability.options.safety.readOnly, true)
     t.assert.doesNotMatch(JSON.stringify(template), /real-token|api[_-]?key=|password=/i)
+  })
+
+  test('需求池配置 Schema 覆盖导入必需契约和模板字段', (t) => {
+    const schema = requirementPoolManifestSchema()
+    const template = requirementPoolManifestTemplate()
+    t.assert.strictEqual(schema.$schema, 'https://json-schema.org/draft/2020-12/schema')
+    t.assert.deepStrictEqual(schema.required, ['manifestVersion', 'platform', 'transport', 'tools'])
+    t.assert.deepStrictEqual(schema.properties.tools.required, ['test', 'search', 'get'])
+    for (const key of schema.required) t.assert.ok(template[key], `template should include ${key}`)
+    for (const key of schema.properties.tools.required) t.assert.ok(template.tools[key], `template tools should include ${key}`)
+    t.assert.doesNotMatch(JSON.stringify(schema), /real-token|password=/i)
   })
 
   test('需求池接入诊断区分缺本机密钥和可测试状态', (t) => {

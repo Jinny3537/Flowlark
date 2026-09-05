@@ -1766,6 +1766,9 @@ export class Hub {
   requirementPoolManifestTemplate() {
     return mcpConfig.requirementPoolManifestTemplate()
   }
+  requirementPoolManifestSchema() {
+    return mcpConfig.requirementPoolManifestSchema()
+  }
   inspectRequirementPoolManifest(input) {
     return mcpConfig.inspectRequirementPoolManifest(input)
   }

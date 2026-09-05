@@ -142,6 +142,109 @@ export function requirementPoolManifestTemplate() {
   }
 }
 
+export function requirementPoolManifestSchema() {
+  return {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    $id: 'https://flowlark.local/schemas/requirement-pool-manifest.schema.json',
+    title: 'Flowlark Requirement Pool MCP Manifest',
+    type: 'object',
+    additionalProperties: true,
+    required: ['manifestVersion', 'platform', 'transport', 'tools'],
+    properties: {
+      manifestVersion: {
+        type: 'string',
+        minLength: 1,
+        description: 'Manifest contract version, for example 2026-09.'
+      },
+      platform: {
+        type: 'object',
+        additionalProperties: true,
+        required: ['id', 'name'],
+        properties: {
+          id: { type: 'string', pattern: '^[a-z0-9._-]+$' },
+          name: { type: 'string', minLength: 1 },
+          type: { type: 'string', default: 'requirement-pool' },
+          docsUrl: { type: 'string' },
+          icon: { type: 'string' }
+        }
+      },
+      project: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' }
+        }
+      },
+      projectId: {
+        type: 'string',
+        description: 'Legacy shorthand for project.id.'
+      },
+      serverId: {
+        type: 'string',
+        pattern: '^[a-z0-9._-]+$'
+      },
+      transport: {
+        type: 'object',
+        additionalProperties: true,
+        required: ['type', 'url'],
+        properties: {
+          type: { type: 'string', enum: ['http', 'sse'] },
+          url: { type: 'string', pattern: '^https?://' },
+          timeoutMs: { type: 'number', minimum: 1 },
+          headers: {
+            type: 'object',
+            additionalProperties: { type: 'string' },
+            description: 'Use placeholders such as Bearer ${secret:demand-pool-mcp}; do not put plaintext secrets here.'
+          }
+        }
+      },
+      tools: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+        required: ['test', 'search', 'get'],
+        properties: {
+          test: { type: 'string', minLength: 1 },
+          search: { type: 'string', minLength: 1 },
+          get: { type: 'string', minLength: 1 },
+          comment: { type: 'string' }
+        }
+      },
+      fields: {
+        type: 'object',
+        additionalProperties: { type: 'string' }
+      },
+      statuses: {
+        type: 'object',
+        additionalProperties: { type: 'string' }
+      },
+      secrets: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          required: ['name'],
+          properties: {
+            name: { type: 'string', minLength: 1 },
+            label: { type: 'string' },
+            required: { type: 'boolean', default: true }
+          }
+        },
+        description: 'Secret declarations only. Values must be stored locally, never in this manifest.'
+      },
+      safety: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          readOnly: { type: 'boolean', default: true },
+          writes: { type: 'array', items: { type: 'string' }, default: [] },
+          dangerous: { type: 'array', items: { type: 'string' }, default: [] }
+        }
+      }
+    }
+  }
+}
+
 export function importRequirementPoolManifest(root, input = {}) {
   const draft = inspectRequirementPoolManifest(input)
   if (draft.blockers.length) {
