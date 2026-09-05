@@ -35,6 +35,9 @@ The previous interrupted final-review agent did not deliver a final report. Do n
 - Delivery and project settings have no page-level horizontal overflow at 1440×900 and 390×844. Mirror mode disables decision and feedback writes. No page JavaScript errors were observed.
 - Frozen material downloads return verified bytes as attachments, including in read-only mode. Binary attachment preservation after local deletion is covered by a storage test.
 - The smoke does not yet exercise formal release creation of that snapshot; that integration remains Task 5.
+- Final full test run with the acceptance UI/models and material downloads: 684/684 passed, zero failures.
+- An earlier full run had two `fetch failed` errors; isolated reproduction identified `ECONNRESET` when the in-process HTTP fixture reused an idle connection after synchronous repository work. The test client now sends `Connection: close` for each request, without retries or altered business assertions. The focused file passed 18/18 before the final full run.
+- Concurrent worktree changes to `src/core/milestone-sync.js` and the separate 0.8 roadmap were preserved outside this phase's commits.
 
 ```sh
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node scripts/smoke-v074.mjs

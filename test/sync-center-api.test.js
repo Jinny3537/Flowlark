@@ -141,8 +141,13 @@ async function isolatedPendingUpdate(t, name) {
 async function call(method, pathname, body, origin = base) {
   const response = await fetch(`${origin}${pathname}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    // Synchronous Git fixtures share the server event loop. Do not reuse an
+    // idle socket whose expiry can race the next POST after those fixtures.
+    headers: { 'Content-Type': 'application/json', Connection: 'close' },
     body: body === undefined ? undefined : JSON.stringify(body)
+  }).catch((error) => {
+    error.message += ` (${method} ${pathname}: ${error.cause?.code || ''} ${error.cause?.message || ''})`
+    throw error
   })
   return { status: response.status, body: await response.json() }
 }
