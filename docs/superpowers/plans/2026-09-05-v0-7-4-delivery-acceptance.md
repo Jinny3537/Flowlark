@@ -118,7 +118,7 @@ Files: project settings, delivery detail, requirement detail, milestone detail, 
 - [x] Show immutable material integrity, acceptance matrix/history and blocking feedback in delivery detail.
 - [x] Expose release continuation and the next valid action in milestone detail. Add delivery/acceptance summaries to requirements.
 - [ ] All error states retain local evidence; disabled actions explain the actual unsatisfied gate.
-- [ ] Verify the complete workflow at 1440×900 and 390×844, including read-only navigation and writes denied.
+- [x] Verify the complete workflow at 1440×900 and 390×844, including read-only navigation and writes denied.
 
 ## 8. Release verification
 

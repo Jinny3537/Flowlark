@@ -34,7 +34,7 @@ The previous interrupted final-review agent did not deliver a final report. Do n
 - Adding a blocking feedback item changes readiness to false; resolving it with a reason restores readiness. Both operations were performed through the UI.
 - Delivery and project settings have no page-level horizontal overflow at 1440×900 and 390×844. Mirror mode disables decision and feedback writes. No page JavaScript errors were observed.
 - Frozen material downloads return verified bytes as attachments, including in read-only mode. Binary attachment preservation after local deletion is covered by a storage test.
-- Formal release creation of delivery snapshots is now covered by the focused release/API tests below; browser smoke for the release continuation UI remains open.
+- Formal release creation of delivery snapshots is covered by the focused release/API tests below; the browser smoke now covers delivery detail, requirement delivery summaries and the delivered-to-external-completion continuation UI.
 - Final full test run with the acceptance UI/models and material downloads: 684/684 passed, zero failures.
 - An earlier full run had two `fetch failed` errors; isolated reproduction identified `ECONNRESET` when the in-process HTTP fixture reused an idle connection after synchronous repository work. The test client now sends `Connection: close` for each request, without retries or altered business assertions. The focused file passed 18/18 before the final full run.
 - Concurrent worktree changes to `src/core/milestone-sync.js` and the separate 0.8 roadmap were preserved outside this phase's commits.
@@ -51,7 +51,7 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node scripts/smoke-v074
 - Mail retry now links back to the release-run, so a pending mail can complete the existing run without replaying baseline, Git or snapshot work.
 - Acceptance decisions now update requirement lifecycle: all required approvals with no blocking feedback move requirements to `completed`; a required rejection moves pending requirements back to `developing`.
 - Delivery completion now has a dedicated service/API wrapper: it blocks until frozen delivery evidence passes local acceptance, then reuses the sync queue to preview managed task status updates and Sprint end execution with plan hash, revision, lock, read-back and audit protection.
-- Milestone detail now routes the delivered-but-not-externally-closed state to the delivery-completion plan, and requirement detail shows delivery snapshot, acceptance and external read-back summaries from response-layer derived data.
+- Milestone detail now routes the delivered-but-not-externally-closed state to the delivery-completion plan, and requirement detail shows delivery snapshot, acceptance and external read-back summaries from response-layer derived data. Browser smoke verifies the route and action at 1440×900 and 390×844.
 - Milestone archive is now gated by every scoped delivery snapshot passing acceptance, all scoped requirements being `completed`, a verified ended external Sprint status, and verified closed external task statuses.
 - Git synchronization now treats `requirements`, `milestones`, `snapshots`, `acceptances` and `views` as Flowlark-owned paths. This is required for release commits to contain the milestone scope and requirement specifications used by immutable delivery snapshots.
 - Verified focused release, acceptance, archive, delivery-completion and lifecycle runs: 19/19, 23/23, 55/55, 28/28 and 71/71 passed.
@@ -68,4 +68,3 @@ git diff --check
 Remaining v0.7.4 scope:
 
 - Failure injection currently covers Git and mail for formal release and existing sync-center remote operation recovery. Snapshot, lifecycle and delivery-completion/archive step-specific failures still need dedicated recovery tests.
-- Complete browser workflow verification at 1440×900 and 390×844 is still pending for the release-continuation and delivery-completion UI.
