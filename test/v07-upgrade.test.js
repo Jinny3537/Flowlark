@@ -295,6 +295,27 @@ describe('v0.7 升级能力', () => {
         return true
       }
     )
+
+    const preBump = await execFileAsync(process.execPath, [
+      'scripts/check-v075-readiness.mjs',
+      '--phase', 'pre-bump',
+      '--manifest', manifestFile,
+      '--smoke-result', smokeResultFile,
+      '--ui-smoke-result', uiSmokeResultFile
+    ], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      env: {
+        ...process.env,
+        PLAYWRIGHT_MODULE: process.execPath,
+        FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+      }
+    })
+    const preBumpResult = JSON.parse(preBump.stdout)
+    t.assert.strictEqual(preBumpResult.passed, true)
+    t.assert.strictEqual(preBumpResult.phase, 'pre-bump')
+    t.assert.strictEqual(preBumpResult.checks.find((item) => item.key === 'package-version').status, 'pass')
   })
 
   test('v0.7.5 验收脚本可从 Header 占位符推导本机密钥环境变量', async (t) => {

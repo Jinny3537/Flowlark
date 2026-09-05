@@ -273,14 +273,20 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
 ```
 
-最终发布门禁会检查版本号、manifest、凭据环境变量、真实 smoke 结果和 Playwright 入口；应在真实平台与浏览器 smoke 证据齐全、版本号提升到 `0.7.5` 后运行：
+最终发布门禁会检查 manifest、凭据环境变量、真实 smoke 结果和 Playwright 入口。真实平台与浏览器 smoke 证据齐全后，先跑 `pre-bump`；它通过后再把版本号提升到 `0.7.5`，并跑 `final`：
 
 ```bash
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
 FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
 FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-npm run check:v075:readiness
+npm run check:v075:readiness -- --phase pre-bump
+
+FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
+FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
+FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+npm run check:v075:readiness -- --phase final
 ```
 
 ### 3.5 Git 助手 — 从不让用户去敲 git

@@ -5,10 +5,14 @@ import { inspectRequirementPoolManifest } from '../src/core/mcp-config.js'
 
 const TARGET_VERSION = '0.7.5'
 const args = parseArgs(process.argv.slice(2))
+const phase = args.phase || process.env.FLOWLARK_V075_READINESS_PHASE || 'final'
 
 if (args.help) {
   usage()
   process.exit(0)
+}
+if (!['pre-bump', 'final'].includes(phase)) {
+  throw new Error(`未知 readiness 阶段：${phase}`)
 }
 
 const checks = []
@@ -28,13 +32,10 @@ const failed = checks.filter((item) => item.status === 'fail')
 const result = {
   passed: failed.length === 0,
   targetVersion: TARGET_VERSION,
+  phase,
   checks,
   next: failed.length
-      ? [
-          'Run the real-platform smoke against a disposable requirement-pool project and save its JSON output.',
-          'Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set and save its JSON output.',
-          'Bump package.json and web/package.json to 0.7.5 only after the real-platform and browser smoke evidence exists.'
-        ]
+    ? nextActions()
     : []
 }
 
@@ -44,6 +45,13 @@ process.exit(result.passed ? 0 : 1)
 function checkPackageVersions() {
   const rootPackage = readJsonFile(path.join(root, 'package.json'))
   const webPackage = readJsonFile(path.join(root, 'web/package.json'))
+  if (phase === 'pre-bump') {
+    addCheck('package-version', true,
+      `package.json version is ${rootPackage?.version || 'missing'}; ${TARGET_VERSION} is required in final phase`)
+    addCheck('web-package-version', true,
+      `web/package.json version is ${webPackage?.version || 'missing'}; ${TARGET_VERSION} is required in final phase`)
+    return
+  }
   addCheck('package-version', rootPackage?.version === TARGET_VERSION,
     `package.json version is ${rootPackage?.version || 'missing'}, expected ${TARGET_VERSION}`)
   addCheck('web-package-version', webPackage?.version === TARGET_VERSION,
@@ -173,6 +181,7 @@ function parseArgs(values) {
   for (let index = 0; index < values.length; index++) {
     const item = values[index]
     if (item === '--help' || item === '-h') out.help = true
+    else if (item === '--phase') out.phase = values[++index]
     else if (item === '--manifest') out.manifest = values[++index]
     else if (item === '--smoke-result') out.smokeResult = values[++index]
     else if (item === '--ui-smoke-result') out.uiSmokeResult = values[++index]
@@ -197,6 +206,16 @@ function envSuffix(value) {
   return String(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
 }
 
+function nextActions() {
+  const actions = [
+    'Run the real-platform smoke against a disposable requirement-pool project and save its JSON output.',
+    'Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set and save its JSON output.'
+  ]
+  if (phase === 'pre-bump') actions.push('Bump package.json and web/package.json to 0.7.5 only after this pre-bump readiness check passes.')
+  else actions.push('If pre-bump readiness has passed, bump package.json and web/package.json to 0.7.5, then rerun the final readiness check.')
+  return actions
+}
+
 function usage() {
   console.error(`Usage:
   FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \\
@@ -205,9 +224,12 @@ function usage() {
   FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \\
   FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \\
   PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \\
-  npm run check:v075:readiness
+  npm run check:v075:readiness -- --phase pre-bump
+
+  npm run check:v075:readiness -- --phase final
 
 Options:
+  --phase <pre-bump|final> Final phase also requires package versions to be ${TARGET_VERSION}.
   --manifest <file>       Requirement-pool MCP manifest JSON.
   --smoke-result <file>   JSON output saved from smoke:v075:requirement-pool -- --output.
   --ui-smoke-result <file> JSON output saved from smoke:v075:mcp-ui -- --output.
