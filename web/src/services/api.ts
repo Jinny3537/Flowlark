@@ -240,6 +240,8 @@ export const api = {
   getRequirement: (code: string) => get<any>(`/api/requirements/${enc(code)}`),
   createRequirement: (body: unknown) => post<any>('/api/requirements', body),
   updateRequirement: (code: string, body: unknown) => put<any>(`/api/requirements/${enc(code)}`, body),
+  refreshExternalRequirement: (code: string, config = {}) =>
+    post<any>(`/api/requirements/${enc(code)}/external/refresh`, { config }),
   requirementConfirmationPreflight: (code: string) =>
     get<RequirementConfirmationPreflight>(`/api/requirements/${enc(code)}/confirmation-preflight`),
   transitionRequirement: (code: string, target: 'confirmed', reason = '') =>

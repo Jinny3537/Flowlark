@@ -238,6 +238,13 @@ describe('升级后的 API', () => {
     t.assert.ok(r.status === 200 || r.status === 400, `实际 ${r.status}`)
     if (r.status === 400) t.assert.ok(r.body.code)
   })
+
+  test('外部需求刷新接口对本地需求返回结构化错误', async (t) => {
+    hub.createRequirement({ code: 'REQ-LOCAL-REFRESH', title: '本地需求刷新' })
+    const r = await api.send('POST', '/api/requirements/REQ-LOCAL-REFRESH/external/refresh', {})
+    t.assert.strictEqual(r.status, 400)
+    t.assert.strictEqual(r.body.code, 'REQUIREMENT_EXTERNAL_MISSING')
+  })
 })
 
 describe('配置与局域网 API', () => {

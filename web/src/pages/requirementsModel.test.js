@@ -43,6 +43,19 @@ test('projects a list row without conflating lifecycle, prototype, source and bi
   assert.equal(row.prototypeProgress.value, 'designing')
   assert.equal(row.prototypeProgress.label, '设计中')
   assert.equal(row.source.label, '需求池')
+  assert.equal(row.source.tone, 'success')
   assert.equal(row.externalBinding.state, 'synced')
   assert.deepEqual(row.milestoneMembership, { count: 1, names: ['Sprint-8'] })
+})
+
+test('projects failed requirement-pool refresh as source warning without changing source filter', () => {
+  const row = projectRequirement({
+    code: 'REQ-FAIL',
+    title: '远端不可访问',
+    external: { provider: 'mcp', syncStatus: 'failed' },
+    externalTasks: [],
+  })
+  assert.equal(row.source.value, 'pool')
+  assert.equal(row.source.label, '需求池异常')
+  assert.equal(row.source.tone, 'error')
 })

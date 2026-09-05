@@ -64,7 +64,7 @@ import {
   withMilestoneSyncLock
 } from './milestone-sync.js'
 import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
-import { appendSyncAudit, listSyncAudit as readSyncAudit } from './sync-audit.js'
+import { appendSyncAudit, listSyncAudit as readSyncAudit, sanitizeSyncValue } from './sync-audit.js'
 import {
   cancelSyncRecord as cancelQueuedSyncRecord,
   findSyncRecord,
@@ -2628,6 +2628,23 @@ export class Hub {
     return reqx.requirementDetail(this.root, item.code)
   }
 
+  async refreshExternalRequirement(code, overrides = {}) {
+    this.#assertWritable('刷新外部需求')
+    const item = reqx.readRequirement(this.root, code)
+    if (!item.external?.provider) {
+      throw err.bad('REQUIREMENT_EXTERNAL_MISSING', `需求 ${code} 不是外部需求池引用`)
+    }
+    try {
+      const refreshed = await this.#refreshExternalRequirementRecord(item, overrides)
+      this.#log(null, null, 'REQUIREMENT_REFRESH', `刷新外部需求 ${refreshed.code}`)
+      return refreshed
+    } catch (e) {
+      const failure = this.#markExternalRequirementSyncFailure(item, e)
+      this.#log(null, null, 'REQUIREMENT_REFRESH_FAILED', `刷新外部需求 ${item.code} 失败：${failure.code}`)
+      return reqx.requirementDetail(this.root, item.code)
+    }
+  }
+
   async syncExternalRequirements(provider = null, overrides = {}) {
     this.#assertWritable('同步需求池')
     const selected = provider || this.settings.integrations.requirementProvider || 'mcp'
@@ -2639,12 +2656,11 @@ export class Hub {
     const result = { provider: selected, total: items.length, updated: 0, failed: [] }
     for (const item of items) {
       try {
-        const key = item.external.key || item.code
-        const remote = await reqIntegration.fetchRequirement(selected, this.requirementConfig(selected, overrides), key)
-        this.#saveExternalRequirement(this.#externalRequirementInput(selected, remote, item.external))
+        await this.#refreshExternalRequirementRecord(item, overrides)
         result.updated++
       } catch (e) {
-        result.failed.push({ code: item.code, message: e.message })
+        const failure = this.#markExternalRequirementSyncFailure(item, e)
+        result.failed.push({ code: item.code, ...failure })
       }
     }
     this.#log(null, null, 'REQUIREMENT_SYNC', `同步需求池 ${result.updated}/${result.total} 条`)
@@ -3237,7 +3253,43 @@ export class Hub {
     return [...new Set(out)]
   }
 
+  async #refreshExternalRequirementRecord(item, overrides = {}) {
+    const provider = item.external?.provider
+    if (!provider) throw err.bad('REQUIREMENT_EXTERNAL_MISSING', `需求 ${item.code} 不是外部需求池引用`)
+    const key = item.external.key || item.code
+    const remote = await reqIntegration.fetchRequirement(provider, this.requirementConfig(provider, overrides), key)
+    const input = this.#externalRequirementInput(provider, remote, item.external)
+    const saved = this.#saveExternalRequirement(input)
+    return reqx.requirementDetail(this.root, saved.code)
+  }
+
+  #markExternalRequirementSyncFailure(item, error) {
+    const now = new Date().toISOString()
+    const problem = requirementPoolProbeProblem(error)
+    const failure = sanitizeSyncValue({
+      code: problem.code,
+      message: problem.message,
+      hint: problem.hint || '',
+      at: now
+    })
+    reqx.updateRequirement(this.root, item.code, {
+      external: {
+        ...(item.external || {}),
+        syncStatus: 'failed',
+        failure,
+        lastSyncAttemptAt: now
+      }
+    }, { trusted: true, now })
+    return failure
+  }
+
   #externalRequirementInput(provider, remote, previousExternal = {}) {
+    const {
+      syncStatus,
+      failure,
+      lastSyncAttemptAt,
+      ...stableExternal
+    } = previousExternal || {}
     return {
       code: remote.code,
       title: remote.title,
@@ -3249,11 +3301,12 @@ export class Hub {
       owner: remote.owner,
       url: remote.url,
       external: {
-        ...previousExternal,
+        ...stableExternal,
         provider,
-        key: previousExternal.key || remote.code,
+        key: stableExternal.key || remote.code,
         url: remote.url,
         status: remote.status,
+        syncStatus: 'synced',
         syncedAt: new Date().toISOString()
       }
     }

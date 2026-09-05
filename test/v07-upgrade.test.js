@@ -2,6 +2,7 @@ import { after, before, describe, test } from 'node:test'
 import http from 'node:http'
 import { cleanup, html, newHub } from './helpers.js'
 import { fetchRequirement, postRequirementComment, searchRequirements, testRequirementConnection } from '../src/core/integrations/requirements/index.js'
+import * as reqx from '../src/core/requirements.js'
 
 const dirs = []
 let server
@@ -24,6 +25,10 @@ before(async () => {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { items: [{ code: 'REQ-7', title: '外部需求', status: 'open', owner: 'PM' }] } } }))
       }
       if (params.name === 'requirements.get') {
+        if (params.arguments?.key === 'REQ-GONE') {
+          res.statusCode = 404
+          return res.end(JSON.stringify({ message: 'requirement not found' }))
+        }
         return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { content: [{ type: 'text', text: JSON.stringify({ code: 'REQ-7', title: '外部需求', url: 'https://mcp.example/REQ-7' }) }] } }))
       }
       if (params.name === 'requirements.comment') {
@@ -76,5 +81,34 @@ describe('v0.7 升级能力', () => {
     const comment = await postRequirementComment('mcp', config, 'REQ-7', '新基线已确认')
     t.assert.strictEqual(comment.ok, true)
     t.assert.ok(requests.some((item) => item.url === '/mcp' && item.body.params.name === 'requirements.comment' && item.body.params.arguments.body === '新基线已确认'))
+  })
+
+  test('外部需求可单条刷新，失败时保留本地数据并记录不可访问状态', async (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    hub.saveMcpServer({ id: 'requirements-mcp', name: '需求池 MCP', url: `${baseUrl}/mcp`, headers: { 'X-Test': 'yes' } })
+    hub.saveMcpCapability('requirements', {
+      enabled: true,
+      server: 'requirements-mcp',
+      project: 'safe-prod',
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      options: { fields: { title: 'title' }, statuses: { open: '待处理' } }
+    })
+
+    const imported = await hub.importExternalRequirement('mcp', 'REQ-7')
+    t.assert.strictEqual(imported.external.syncStatus, 'synced')
+    const refreshed = await hub.refreshExternalRequirement('REQ-7')
+    t.assert.strictEqual(refreshed.external.syncStatus, 'synced')
+
+    reqx.createRequirement(root, {
+      code: 'REQ-GONE',
+      title: '已删除的外部需求',
+      external: { provider: 'mcp', key: 'REQ-GONE', status: 'open', syncedAt: '2026-09-05T08:00:00.000Z' }
+    }, { trusted: true, now: '2026-09-05T08:00:00.000Z', actor: 'system:test' })
+    const failed = await hub.refreshExternalRequirement('REQ-GONE')
+    t.assert.strictEqual(failed.title, '已删除的外部需求')
+    t.assert.strictEqual(failed.external.syncStatus, 'failed')
+    t.assert.strictEqual(failed.external.failure.code, 'REQUIREMENT_POOL_TOOL_MISSING')
+    t.assert.match(failed.external.failure.message, /404|not found/)
   })
 })

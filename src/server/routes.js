@@ -106,6 +106,10 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.updateRequirement(p.code, body))
   })
+  r.post('/api/requirements/:code/external/refresh', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, await hub.refreshExternalRequirement(p.code, body.config || body))
+  })
   r.post('/api/requirements/:code/links', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.linkRequirement(p.code, body.project, body.versionNo))

@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, App, Button, DatePicker, Descriptions, Form, Input, List, Modal, Space, Tag } from 'antd';
-import { AuditOutlined, CheckCircleOutlined, EditOutlined, ExportOutlined, LinkOutlined, SaveOutlined } from '@ant-design/icons';
+import { AuditOutlined, CheckCircleOutlined, EditOutlined, ExportOutlined, LinkOutlined, SaveOutlined, SyncOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
@@ -48,6 +48,7 @@ export default function RequirementDetail() {
   const [bindingPlan, setBindingPlan] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [refreshingExternal, setRefreshingExternal] = useState(false);
   const [form] = Form.useForm();
   const [bindingForm] = Form.useForm();
 
@@ -148,6 +149,23 @@ export default function RequirementDetail() {
     }
   }, [code, message]);
 
+  const refreshExternal = useCallback(async () => {
+    setRefreshingExternal(true);
+    try {
+      const next = await api.refreshExternalRequirement(code);
+      setItem(next);
+      if (next?.external?.syncStatus === 'failed') {
+        message.warning(next.external.failure?.message || '需求池刷新失败，已记录失败状态');
+      } else {
+        message.success('需求池引用已刷新');
+      }
+    } catch (nextError) {
+      message.error(errorText(nextError, '刷新需求池失败'));
+    } finally {
+      setRefreshingExternal(false);
+    }
+  }, [code, message]);
+
   const runPrimaryAction = useCallback(async () => {
     if (!primaryAction || primaryGuard.disabled) return;
     if (primaryAction.key === 'confirm') {
@@ -227,12 +245,22 @@ export default function RequirementDetail() {
               </Button>
             ) : null}
             <Button icon={<EditOutlined />} disabled={!writable} title={!writable ? readonlyReason : undefined} onClick={startEdit}>编辑</Button>
+            {item.external ? <Button icon={<SyncOutlined />} loading={refreshingExternal} disabled={!writable} title={!writable ? readonlyReason : undefined} onClick={() => void refreshExternal()}>刷新需求池</Button> : null}
             <Button icon={<ExportOutlined />} loading={exporting} disabled={!writable} title={!writable ? readonlyReason : undefined} onClick={exportPackage}>导出需求包</Button>
           </Space>
         ) : null}
       />
 
       {!writable && item ? <Alert className="fl-dashboard-alert" type="info" showIcon message="只读模式" description={`${readonlyReason} 生命周期、规格书、任务关联和迭代归属仍可查看。`} /> : null}
+      {item?.external?.syncStatus === 'failed' ? (
+        <Alert
+          className="fl-dashboard-alert"
+          type="warning"
+          showIcon
+          message="需求池刷新失败"
+          description={`${item.external.failure?.message || '外部需求暂不可访问'}${item.external.failure?.hint ? `；${item.external.failure.hint}` : ''}`}
+        />
+      ) : null}
 
       <State loading={loading} error={error} onRetry={load} empty={!item} emptyText="没有找到需求">
         <div className="fl-requirement-detail-grid">
@@ -246,6 +274,7 @@ export default function RequirementDetail() {
                 <Descriptions.Item label="项目">{textOf(item?.project, '未分项目')}</Descriptions.Item>
                 <Descriptions.Item label="模块">{textOf(item?.module, '未分模块')}</Descriptions.Item>
                 <Descriptions.Item label="来源">{item?.external ? '需求池' : '本地'}</Descriptions.Item>
+                {item?.external ? <Descriptions.Item label="需求池同步">{item.external.syncStatus === 'failed' ? '刷新失败' : item.external.syncedAt ? `已同步 ${fmtTime(item.external.syncedAt)}` : '尚未同步'}</Descriptions.Item> : null}
                 <Descriptions.Item label="类型">{textOf(item?.type)}</Descriptions.Item>
                 <Descriptions.Item label="优先级">{textOf(item?.priority)}</Descriptions.Item>
                 <Descriptions.Item label="截止日期"><Space size="small" wrap><span>{textOf(item?.dueDate)}</span>{item?.overdue ? <Tag color="error">已逾期</Tag> : null}</Space></Descriptions.Item>

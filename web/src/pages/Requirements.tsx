@@ -272,7 +272,7 @@ export default function Requirements() {
                   </Space>
                 ),
               },
-              { title: '来源', width: 110, render: (_, record: any) => <Tag color={record.source.value === 'pool' ? 'success' : 'default'}>{record.source.label}</Tag> },
+              { title: '来源', width: 110, render: (_, record: any) => <Tag color={record.source.tone}>{record.source.label}</Tag> },
               {
                 title: '原型范围',
                 width: 180,

@@ -26,8 +26,8 @@ export function projectRequirement(item = {}) {
     milestoneMembership: { count: milestones.length, names: milestones },
     externalBinding: externalBindingMeta(item),
     source: item.external
-      ? { value: 'pool', label: '需求池' }
-      : { value: 'local', label: '本地' },
+      ? { value: 'pool', label: item.external.syncStatus === 'failed' ? '需求池异常' : '需求池', tone: item.external.syncStatus === 'failed' ? 'error' : 'success' }
+      : { value: 'local', label: '本地', tone: 'default' },
   }
 }
 
