@@ -86,6 +86,62 @@ export function inspectRequirementPoolManifest(input = {}) {
   }
 }
 
+export function requirementPoolManifestTemplate() {
+  return {
+    manifestVersion: '2026-09',
+    platform: {
+      id: 'demand-pool',
+      name: '需求池平台',
+      type: 'requirement-pool',
+      docsUrl: 'https://docs.example.com/requirement-pool-mcp'
+    },
+    project: {
+      id: 'safe-prod'
+    },
+    transport: {
+      type: 'http',
+      url: 'https://mcp.example.com/api',
+      timeoutMs: 10000,
+      headers: {
+        Authorization: 'Bearer ${secret:demand-pool-mcp}'
+      }
+    },
+    tools: {
+      test: 'requirements.test',
+      search: 'requirements.search',
+      get: 'requirements.get'
+    },
+    fields: {
+      code: 'code',
+      title: 'title',
+      module: 'module',
+      type: 'type',
+      priority: 'priority',
+      owner: 'owner',
+      status: 'status',
+      url: 'url'
+    },
+    statuses: {
+      backlog: '待排期',
+      doing: '开发中',
+      done: '已完成',
+      closed: '已关闭'
+    },
+    secrets: [
+      {
+        name: 'demand-pool-mcp',
+        label: '需求池访问 Token',
+        required: true
+      }
+    ],
+    safety: {
+      readOnly: true,
+      writes: [],
+      dangerous: []
+    }
+  }
+}
+
 export function importRequirementPoolManifest(root, input = {}) {
   const draft = inspectRequirementPoolManifest(input)
   if (draft.blockers.length) {

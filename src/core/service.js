@@ -1763,6 +1763,9 @@ export class Hub {
   buildWorkspaceIndex() { return workspaceIndex.buildWorkspaceIndex() }
   searchWorkspaces(query, options) { return workspaceIndex.searchWorkspaces(query, options) }
   mcpConfig() { return mcpConfig.inspect(this.root) }
+  requirementPoolManifestTemplate() {
+    return mcpConfig.requirementPoolManifestTemplate()
+  }
   inspectRequirementPoolManifest(input) {
     return mcpConfig.inspectRequirementPoolManifest(input)
   }

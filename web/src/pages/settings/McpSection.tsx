@@ -458,6 +458,20 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
     }
   };
 
+  const loadRequirementPoolManifestTemplate = async () => {
+    setTesting('requirementPoolTemplate');
+    try {
+      const template = await api.requirementPoolManifestTemplate();
+      setManifestText(JSON.stringify(template, null, 2));
+      setManifestPreview(null);
+      message.success('已加载需求池配置示例，请按实际平台地址和项目标识调整后预览');
+    } catch (error) {
+      message.error(errorText(error, '加载需求池配置示例失败'));
+    } finally {
+      setTesting('');
+    }
+  };
+
   const inspectRequirementPoolManifest = async () => {
     let manifest: unknown;
     try {
@@ -724,6 +738,9 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                 }}
               />
               <Space wrap className="fl-mcp-result">
+                <Button loading={testing === 'requirementPoolTemplate'} disabled={!canWrite || Boolean(testing)} onClick={() => void loadRequirementPoolManifestTemplate()}>
+                  加载示例
+                </Button>
                 <Button disabled={!canWrite} onClick={() => manifestFileInputRef.current?.click()}>
                   选择 JSON 文件
                 </Button>

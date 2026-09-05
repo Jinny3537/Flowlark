@@ -248,6 +248,14 @@ describe('升级后的 API', () => {
 })
 
 describe('配置与局域网 API', () => {
+  test('HTTP 可获取需求池 MCP 配置模板', async (t) => {
+    const r = await api.get('/api/mcp/requirement-pool/template')
+    t.assert.strictEqual(r.status, 200)
+    t.assert.strictEqual(r.body.manifestVersion, '2026-09')
+    t.assert.strictEqual(r.body.transport.headers.Authorization, 'Bearer ${secret:demand-pool-mcp}')
+    t.assert.strictEqual(r.body.secrets[0].name, 'demand-pool-mcp')
+  })
+
   test('HTTP 可导入需求池 MCP 配置 JSON', async (t) => {
     const manifest = {
       manifestVersion: '2026-09',

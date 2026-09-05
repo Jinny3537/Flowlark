@@ -727,6 +727,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.get('/api/mcp', async (req, res) =>
     sendJson(res, 200, hub.mcpConfig()))
 
+  r.get('/api/mcp/requirement-pool/template', async (req, res) =>
+    sendJson(res, 200, hub.requirementPoolManifestTemplate()))
+
   r.post('/api/mcp/requirement-pool/inspect', async (req, res) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.inspectRequirementPoolManifest(body))

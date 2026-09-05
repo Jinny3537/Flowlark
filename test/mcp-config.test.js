@@ -3,7 +3,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cleanup, newHub } from './helpers.js'
-import { inspectRequirementPoolManifest, inspectRequirementPoolStatus, resolveCapability } from '../src/core/mcp-config.js'
+import { inspectRequirementPoolManifest, inspectRequirementPoolStatus, requirementPoolManifestTemplate, resolveCapability } from '../src/core/mcp-config.js'
 
 const dirs = []
 let server
@@ -126,6 +126,17 @@ describe('MCP 配置文件', () => {
     t.assert.strictEqual(info.config.capabilities.requirements.server, 'demand-pool-mcp')
     t.assert.strictEqual(info.config.capabilities.requirements.tools.search, 'requirements.search')
     t.assert.strictEqual(info.imported.secrets[0].name, 'secret')
+  })
+
+  test('需求池配置模板不含明文密钥且可通过预览校验', (t) => {
+    const template = requirementPoolManifestTemplate()
+    const preview = inspectRequirementPoolManifest(template)
+    t.assert.deepStrictEqual(preview.blockers, [])
+    t.assert.deepStrictEqual(preview.warnings, [])
+    t.assert.strictEqual(preview.server.headers.Authorization, 'Bearer ${secret:demand-pool-mcp}')
+    t.assert.strictEqual(preview.secrets[0].name, 'demand-pool-mcp')
+    t.assert.strictEqual(preview.capability.options.safety.readOnly, true)
+    t.assert.doesNotMatch(JSON.stringify(template), /real-token|api[_-]?key=|password=/i)
   })
 
   test('需求池接入诊断区分缺本机密钥和可测试状态', (t) => {

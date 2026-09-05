@@ -397,6 +397,7 @@ export const api = {
   setConfig: (key: string, value: unknown) => put(`/api/config/${enc(key)}`, { value }),
   resetConfig: (key: string) => del(`/api/config/${enc(key)}`),
   getMcpConfig: () => get('/api/mcp'),
+  requirementPoolManifestTemplate: () => get('/api/mcp/requirement-pool/template'),
   inspectRequirementPoolManifest: (body: unknown) => post('/api/mcp/requirement-pool/inspect', body),
   importRequirementPoolManifest: (body: unknown) => post('/api/mcp/requirement-pool/import', body),
   requirementPoolStatus: (probe = false) => post('/api/mcp/requirement-pool/status', { probe }),
