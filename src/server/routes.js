@@ -69,7 +69,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.get('/api/requirements', async (req, res) => sendJson(res, 200, hub.listRequirements()))
   r.post('/api/requirements/sync', async (req, res) => {
     const body = await readJson(req, maxBody)
-    sendJson(res, 200, await hub.syncExternalRequirements(body.provider || null, body.config || body))
+    sendJson(res, 200, body.mode === 'list'
+      ? await hub.refreshExternalRequirementList(body.provider || null, body.config || body)
+      : await hub.syncExternalRequirements(body.provider || null, body.config || body))
   })
   r.post('/api/requirements', async (req, res) => {
     const body = await readJson(req, maxBody)

@@ -157,10 +157,10 @@ export default function Requirements() {
   const syncPool = useCallback(async () => {
     setSyncing(true);
     try {
-      const result: any = await api.syncRequirements(external.provider, { token: external.token });
+      const result: any = await api.syncRequirements(external.provider, { token: external.token }, 'list');
       await load();
       const failed = Array.isArray(result.failed) ? result.failed.length : Number(result.failed || 0);
-      message.success(`已同步 ${result.updated}/${result.total} 条${failed ? `，失败 ${failed} 条` : ''}`);
+      message.success(`已刷新需求池：新增 ${result.created || 0} 条，更新 ${result.updated || 0} 条${failed ? `，失败 ${failed} 条` : ''}`);
     } catch (nextError) {
       message.error(errorText(nextError, '同步需求池失败'));
     } finally {
@@ -180,7 +180,7 @@ export default function Requirements() {
         description="接入需求池数据，并追踪需求与本地原型版本的演进关系。"
         actions={(
           <Space wrap>
-            <Button icon={<SyncOutlined />} loading={syncing} disabled={!writable} onClick={syncPool}>同步需求池</Button>
+            <Button icon={<SyncOutlined />} loading={syncing} disabled={!writable} onClick={syncPool}>刷新需求池列表</Button>
             <Button icon={<CloudDownloadOutlined />} disabled={!writable} onClick={() => setExternalOpen(true)}>从需求池导入</Button>
             <Button type="primary" icon={<PlusOutlined />} disabled={!writable} onClick={() => setOpen(true)}>新建需求</Button>
           </Space>

@@ -251,7 +251,7 @@ export const api = {
     put<RequirementSpecResponse>(`/api/requirements/${enc(code)}/spec`, { markdown }),
   planRequirementTaskBinding: (code: string, body: RequirementTaskBindingInput) =>
     post<RequirementTaskBindingPlan>(`/api/requirements/${enc(code)}/task-binding/plan`, body),
-  syncRequirements: (provider = 'mcp', config = {}) => post('/api/requirements/sync', { provider, config }),
+  syncRequirements: (provider = 'mcp', config = {}, mode = 'existing') => post('/api/requirements/sync', { provider, config, mode }),
   linkRequirement: (code: string, body: unknown) => post(`/api/requirements/${enc(code)}/links`, body),
   unlinkRequirement: (code: string, slug: string, no: string) =>
     del(`/api/requirements/${enc(code)}/links/${enc(slug)}/${enc(no)}`),

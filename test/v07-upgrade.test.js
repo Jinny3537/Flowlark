@@ -111,4 +111,27 @@ describe('v0.7 升级能力', () => {
     t.assert.strictEqual(failed.external.failure.code, 'REQUIREMENT_POOL_TOOL_MISSING')
     t.assert.match(failed.external.failure.message, /404|not found/)
   })
+
+  test('需求池列表刷新会新增和更新外部需求引用', async (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    hub.saveMcpServer({ id: 'requirements-mcp', name: '需求池 MCP', url: `${baseUrl}/mcp`, headers: { 'X-Test': 'yes' } })
+    hub.saveMcpCapability('requirements', {
+      enabled: true,
+      server: 'requirements-mcp',
+      project: 'safe-prod',
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      options: { fields: { title: 'title' }, statuses: { open: '待处理' } }
+    })
+
+    const first = await hub.refreshExternalRequirementList('mcp')
+    t.assert.strictEqual(first.created, 1)
+    t.assert.strictEqual(first.updated, 0)
+    t.assert.strictEqual(reqx.readRequirement(root, 'REQ-7').external.syncStatus, 'synced')
+
+    const second = await hub.refreshExternalRequirementList('mcp')
+    t.assert.strictEqual(second.created, 0)
+    t.assert.strictEqual(second.updated, 1)
+    t.assert.deepStrictEqual(second.failed, [])
+  })
 })

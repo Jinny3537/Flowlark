@@ -2667,6 +2667,35 @@ export class Hub {
     return { ...result, items: reqx.listRequirements(this.root) }
   }
 
+  async refreshExternalRequirementList(provider = null, overrides = {}) {
+    this.#assertWritable('刷新需求池列表')
+    const selected = provider || this.settings.integrations.requirementProvider || 'mcp'
+    if (!selected || selected === 'none') {
+      throw err.bad('REQUIREMENT_PROVIDER_MISSING', '请先配置需求池接入方式')
+    }
+    const query = String(overrides.query || '').trim()
+    const remotes = await reqIntegration.searchRequirements(selected, this.requirementConfig(selected, overrides), query)
+    const result = { provider: selected, query, total: remotes.length, created: 0, updated: 0, failed: [] }
+    for (const remote of remotes) {
+      try {
+        const exists = reqx.requirementExists(this.root, remote.code)
+        this.#saveExternalRequirement(this.#externalRequirementInput(selected, remote))
+        if (exists) result.updated++
+        else result.created++
+      } catch (e) {
+        const problem = requirementPoolProbeProblem(e)
+        result.failed.push(sanitizeSyncValue({
+          code: remote?.code || '',
+          errorCode: problem.code,
+          message: problem.message,
+          hint: problem.hint || ''
+        }))
+      }
+    }
+    this.#log(null, null, 'REQUIREMENT_LIST_REFRESH', `刷新需求池列表 ${result.created} 新增/${result.updated} 更新/${result.total} 条`)
+    return { ...result, items: reqx.listRequirements(this.root) }
+  }
+
   postRequirementComment(provider, key, body, overrides = {}) {
     return reqIntegration.postRequirementComment(provider, this.requirementConfig(provider, overrides), key, body)
   }
