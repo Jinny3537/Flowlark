@@ -33,6 +33,36 @@ type RequirementPoolManifestPreview = {
   blockers?: { code?: string; message?: string }[];
 };
 
+type RequirementPoolStatus = {
+  status?: string;
+  ready?: boolean;
+  canProbe?: boolean;
+  connected?: boolean;
+  platform?: { name?: string; id?: string } | null;
+  server?: { id?: string; name?: string } | null;
+  capability?: { project?: string; tools?: Record<string, string> };
+  missingSecrets?: { kind?: string; name?: string; label?: string }[];
+  warnings?: { code?: string; message?: string; hint?: string }[];
+  blockers?: { code?: string; message?: string; hint?: string }[];
+  connection?: { identity?: string; name?: string };
+};
+
+function requirementPoolStatusTone(status: RequirementPoolStatus | null): 'success' | 'warning' | 'error' | 'info' {
+  if (!status) return 'info';
+  if (status.connected || status.status === 'ready_to_test') return 'success';
+  if (status.status === 'needs_secret') return 'warning';
+  return 'error';
+}
+
+function requirementPoolStatusTitle(status: RequirementPoolStatus) {
+  if (status.connected) return '需求池连接测试通过';
+  if (status.status === 'ready_to_test') return '需求池配置已具备连接测试条件';
+  if (status.status === 'needs_secret') return '需求池配置缺少本机密钥';
+  if (status.status === 'not_configured') return '需求池尚未完成配置';
+  if (status.status === 'probe_failed') return '需求池连接测试失败';
+  return '需求池配置存在阻塞项';
+}
+
 export default function Requirements() {
   const navigate = useNavigate();
   const { message } = App.useApp();
@@ -58,6 +88,8 @@ export default function Requirements() {
   const [external, setExternal] = useState<ExternalState>({ provider: 'mcp', token: '', query: '' });
   const [manifestText, setManifestText] = useState('');
   const [manifestPreview, setManifestPreview] = useState<RequirementPoolManifestPreview | null>(null);
+  const [requirementPoolStatus, setRequirementPoolStatus] = useState<RequirementPoolStatus | null>(null);
+  const [requirementPoolSecrets, setRequirementPoolSecrets] = useState<Record<string, string>>({});
   const [manifestAction, setManifestAction] = useState('');
   const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
   const [form] = Form.useForm();
@@ -232,6 +264,7 @@ export default function Requirements() {
     try {
       const result = await api.importRequirementPoolManifest(manifest) as { imported?: RequirementPoolManifestPreview };
       setManifestPreview(result.imported || null);
+      setRequirementPoolStatus(await api.requirementPoolStatus(false) as RequirementPoolStatus);
       message.success('需求池 MCP 配置已导入；密钥仍需在本机单独保存');
     } catch (nextError) {
       message.error(errorText(nextError, '需求池配置导入失败'));
@@ -239,6 +272,37 @@ export default function Requirements() {
       setManifestAction('');
     }
   }, [manifestText, message]);
+
+  const checkRequirementPoolStatus = useCallback(async (probe = false) => {
+    setManifestAction(probe ? 'probe' : 'status');
+    try {
+      const result = await api.requirementPoolStatus(probe) as RequirementPoolStatus;
+      setRequirementPoolStatus(result);
+      if (result.connected) message.success('需求池连接测试通过');
+      else if (result.ready) message.success('需求池配置已具备连接测试条件');
+      else message.warning(requirementPoolStatusTitle(result));
+    } catch (nextError) {
+      message.error(errorText(nextError, '需求池接入状态检查失败'));
+    } finally {
+      setManifestAction('');
+    }
+  }, [message]);
+
+  const saveRequirementPoolSecret = useCallback(async (name: string) => {
+    const value = requirementPoolSecrets[name] || '';
+    if (!name || !value) return;
+    setManifestAction(`secret:${name}`);
+    try {
+      await api.setMcpServerSecret(name, value);
+      setRequirementPoolSecrets((current) => ({ ...current, [name]: '' }));
+      setRequirementPoolStatus(await api.requirementPoolStatus(false) as RequirementPoolStatus);
+      message.success(`本机密钥 ${name} 已保存`);
+    } catch (nextError) {
+      message.error(errorText(nextError, '需求池本机密钥保存失败'));
+    } finally {
+      setManifestAction('');
+    }
+  }, [message, requirementPoolSecrets]);
 
   const syncPool = useCallback(async () => {
     setSyncing(true);
@@ -479,6 +543,68 @@ export default function Requirements() {
                 ))}
               </div>
             ) : null}
+            <Space wrap className="fl-mcp-result">
+              <Button loading={manifestAction === 'status'} disabled={Boolean(manifestAction)} onClick={() => void checkRequirementPoolStatus(false)}>
+                检查接入状态
+              </Button>
+              <Button loading={manifestAction === 'probe'} disabled={Boolean(manifestAction) || requirementPoolStatus?.canProbe === false} onClick={() => void checkRequirementPoolStatus(true)}>
+                执行连接测试
+              </Button>
+              <span className="fl-muted">连接测试只调用配置中的需求池测试工具，不执行写回。</span>
+            </Space>
+            {requirementPoolStatus ? (
+              <Alert
+                className="fl-mcp-result"
+                showIcon
+                type={requirementPoolStatusTone(requirementPoolStatus)}
+                message={requirementPoolStatusTitle(requirementPoolStatus)}
+                description={(
+                  <div>
+                    <div>
+                      {requirementPoolStatus.platform?.name ? `平台：${requirementPoolStatus.platform.name}；` : ''}
+                      {requirementPoolStatus.server?.id ? `服务：${requirementPoolStatus.server.name || requirementPoolStatus.server.id}（${requirementPoolStatus.server.id}）；` : ''}
+                      {requirementPoolStatus.capability?.project ? `项目/空间：${requirementPoolStatus.capability.project}；` : ''}
+                      {requirementPoolStatus.connection?.identity ? `身份：${requirementPoolStatus.connection.identity}` : ''}
+                    </div>
+                    {requirementPoolStatus.missingSecrets?.length ? (
+                      <ul>
+                        {requirementPoolStatus.missingSecrets.map((item) => {
+                          const name = item.name || '';
+                          return (
+                            <li key={`secret:${item.kind}:${name}`}>
+                              <Space wrap>
+                                <span>缺少{item.label || name}</span>
+                                {item.kind === 'keychain' ? (
+                                  <>
+                                    <Input.Password
+                                      size="small"
+                                      autoComplete="new-password"
+                                      placeholder="输入后只保存到本机"
+                                      value={requirementPoolSecrets[name] || ''}
+                                      onChange={(event) => setRequirementPoolSecrets((current) => ({ ...current, [name]: event.target.value }))}
+                                    />
+                                    <Button
+                                      size="small"
+                                      disabled={!writable || Boolean(manifestAction) || !requirementPoolSecrets[name]}
+                                      loading={manifestAction === `secret:${name}`}
+                                      onClick={() => void saveRequirementPoolSecret(name)}
+                                    >
+                                      保存密钥
+                                    </Button>
+                                  </>
+                                ) : <span className="fl-muted">请在环境变量中配置</span>}
+                              </Space>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                    {requirementPoolStatus.blockers?.map((item) => <div key={`blocker:${item.code}:${item.message}`}>{item.message || item.code}</div>)}
+                    {requirementPoolStatus.warnings?.map((item) => <div key={`warning:${item.code}:${item.message}`}>{item.message || item.code}</div>)}
+                  </div>
+                )}
+              />
+            ) : null}
           </div>
           <Divider orientation="left">搜索需求池</Divider>
           <Row gutter={12}>
@@ -486,7 +612,7 @@ export default function Requirements() {
               <Form.Item label="接入方式"><Select value={external.provider} options={[{ value: 'mcp', label: 'MCP' }]} onChange={(provider) => setExternal((current) => ({ ...current, provider }))} /></Form.Item>
             </Col>
             <Col xs={24} md={16}>
-              <Form.Item label="Token（可选，保存到钥匙串）"><Input.Password value={external.token} placeholder="留空则使用环境变量或已保存密钥" onChange={(event) => setExternal((current) => ({ ...current, token: event.target.value }))} /></Form.Item>
+              <Form.Item label="临时 Token（兼容旧配置，可选）"><Input.Password value={external.token} placeholder="优先使用上方本机密钥；旧配置可临时填写" onChange={(event) => setExternal((current) => ({ ...current, token: event.target.value }))} /></Form.Item>
             </Col>
           </Row>
           <Input.Search

@@ -239,7 +239,7 @@ Flowlark 启动时会自动管理一个只监听 `127.0.0.1` 的企业微信 MCP
 - Header 里的凭据只能写 `${secret:name}` 或 `${env:NAME}` 占位符；明文 Token、URL 用户名密码和明文 Authorization 会被拒绝。
 - 字段和状态映射缺失只降级为警告，不会阻塞导入；导入后可以单独执行连接测试。
 
-本机缺少 `${secret:name}` 时，设置页会显示缺失项并允许直接录入本机密钥。密钥使用已有 MCP server secret 存储，不写入 `mcp.json`，也不进入 Git。
+本机缺少 `${secret:name}` 时，需求导入弹窗和设置页都会显示缺失项，并允许直接录入本机密钥或执行只读连接测试。密钥使用已有 MCP server secret 存储，不写入 `mcp.json`，也不进入 Git。
 
 导入完成后，需求页提供两条路径：
 
@@ -265,7 +265,7 @@ npm run smoke:v075:requirement-pool -- \
   --inspect-only
 ```
 
-设置页浏览器验收需要本机提供 Playwright：
+需求页配置导入和设置页浏览器验收需要本机提供 Playwright：
 
 ```bash
 npm run build:web
