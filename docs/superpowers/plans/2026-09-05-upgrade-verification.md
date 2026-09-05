@@ -54,8 +54,9 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node scripts/smoke-v074
 - Milestone detail now routes the delivered-but-not-externally-closed state to the delivery-completion plan, and requirement detail shows delivery snapshot, acceptance and external read-back summaries from response-layer derived data. Browser smoke verifies the route and action at 1440×900 and 390×844.
 - Milestone archive is now gated by every scoped delivery snapshot passing acceptance, all scoped requirements being `completed`, a verified ended external Sprint status, and verified closed external task statuses.
 - Git synchronization now treats `requirements`, `milestones`, `snapshots`, `acceptances` and `views` as Flowlark-owned paths. This is required for release commits to contain the milestone scope and requirement specifications used by immutable delivery snapshots.
-- Verified focused release, acceptance, archive, delivery-completion and lifecycle runs: 19/19, 23/23, 55/55, 28/28 and 71/71 passed.
-- Full suite after formal release integration, delivery-completion wrapper and archive gate: 687/687 passed, zero failures.
+- Verified focused release, acceptance, archive, delivery-completion, lifecycle and sync-recovery runs: 19/19, 23/23, 55/55, 28/28, 71/71 and 67/67 passed.
+- Snapshot write failure now preserves completed baseline/Git evidence and retries without replaying either step. Lifecycle failure after snapshot preserves the frozen snapshot evidence and retries without replaying baseline, Git or snapshot work. Delivery-completion remote failure now preserves the closed task and resumes Sprint end without closing the task a second time.
+- Full suite after formal release integration, delivery-completion wrapper, archive gate and recovery hardening: 690/690 passed, zero failures.
 - `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
 
 ```sh
@@ -67,4 +68,4 @@ git diff --check
 
 Remaining v0.7.4 scope:
 
-- Failure injection currently covers Git and mail for formal release and existing sync-center remote operation recovery. Snapshot, lifecycle and delivery-completion/archive step-specific failures still need dedicated recovery tests.
+- Failure injection covers Git, snapshot and mail for formal release, plus delivery-completion remote recovery and existing sync-center step recovery. Archive gate failures are covered as blocking validations; product/security review still needs a final pass before v0.7.5 qualification.

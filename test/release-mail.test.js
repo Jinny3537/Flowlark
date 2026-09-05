@@ -1,10 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cleanup, tmpRepo } from './helpers.js'
 import { Hub } from '../src/core/service.js'
 import * as gitx from '../src/core/git.js'
+import { stringify } from '../src/core/json.js'
 import { readDeliverySnapshot } from '../src/core/delivery-snapshots.js'
 import { hashProjection } from '../src/core/milestone-sync-plan.js'
 import * as milestones from '../src/core/milestones.js'
@@ -116,7 +118,7 @@ test('项目创建和更新会持久化规范化的发版邮件配置', (t) => {
   assert.deepEqual(updated.releaseMail.cc, ['王五'])
 })
 
-function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts, assessAdapter = null } = {}) {
+function releaseFixture(t, { gitSync, afterGitSync, sendReleaseMail, resolveContacts, assessAdapter = null } = {}) {
   const root = tmpRepo()
   t.after(() => cleanup(root))
   const calls = []
@@ -144,7 +146,9 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts, assessAd
     gitSync: async (options) => {
       calls.push('git')
       if (gitSync) await gitSync(options)
-      return gitx.sync(root, { ...options, push: false })
+      const result = gitx.sync(root, { ...options, push: false })
+      if (afterGitSync) await afterGitSync(result)
+      return result
     }
   })
   const project = hub.createProject({
@@ -334,6 +338,70 @@ test('Git 失败不发送邮件，续跑不重复设置基线', async (t) => {
   assert.deepEqual(calls, ['baseline', 'git', 'git', 'mail'])
 })
 
+test('快照失败保留已完成步骤，续跑不重复基线和 Git', async (t) => {
+  let ctx
+  let blockSnapshot = true
+  ctx = releaseFixture(t, {
+    afterGitSync: () => {
+      if (blockSnapshot) {
+        const releaseCommit = gitx.git(ctx.root, ['rev-parse', 'HEAD']).out
+        const identity = { milestone: ctx.milestone.name, project: ctx.project.slug, version: 'v2', releaseCommit }
+        const snapshotName = `delivery-${crypto.createHash('sha256').update(stringify(identity)).digest('hex').slice(0, 48)}`
+        fs.mkdirSync(path.join(ctx.root, 'snapshots', `${snapshotName}.json`), { recursive: true })
+      }
+    }
+  })
+  const first = await ctx.hub.formalReleaseMilestoneVersion(ctx.milestone.name, ctx.project.slug, 'v2')
+  assert.equal(first.status, 'snapshot_failed')
+  assert.equal(first.released, false)
+  assert.equal(first.run.steps.baseline.status, 'complete')
+  assert.equal(first.run.steps.git.status, 'complete')
+  assert.equal(first.run.steps.snapshot.status, 'failed')
+  assert.deepEqual(ctx.calls, ['baseline', 'git'])
+  assert.equal(ctx.hub.getMilestone(ctx.milestone.name).status, 'active')
+  assert.equal(ctx.hub.getMilestone(ctx.milestone.name).deliveries.length, 0)
+  assert.equal(ctx.hub.listReleaseMails().length, 0)
+
+  blockSnapshot = false
+  fs.rmSync(path.join(ctx.root, 'snapshots'), { recursive: true, force: true })
+  const second = await ctx.hub.formalReleaseMilestoneVersion(ctx.milestone.name, ctx.project.slug, 'v2')
+  assert.equal(second.status, 'complete')
+  assert.match(second.snapshot, /^delivery-[a-f0-9]{48}$/)
+  assert.equal(second.run.steps.snapshot.status, 'complete')
+  assert.equal(second.run.steps.lifecycle.status, 'complete')
+  assert.deepEqual(ctx.calls, ['baseline', 'git', 'mail'])
+  assert.equal(ctx.hub.getMilestone(ctx.milestone.name).status, 'delivered')
+})
+
+test('生命周期失败保留快照证据，续跑不重复基线、Git 和快照', async (t) => {
+  let ctx
+  let breakLifecycle = true
+  ctx = releaseFixture(t, {
+    afterGitSync: () => {
+      if (breakLifecycle) {
+        fs.writeFileSync(path.join(ctx.root, 'requirements', 'REQ-2', 'requirement.json'), '{broken requirement json')
+      }
+    }
+  })
+  await assert.rejects(
+    ctx.hub.formalReleaseMilestoneVersion(ctx.milestone.name, ctx.project.slug, 'v2'),
+    /解析失败/
+  )
+  assert.deepEqual(ctx.calls, ['baseline', 'git'])
+  assert.equal(ctx.hub.listReleaseMails().length, 0)
+
+  const restored = gitx.git(ctx.root, ['show', 'HEAD:requirements/REQ-2/requirement.json'])
+  assert.equal(restored.ok, true, restored.err)
+  fs.writeFileSync(path.join(ctx.root, 'requirements', 'REQ-2', 'requirement.json'), `${restored.out}\n`)
+  breakLifecycle = false
+  const second = await ctx.hub.formalReleaseMilestoneVersion(ctx.milestone.name, ctx.project.slug, 'v2')
+  assert.equal(second.status, 'complete')
+  assert.equal(second.run.steps.snapshot.status, 'complete')
+  assert.equal(second.run.steps.lifecycle.status, 'complete')
+  assert.deepEqual(ctx.calls, ['baseline', 'git', 'mail'])
+  assert.equal(ctx.hub.getRequirement('REQ-2').status, 'pending-acceptance')
+})
+
 test('正式交付后的验收结论会推进需求生命周期', async (t) => {
   const approved = releaseFixture(t)
   const release = await approved.hub.formalReleaseMilestoneVersion(approved.milestone.name, approved.project.slug, 'v2')
@@ -482,6 +550,94 @@ test('交付完成预览在验收通过后关闭任务并结束 Sprint', async (
   const binding = requirements.readRequirement(ctx.root, 'REQ-2').externalTasks.find((item) => item.taskId === 20)
   assert.equal(binding.remoteStatus, 'closed')
   assert.equal(ctx.hub.transitionMilestone(ctx.milestone.name, { target: 'archived' }).status, 'archived')
+})
+
+test('交付完成远端失败保留已关闭任务，恢复时不重复关闭任务', async (t) => {
+  const managedFields = ['title', 'description', 'acceptance', 'assignee', 'sprint', 'status']
+  const remote = deliveryCompletionAdapter({ managedFields })
+  const ctx = releaseFixture(t, { assessAdapter: remote })
+  ctx.hub.saveMcpServer({
+    id: 'assess',
+    name: 'Assess Task',
+    type: 'stdio',
+    adapter: 'assess-task',
+    runtimeProfile: 'test-runtime'
+  })
+  ctx.hub.saveMcpCapability('milestones', {
+    enabled: true,
+    server: 'assess',
+    project: '123',
+    options: {
+      ownerId: 7,
+      taskType: 2,
+      members: { PM: 8 },
+      statuses: { completed: 'closed' },
+      timezoneOffset: '+08:00'
+    }
+  })
+  ctx.hub.updateProject(ctx.project.slug, { sync: { server: 'assess', projectId: '123', managedFields } })
+  const release = await ctx.hub.formalReleaseMilestoneVersion(ctx.milestone.name, ctx.project.slug, 'v2')
+  const snapshotHash = readDeliverySnapshot(ctx.root, release.snapshot).contentHash
+  for (const role of ['product', 'development', 'qa']) {
+    ctx.hub.recordAcceptance(release.snapshot, { role, verdict: 'approved', expectedSnapshotHash: snapshotHash })
+  }
+  const hashes = remote.currentHashes()
+  milestones.updateMilestone(ctx.root, ctx.milestone.name, {
+    external: {
+      provider: 'assess-task',
+      server: 'assess',
+      projectId: 123,
+      sprintId: 10,
+      revision: remote.state.sprint.revision,
+      remoteStatus: remote.state.sprint.status,
+      lastSyncHash: hashes.sprint
+    }
+  }, { system: true })
+  requirements.upsertExternalTask(ctx.root, 'REQ-2', {
+    provider: 'assess-task',
+    server: 'assess',
+    projectId: 123,
+    taskId: 20,
+    revision: remote.state.task.revision,
+    remoteStatus: remote.state.task.status,
+    lastSyncHash: hashes.task
+  })
+
+  const originalEndSprint = remote.endSprint.bind(remote)
+  let failEnd = true
+  remote.endSprint = async (body) => {
+    if (failEnd) {
+      failEnd = false
+      remote.calls.push('endSprint')
+      throw Object.assign(new Error('end failed'), { code: 'REMOTE_END_FAILED' })
+    }
+    return originalEndSprint(body)
+  }
+
+  const plan = await ctx.hub.planMilestoneDeliveryCompletion(ctx.milestone.name)
+  await assert.rejects(
+    ctx.hub.executeMilestoneDeliveryCompletion(ctx.milestone.name, {
+      confirmed: true,
+      planHash: plan.hash,
+      reason: '交付验收完成，关闭外部执行项',
+      confirmUnfinished: true
+    }),
+    /end failed/
+  )
+  assert.equal(remote.calls.filter((item) => item === 'updateTask').length, 1)
+  assert.equal(remote.calls.filter((item) => item === 'endSprint').length, 1)
+  assert.equal(requirements.readRequirement(ctx.root, 'REQ-2').externalTasks.find((item) => item.taskId === 20).remoteStatus, 'closed')
+  assert.equal(milestones.readMilestone(ctx.root, ctx.milestone.name).external.remoteStatus, 'active')
+  assert.equal(ctx.hub.milestoneSyncJournal(ctx.milestone.name).status, 'failed')
+
+  const resumed = await ctx.hub.resumeMilestoneSync(ctx.milestone.name, {
+    reason: '恢复结束交付',
+    confirmUnfinished: true
+  })
+  assert.equal(resumed.status, 'completed')
+  assert.equal(remote.calls.filter((item) => item === 'updateTask').length, 1)
+  assert.equal(remote.calls.filter((item) => item === 'endSprint').length, 2)
+  assert.equal(milestones.readMilestone(ctx.root, ctx.milestone.name).external.remoteStatus, 'ended')
 })
 
 test('邮件失败保留 pending，重试只调用邮件', async (t) => {

@@ -945,7 +945,7 @@ export class Hub {
     }
     const intent = this.#syncIntent(record)
     return this.#withAssessAdapter(name, true, async (adapter, config) => {
-      const plan = await this.#buildMilestoneSyncPlan(name, intent, adapter, config)
+      let plan = await this.#buildMilestoneSyncPlan(name, intent, adapter, config)
       const result = await withMilestoneSyncLock(this.root, name, async () => {
         const current = findSyncRecord(this.root, 'milestone', name)
         if (!current) throw err.notFound(`迭代「${name}」的同步记录`)
@@ -954,8 +954,11 @@ export class Hub {
         }
         if (current.planHash !== record.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
         if (plan.hash !== record.planHash) {
-          this.#saveMilestoneSyncPreview(name, plan)
-          throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+          if (plan.sourceHash !== current.plan?.sourceHash) {
+            this.#saveMilestoneSyncPreview(name, plan)
+            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+          }
+          plan = current.plan
         }
         if (this.#currentMilestoneSourceHash(name, intent) !== plan.sourceHash) {
           throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代来源或项目同步目标已经变化，请重新确认')
@@ -1067,7 +1070,7 @@ export class Hub {
     const linkedCreate = hasLinkedCreateResult(record)
     try {
       return await this.#withAssessAdapter(record.entityKey, true, async (adapter, config) => {
-        const plan = linkedCreate
+        let plan = linkedCreate
           ? record.plan
           : await this.#buildMilestoneSyncPlan(record.entityKey, intent, adapter, config)
         return withMilestoneSyncLock(this.root, record.entityKey, async () => {
@@ -1080,15 +1083,18 @@ export class Hub {
             throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划的关联结果已经变化，请重新操作')
           }
           const currentSourceHash = this.#currentMilestoneSourceHash(record.entityKey, intent)
+          if (!linkedCreate && plan.hash !== record.planHash) {
+            if (plan.sourceHash !== current.plan?.sourceHash) {
+              this.#saveMilestoneSyncPreview(record.entityKey, plan)
+              throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
+            }
+            plan = current.plan
+          }
           const expectedSourceHash = linkedCreate
             ? linkedMilestoneSourceHash(current.plan, current.operations)
             : plan.sourceHash
           if (!expectedSourceHash || currentSourceHash !== expectedSourceHash) {
             throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代来源或项目同步目标已经变化，请重新生成同步计划')
-          }
-          if (!linkedCreate && plan.hash !== record.planHash) {
-            this.#saveMilestoneSyncPreview(record.entityKey, plan)
-            throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
           }
           return resumeSync({
             root: this.root,

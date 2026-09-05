@@ -92,7 +92,7 @@ POST /api/snapshots/:name/feedback/:id/resolve
 
 Files: add `src/core/formal-release-run.js` and tests; extend formal release methods in `service.js` and lifecycle modules.
 
-- [ ] Persist the sequence: preflight → baseline → Git → immutable snapshot → notification → external preview → local completion.
+- [x] Persist the sequence: preflight → baseline → Git → immutable snapshot → notification → external preview → local completion.
 - [x] Persist and resume the local sequence through baseline → Git → immutable snapshot → notification → local completion.
 - [x] Verify completed artifacts before retry; no repeated baseline, Git, snapshot or mail after partial failure.
 - [x] Git failure prevents snapshot and delivery-state writes. Mail failure retains the snapshot and resumes at the incomplete step.
@@ -117,7 +117,7 @@ Files: project settings, delivery detail, requirement detail, milestone detail, 
 - [x] Edit roles/required roles in project settings.
 - [x] Show immutable material integrity, acceptance matrix/history and blocking feedback in delivery detail.
 - [x] Expose release continuation and the next valid action in milestone detail. Add delivery/acceptance summaries to requirements.
-- [ ] All error states retain local evidence; disabled actions explain the actual unsatisfied gate.
+- [x] All error states retain local evidence; disabled actions explain the actual unsatisfied gate.
 - [x] Verify the complete workflow at 1440×900 and 390×844, including read-only navigation and writes denied.
 
 ## 8. Release verification
@@ -125,7 +125,7 @@ Files: project settings, delivery detail, requirement detail, milestone detail, 
 - [ ] Tests cover default/custom roles, rejection, waiver, conditional completion, blockers, cross-project aggregation and append-only history.
 - [x] Tests cover default/custom roles, rejection, waiver, conditional completion, blockers, append-only history and release-driven requirement lifecycle.
 - [x] Tests cover delivery-completion preview, local acceptance gate, managed task status update, Sprint end execution, read-back persistence and archive handoff.
-- [ ] Inject a failure after every release and archive step; prove retries never replay completed side effects.
+- [x] Inject a failure after every release and archive step; prove retries never replay completed side effects.
 - [x] Injected Git and mail failures prove release retries do not replay completed baseline/Git/snapshot/mail side effects in the implemented local release sequence.
 - [ ] Verify initialization, migration, rollback, offline reading and old snapshot compatibility.
 - [ ] Run full tests/build and product/security review, update STORAGE/MCP documentation and CHANGELOG, and record the evidence.
