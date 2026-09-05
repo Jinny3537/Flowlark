@@ -242,6 +242,8 @@ npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
 
 真实平台 smoke 会在正式交付后读取交付快照，并校验需求池来源摘要已冻结 `code`、`title`、`source`、`provider`、`key`、`status`、`syncedAt`，以及平台返回的来源 URL。
 
+保存的真实平台 smoke 结果还会包含 `generatedBy: "smoke:v075:requirement-pool"`、`mode: "live"`、`evidenceVersion: "v075-requirement-pool-smoke/v1"`、manifest 摘要、连接证明和关键链路 `checks`。最终 readiness 会拒绝缺少这些审计字段的旧版最小 JSON。
+
 最终发布前可以运行只读门禁，确认 manifest、凭据环境变量、真实 smoke 结果文件、浏览器 smoke 入口和版本号都已满足。真实平台与浏览器 smoke 证据齐全后，先跑 `pre-bump`；它通过后再把版本号提升到 `0.7.5`，并跑 `final`：
 
 ```bash

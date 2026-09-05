@@ -265,6 +265,8 @@ npm run smoke:v075:requirement-pool -- \
   --inspect-only
 ```
 
+保存的真实平台 smoke 结果必须是 `v075-requirement-pool-smoke/v1` 审计证据，包含生成脚本、live 模式、manifest 摘要、连接证明和关键链路 checks；最终 readiness 不接受旧版最小 JSON。
+
 需求页配置导入、连接测试、需求搜索导入和设置页高级诊断的浏览器验收需要本机提供 Playwright：
 
 ```bash

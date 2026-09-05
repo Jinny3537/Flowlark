@@ -142,13 +142,42 @@ function checkSmokeResult() {
   try {
     const result = readJsonFile(resolved)
     const source = result?.requirementSource || {}
+    const checks = new Set(Array.isArray(result?.checks) ? result.checks : [])
+    const requiredChecks = [
+      'manifest-inspect',
+      'manifest-import',
+      'connection-probe',
+      'requirement-list-refresh',
+      'requirement-detail-refresh',
+      'version-link',
+      'milestone-scope',
+      'formal-release',
+      'snapshot-source-freeze'
+    ]
+    const missingChecks = requiredChecks.filter((item) => !checks.has(item))
     const sourceReady = result?.passed === true &&
       Boolean(result.requirement && result.snapshot && source.source === 'requirement-pool' && source.key && source.status && source.syncedAt)
-    addCheck('real-smoke-result', sourceReady,
-      sourceReady ? `real smoke evidence accepted for ${result.requirement}` : 'real smoke result is missing passed requirement/snapshot/source evidence')
+    const auditReady = result?.generatedBy === 'smoke:v075:requirement-pool' &&
+      result?.mode === 'live' &&
+      result?.evidenceVersion === 'v075-requirement-pool-smoke/v1' &&
+      result?.connection?.connected === true &&
+      Boolean(result?.manifest?.manifestVersion && result?.manifest?.platform?.id && result?.manifest?.project && result?.manifest?.transport?.type)
+    const ready = sourceReady && auditReady && missingChecks.length === 0
+    addCheck('real-smoke-result', ready,
+      ready
+        ? `real smoke evidence accepted for ${result.requirement}`
+        : formatRealSmokeEvidenceFailure({ sourceReady, auditReady, missingChecks }))
   } catch (error) {
     addCheck('real-smoke-result', false, `smoke result parse failed: ${error?.message || error}`)
   }
+}
+
+function formatRealSmokeEvidenceFailure({ sourceReady, auditReady, missingChecks }) {
+  const reasons = []
+  if (!sourceReady) reasons.push('passed requirement/snapshot/source evidence')
+  if (!auditReady) reasons.push('generatedBy/mode/evidenceVersion/manifest/connection audit evidence')
+  if (missingChecks.length) reasons.push(`checks: ${missingChecks.join(', ')}`)
+  return `real smoke result is missing ${reasons.join('; ')}`
 }
 
 function checkUiSmokeResult() {

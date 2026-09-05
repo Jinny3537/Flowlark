@@ -58,6 +58,50 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
+function v075RequirementPoolSmokeEvidence() {
+  return {
+    passed: true,
+    generatedBy: 'smoke:v075:requirement-pool',
+    mode: 'live',
+    evidenceVersion: 'v075-requirement-pool-smoke/v1',
+    generatedAt: '2026-09-05T08:00:00.000Z',
+    manifest: {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: 'safe-prod',
+      transport: { type: 'http', url: 'http://127.0.0.1:12345/mcp', timeoutMs: 5000 },
+      server: { id: 'fixture-pool-mcp', name: 'Fixture Requirement Pool', type: 'http' }
+    },
+    connection: {
+      connected: true,
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' }
+    },
+    requirement: 'REQ-7',
+    externalKey: 'REQ-7',
+    requirementSource: {
+      source: 'requirement-pool',
+      key: 'REQ-7',
+      status: 'open',
+      syncedAt: '2026-09-05T08:00:00.000Z'
+    },
+    project: 'v075-live',
+    version: 'v0.7.5-live',
+    milestone: 'V075-LIVE',
+    snapshot: 'delivery-123',
+    checks: [
+      'manifest-inspect',
+      'manifest-import',
+      'connection-probe',
+      'requirement-list-refresh',
+      'requirement-detail-refresh',
+      'version-link',
+      'milestone-scope',
+      'formal-release',
+      'snapshot-source-freeze'
+    ]
+  }
+}
+
 describe('v0.7 升级能力', () => {
   test('从新旧 HTML 生成变更和规格草稿', (t) => {
     const { root, hub } = newHub()
@@ -216,6 +260,17 @@ describe('v0.7 升级能力', () => {
     const result = JSON.parse(stdout)
     t.assert.deepStrictEqual(JSON.parse(fs.readFileSync(smokeResultFile, 'utf8')), result)
     t.assert.strictEqual(result.passed, true)
+    t.assert.strictEqual(result.generatedBy, 'smoke:v075:requirement-pool')
+    t.assert.strictEqual(result.mode, 'live')
+    t.assert.strictEqual(result.evidenceVersion, 'v075-requirement-pool-smoke/v1')
+    t.assert.match(result.generatedAt, /^\d{4}-\d{2}-\d{2}T/)
+    t.assert.strictEqual(result.manifest.manifestVersion, '2026-09')
+    t.assert.strictEqual(result.manifest.platform.id, 'fixture-pool')
+    t.assert.strictEqual(result.manifest.project, 'safe-prod')
+    t.assert.strictEqual(result.manifest.transport.type, 'http')
+    t.assert.strictEqual(result.connection.connected, true)
+    t.assert.ok(result.checks.includes('connection-probe'))
+    t.assert.ok(result.checks.includes('snapshot-source-freeze'))
     t.assert.strictEqual(result.requirement, 'REQ-7')
     t.assert.deepStrictEqual(result.requirementSource, {
       code: 'REQ-7',
@@ -246,9 +301,11 @@ describe('v0.7 升级能力', () => {
     }
     const manifestFile = path.join(directory, 'requirement-pool.json')
     const smokeResultFile = path.join(directory, 'smoke-result.json')
+    const legacySmokeResultFile = path.join(directory, 'legacy-smoke-result.json')
     const uiSmokeResultFile = path.join(directory, 'ui-smoke-result.json')
     fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8')
-    fs.writeFileSync(smokeResultFile, JSON.stringify({
+    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence())
+    writeJson(legacySmokeResultFile, {
       passed: true,
       requirement: 'REQ-7',
       snapshot: 'delivery-123',
@@ -258,7 +315,7 @@ describe('v0.7 升级能力', () => {
         status: 'open',
         syncedAt: '2026-09-05T08:00:00.000Z'
       }
-    }), 'utf8')
+    })
     fs.writeFileSync(uiSmokeResultFile, JSON.stringify({
       passed: true,
       checks: [
@@ -296,6 +353,33 @@ describe('v0.7 升级能力', () => {
         t.assert.strictEqual(result.checks.find((item) => item.key === 'ui-smoke-result').status, 'pass')
         t.assert.strictEqual(result.checks.find((item) => item.key === 'package-version').status, 'fail')
         t.assert.doesNotMatch(error.stdout, /fixture-secret-value/)
+        return true
+      }
+    )
+
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        'scripts/check-v075-readiness.mjs',
+        '--phase', 'pre-bump',
+        '--manifest', manifestFile,
+        '--smoke-result', legacySmokeResultFile,
+        '--ui-smoke-result', uiSmokeResultFile
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          PLAYWRIGHT_MODULE: process.execPath,
+          FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        const check = result.checks.find((item) => item.key === 'real-smoke-result')
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(check.status, 'fail')
+        t.assert.match(check.message, /generatedBy\/mode\/evidenceVersion\/manifest\/connection audit evidence/)
         return true
       }
     )
@@ -385,17 +469,7 @@ describe('v0.7 升级能力', () => {
       statuses: { open: '待处理' },
       safety: { readOnly: true, writes: [], dangerous: [] }
     })
-    writeJson(smokeResultFile, {
-      passed: true,
-      requirement: 'REQ-7',
-      snapshot: 'delivery-123',
-      requirementSource: {
-        source: 'requirement-pool',
-        key: 'REQ-7',
-        status: 'open',
-        syncedAt: '2026-09-05T08:00:00.000Z'
-      }
-    })
+    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence())
     writeJson(uiSmokeResultFile, {
       passed: true,
       checks: [

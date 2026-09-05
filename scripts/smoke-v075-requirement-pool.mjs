@@ -15,6 +15,17 @@ const manifestPath = args.manifest || process.env.FLOWLARK_V075_MANIFEST
 const query = args.query ?? process.env.FLOWLARK_V075_QUERY ?? ''
 const requestedCode = args.requirement || process.env.FLOWLARK_V075_REQUIREMENT || ''
 const keepRepo = args.keep || process.env.FLOWLARK_V075_KEEP_REPO === '1'
+const liveSmokeChecks = [
+  'manifest-inspect',
+  'manifest-import',
+  'connection-probe',
+  'requirement-list-refresh',
+  'requirement-detail-refresh',
+  'version-link',
+  'milestone-scope',
+  'formal-release',
+  'snapshot-source-freeze'
+]
 
 if (!manifestPath || args.help) {
   usage()
@@ -145,7 +156,23 @@ try {
 
   const result = {
     passed: true,
+    generatedBy: 'smoke:v075:requirement-pool',
+    mode: 'live',
+    evidenceVersion: 'v075-requirement-pool-smoke/v1',
+    generatedAt: new Date().toISOString(),
     repo: keepRepo ? root : null,
+    manifest: {
+      path: path.resolve(manifestPath),
+      manifestVersion: preview.manifestVersion,
+      platform: preview.platform,
+      project: preview.capability?.project || '',
+      transport: preview.transport,
+      server: { id: preview.server?.id, name: preview.server?.name, type: preview.server?.type }
+    },
+    connection: {
+      connected: status.connected === true,
+      platform: status.platform || null
+    },
     platform: status.platform?.name || status.platform?.id || 'mcp',
     requirement: selected.code,
     externalKey: source.key,
@@ -153,7 +180,8 @@ try {
     project,
     version: versionNo,
     milestone: milestoneName,
-    snapshot: release.snapshot
+    snapshot: release.snapshot,
+    checks: liveSmokeChecks
   }
   emitResult(result)
 } finally {
