@@ -91,6 +91,7 @@ Remaining v0.7.4 scope:
 - Requirement Detail now provides a direct “关联版本” action that selects an existing project/version and calls the existing requirement-link API. The linked version stores a reference to the requirement code while the requirement record keeps its requirement-pool source metadata as the authority.
 - Requirement Detail now also exposes a direct “加入迭代” action from the milestone membership section. It routes to the existing editable milestone selection flow with the current requirement preselected, so imported requirement-pool items can be organized into an iteration without duplicating the external requirement as local master data.
 - The real-platform smoke harness now derives required local credential environment variable names directly from normalized header placeholders such as `${secret:name}`. When `FLOWLARK_V075_SECRET_NAME` is present, the harness injects a temporary `${env:...}` reference into its disposable repository, so secret values are not written to `mcp.json` and the script does not depend on platform-specific keychain writes.
+- The real-platform smoke harness now reports missing header credentials as actionable environment variable names, so a failed probe caused by `${secret:name}` tells the operator to set the matching `FLOWLARK_V075_SECRET_NAME` instead of returning an empty blocker summary.
 - Focused verification for MCP config import, existing requirement MCP search/import/comment, HTTP routing and UI manifest parsing: 51/51 passed.
 - Focused verification for requirement-pool status diagnostics, missing local secret gating, HTTP status routing and MCP Center parsing: 53/53 passed.
 - Focused verification for delivery snapshot source freezing and formal release mail flow: 24/24 passed.
@@ -106,6 +107,9 @@ Remaining v0.7.4 scope:
 - Focused verification after smoke harness secret-env injection: `node --check scripts/smoke-v075-requirement-pool.mjs` passed and `node --test test/v07-upgrade.test.js` passed 7/7.
 - Broader focused verification after smoke harness secret-env injection: `node --test test/mcp-config.test.js test/server.test.js test/v07-upgrade.test.js` passed 59/59.
 - Full suite after smoke harness secret-env injection: `node --test` passed 711/711, zero failures.
+- Focused verification after smoke harness missing-secret diagnostics: `node --check scripts/smoke-v075-requirement-pool.mjs` passed and `node --test test/v07-upgrade.test.js` passed 8/8.
+- Broader focused verification after smoke harness missing-secret diagnostics: `node --test test/mcp-config.test.js test/server.test.js test/v07-upgrade.test.js` passed 60/60.
+- Full suite after smoke harness missing-secret diagnostics: `node --test` passed 712/712, zero failures.
 - `scripts/smoke-v075-requirement-pool.mjs` now provides the real-platform acceptance harness. Given a platform manifest and local credentials, it runs the product path in a temporary repository: manifest inspect/import, connection probe, list refresh, single detail refresh, version linking, iteration scoping and formal delivery snapshot source verification. The harness itself is covered by a local MCP fixture test.
 - `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
 

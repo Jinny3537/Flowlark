@@ -252,4 +252,44 @@ describe('v0.7 升级能力', () => {
     t.assert.strictEqual(saved.servers[0].headers.Authorization, 'Bearer ${env:FLOWLARK_V075_SECRET_FIXTURE_TOKEN}')
     t.assert.doesNotMatch(JSON.stringify(saved), /fixture-secret-value/)
   })
+
+  test('v0.7.5 验收脚本缺少 Header 密钥时给出可执行环境变量提示', async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-smoke-missing-secret-test-'))
+    dirs.push(directory)
+    const secretName = `fixture-missing-${process.pid}`
+    const envKey = `FLOWLARK_V075_SECRET_FIXTURE_MISSING_${process.pid}`
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000, headers: { Authorization: `Bearer \${secret:${secretName}}` } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
+      statuses: { open: '待处理' },
+      safety: { readOnly: true, writes: [], dangerous: [] }
+    }
+    const manifestFile = path.join(directory, 'requirement-pool-missing-secret.json')
+    fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8')
+    const childEnv = { ...process.env, FLOWLARK_QUIET_MIGRATE: '1' }
+    delete childEnv[envKey]
+
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        'scripts/smoke-v075-requirement-pool.mjs',
+        '--manifest', manifestFile,
+        '--query', 'REQ',
+        '--requirement', 'REQ-7'
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: childEnv
+      }),
+      (error) => {
+        t.assert.match(String(error.stderr || error.message), new RegExp(envKey))
+        t.assert.match(String(error.stderr || error.message), /missing secrets/)
+        return true
+      }
+    )
+  })
 })

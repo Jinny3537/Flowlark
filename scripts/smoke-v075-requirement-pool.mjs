@@ -51,7 +51,7 @@ try {
 
   await api(base, 'POST', '/api/mcp/requirement-pool/import', manifest)
   const status = await api(base, 'POST', '/api/mcp/requirement-pool/status', { probe: true })
-  assert.equal(status.connected, true, `connection probe failed: ${formatProblems(status.blockers)}`)
+  assertRequirementPoolConnected(status)
 
   const list = await api(base, 'POST', '/api/requirements/sync', {
     provider: 'mcp',
@@ -256,6 +256,30 @@ async function api(base, method, pathname, body) {
 
 function formatProblems(items = []) {
   return (items || []).map((item) => `${item.code || 'ERROR'}: ${item.message || item}`).join('; ')
+}
+
+function assertRequirementPoolConnected(status) {
+  if (status?.connected === true) return
+  throw new Error(`connection probe failed: ${formatRequirementPoolStatus(status)}`)
+}
+
+function formatRequirementPoolStatus(status = {}) {
+  const parts = []
+  if (status.status) parts.push(`status=${status.status}`)
+  if (status.missingSecrets?.length) {
+    parts.push(`missing secrets: ${status.missingSecrets.map(formatMissingSecret).join(', ')}`)
+  }
+  if (status.blockers?.length) parts.push(`blockers: ${formatProblems(status.blockers)}`)
+  if (status.connection?.message) parts.push(`message: ${status.connection.message}`)
+  if (status.connection?.hint) parts.push(`hint: ${status.connection.hint}`)
+  return parts.filter(Boolean).join('; ') || 'unknown status'
+}
+
+function formatMissingSecret(item) {
+  const name = String(item?.name || '').trim()
+  if (item?.kind === 'env') return `${name || item.label || 'env'}`
+  const envKey = `FLOWLARK_V075_SECRET_${envSuffix(name)}`
+  return `${name || item?.label || 'keychain'} (set ${envKey})`
 }
 
 function git(root, ...args) {
