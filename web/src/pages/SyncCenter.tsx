@@ -265,6 +265,7 @@ export default function SyncCenter() {
       if (type === 'execute') {
         await api.executeSyncRecord(record.id, {
           planHash: record.planHash,
+          confirmed: true,
           reason: highRisk ? reason.trim() : '确认同步计划',
           confirmUnfinished: highImpact,
         });

@@ -10,11 +10,11 @@
 
 ```
 my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
-├── flowlark.json                 仓库配置（schemaVersion: 3 / 仓库名 / 设置）
+├── flowlark.json                 仓库配置（schemaVersion: 4 / 仓库名 / 设置）
 ├── .gitattributes                原型 HTML 标记为二进制，避免污染 diff
 ├── projects/
 │   └── order-center/             ← 项目 slug，即目录名
-│       ├── project.json          项目元数据（含 project.sync 准备配置）
+│       ├── project.json          项目元数据（含生效中的 project.sync 策略）
 │       ├── BASELINE              ← 单行文本：当前基线的版本号
 │       └── versions/
 │           ├── v1.0.json         版本元数据（含变更日志、关联需求）
@@ -23,6 +23,13 @@ my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
 │           ├── v1.1.json
 │           ├── v1.1.html
 │           └── v1.1.spec.md
+├── requirements/
+│   └── REQ-27/
+│       ├── requirement.json      需求生命周期与受控外部任务绑定
+│       └── spec.md               需求规格与验收边界
+├── milestones/                  迭代范围、生命周期与外部 Sprint 绑定
+├── snapshots/                   不可变交付快照
+├── acceptances/                 后续版本使用的验收记录目录
 └── .flowlark/
     ├── oplog.ndjson              操作日志，append-only
     ├── sync-audit.ndjson         同步审计，追加写入、递归脱敏并进入 Git
@@ -32,7 +39,7 @@ my-prototypes/                    ← flowlark git setup 纳入 Git 的目录
     └── trash/                    逻辑删除的版本移动到这里
 ```
 
-## Schema 3 保存项目同步准备数据
+## Schema 3 保存项目同步策略
 
 Schema 3 在每个 `projects/<项目>/project.json` 中增加 `project.sync`：
 
@@ -56,17 +63,61 @@ Schema 3 在每个 `projects/<项目>/project.json` 中增加 `project.sync`：
 }
 ```
 
-- `mode` 只接受 `manual` 或 `trusted-auto`，缺省时为 `manual`。`v0.7.2` 里这两个值都是准备元数据，不会触发无人值守的远端写入。
+- `mode` 只接受 `manual` 或 `trusted-auto`，缺省时为 `manual`。`v0.7.3` 只允许 `manual` 执行；`trusted-auto` 仍是保留配置，不能触发无人值守的远端写入。
 - `server` 是逻辑 MCP 服务标识，`projectId` 是外部项目标识。密码、Token、可执行文件路径和个人运行配置不放进 `project.sync`。
 - `managedFields` 只保存 Flowlark 允许管理的字段：`title`、`description`、`acceptance`、`priority`、`assignee`、`sprint`、`status` 和 `delivery`。
 
-打开 Schema 1 或 Schema 2 仓库时，Flowlark 会先备份受迁移影响的元数据，再补齐项目策略，最后写入 `schemaVersion: 3`。迁移中任一步失败时，恢复备份；也可以使用保留在 `.flowlark/backup/` 中的备份手工回滚。迁移会拒绝符号链接形式的 `flowlark.json`、`.gitignore` 或 `.gitattributes`，避免通过链接读取或改写仓库外文件。
+生成迭代同步计划时，迭代范围内的所有项目必须解析到相同的 `server`、`projectId` 和 `managedFields`。项目配置决定实际连接的 stdio 服务和平台项目；MCP 迭代能力只提供工具名及枚举映射，浏览器不能覆盖这些值。
+
+## Schema 4 保存权威需求生命周期
+
+Schema 4 在 `requirements/<编号>/requirement.json` 中保存权威生命周期：
+
+```json
+{
+  "status": "draft",
+  "statusChangedAt": "2026-09-04T08:00:00.000Z",
+  "statusChangedBy": "migration:schema4",
+  "statusReason": "legacy-derived:not_started",
+  "externalTasks": []
+}
+```
+
+生命周期值包括 `draft`、`confirmed`、`developing`、`pending-acceptance`、`completed` 和 `archived`。`v0.7.3` 只开放用户执行 `draft → confirmed`，以及经过远端验证的 Sprint 启动执行 `confirmed → developing`。`pending-acceptance`、`completed` 和 `archived` 是后续验收闭环的保留状态，本版没有用户入口。
+
+需求规格独立保存在 `requirements/<编号>/spec.md`。确认需求前，标题、描述、负责人和规格书必须齐备。普通需求创建或编辑不能写入 `status`、`statusChanged*`、`statusOverride`、`external` 或 `externalTasks`。
+
+Schema 3 → 4 迁移按以下顺序决定状态：
+
+1. 有 `statusOverride` 时使用它；
+2. 没有覆盖值但已有合法 `status` 时保留该状态及变更元数据；
+3. 只有缺少 `status` 时才根据关联版本派生旧状态。
+
+旧状态映射为：
+
+| 旧状态 | Schema 4 状态 |
+|---|---|
+| `not_started`、`designing` | `draft` |
+| `finalized`、`delivered` | `confirmed` |
+
+迁移生成的记录使用 `statusChangedBy: "migration:schema4"` 和 `statusReason: "legacy-derived:<旧状态>"`，并删除 `statusOverride`。未知状态或重复外部任务绑定会令迁移失败并恢复初始备份。
+
+打开 Schema 1、2 或 3 仓库时，Flowlark 会先备份受影响元数据，再按顺序升级到 Schema 4。任一步失败都会恢复整个迁移链开始前的字节；不带参数回滚时，按有效 backup manifest 的时间选择最新备份。迁移拒绝符号链接形式的 `flowlark.json`、`.gitignore`、`.gitattributes`、`requirements/` 和需求目录，避免读取或改写仓库外文件。
+
+## 受控外部绑定只保存稳定身份
+
+需求的 `externalTasks` 按 `(provider, server, projectId)` 保存当前主任务；同一个 `(server, projectId, taskId)` 不能属于两个需求。迭代的 `external` 保存唯一主 Sprint；同一个 `(server, projectId, sprintId)` 不能属于两个迭代。
+
+首次绑定和重新绑定都必须先读取远端对象，验证项目归属，再生成高风险预览。确认执行时使用 `expectedTaskId` 或 `expectedSprintId` 做 CAS 检查，并在统一绑定锁内重验计划哈希和唯一性。重新绑定会清空 `lastSyncHash`，下一次字段同步必须明确选择恢复 Flowlark 值。
 
 ## 区分团队历史和本机恢复状态
 
 | 路径 | 用途 | 是否进入 Git |
 |---|---|---|
 | `projects/*/project.json` | 项目同步策略等团队元数据 | 是 |
+| `requirements/*/requirement.json` | 需求生命周期和稳定外部任务绑定 | 是 |
+| `requirements/*/spec.md` | 需求规格与验收边界 | 是 |
+| `milestones/*.json` | 迭代范围、生命周期、Sprint 绑定和冻结验证摘要 | 是 |
 | `.flowlark/sync-audit.ndjson` | 同步状态和步骤的 append-only 审计历史 | 是，使用 `merge=union` |
 | `.flowlark/cache/sync-queue/` | 已持久化预览、步骤状态、安全错误和重试进度 | 否 |
 | `.flowlark/backup/` | Schema 迁移前的可恢复元数据 | 否 |

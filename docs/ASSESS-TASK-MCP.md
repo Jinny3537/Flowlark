@@ -5,12 +5,12 @@ Flowlark 可以通过本地 `stdio` MCP 把迭代、需求和原型版本范围�
 当前边界：
 
 - Flowlark 是迭代计划事实源；
-- 一个 Flowlark 仓库绑定一个平台项目；
+- 每个 Flowlark 项目配置自己的 MCP 服务和平台项目；同一迭代中的项目必须解析到同一同步目标；
 - 一个 Flowlark 迭代对应一个平台冲刺；
-- 同一需求在迭代中只创建一个平台任务；
-- 平台保留任务执行状态、实际工时、评论、Bug 和活动记录；
+- 同一需求在同一外部项目中最多绑定一个平台主任务；
+- Flowlark 只写项目声明的托管字段；实际工时、评论、Bug、活动记录和其他非托管字段由平台保留；
 - 平台写入必须先生成计划，再显式确认。
-- `v0.7.2` 只实现手工预览、确认、执行和恢复基础，不会自动执行同步。
+- `v0.7.3` 只实现手工预览、确认、执行和恢复，不会自动执行同步。
 
 ## 环境要求
 
@@ -57,11 +57,7 @@ SHA-256 fffb6d3291e5ee39b2e4c78d2f0afbe3b6028dee49fc1af94df852172b5156f2
 
 ## 迭代能力映射
 
-“迭代能力映射”需要：
-
-- 外部项目标识：平台数字 `projectId`；
-- 工具映射 JSON：将语义操作映射到 MCP 实际工具名；
-- 能力选项 JSON。
+“迭代能力映射”只提供工具映射和平台枚举选项。实际 MCP 服务和平台 `projectId` 来自项目同步设置，不能由全局能力配置或浏览器请求覆盖。
 
 能力选项示例：
 
@@ -106,7 +102,7 @@ cancelSprint
 
 保存写入能力前，Flowlark 会检查工具是否存在，以及关键参数是否仍是必填字段。后端升级导致 Schema 不兼容时，写入能力会停止，不会带着旧参数继续调用。
 
-## 配置项目同步准备策略
+## 配置项目同步目标和托管字段
 
 Schema 3 在 `projects/<项目>/project.json` 中保存 `project.sync`：
 
@@ -115,7 +111,22 @@ Schema 3 在 `projects/<项目>/project.json` 中保存 `project.sync`：
 - `projectId`：外部平台项目标识；
 - `managedFields`：Flowlark 计划管理的标题、描述、验收标准、优先级、负责人、迭代、状态和交付信息。
 
-这些字段为 `v0.7.3` 起按项目生成预览和执行做准备，不是 `v0.7.2` 的执行开关。当前的 milestone planner 仍只使用 MCP 中心的全局迭代映射选择服务和平台项目，`managedFields` 不参与当前计划；单项目预览只会把 `project.sync.mode` 作为描述性队列元数据保存，多项目预览按 `manual` 保存。`trusted-auto` 在 `v0.7.2` 也不会跳过预览或确认；无人值守执行在 `v0.7.5` 前保持禁用。
+生成预览前，Flowlark 会从迭代范围读取每个项目的设置，并要求 `server`、`projectId` 和排序后的 `managedFields` 完全一致。选中的项目服务决定 stdio 运行配置，迭代能力只补充工具名和枚举映射。缺少目标、服务停用、传输类型错误、适配器错误或跨项目配置不一致时，在任何远端读取前停止。
+
+`managedFields` 直接决定计划哈希、漂移比较和更新请求：
+
+- `title`：任务标题或 Sprint 名称；
+- `description`：任务说明或 Sprint 目标；
+- `acceptance`：任务验收标准；
+- `priority`：任务优先级；
+- `assignee`：任务或 Sprint 负责人；
+- `sprint`：任务移入或移出 Sprint；
+- `status`：按能力配置中的显式状态映射更新任务状态；
+- `delivery`：`v0.7.3` 只显示提示，不执行远端写入。
+
+更新只覆盖托管字段，并把平台对象的非托管字段合并回请求。远端值与上次同步摘要不一致时，`v0.7.3` 只支持高风险的 `restore-local`：显式确认后恢复 Flowlark 值；不会把远端文本静默写回本地。
+
+`trusted-auto` 仍是禁用的保留模式，不能跳过预览或确认。无人值守执行要等后续版本完成资格验证后才会开放。
 
 ## 使用流程
 
@@ -140,19 +151,19 @@ Schema 3 在 `projects/<项目>/project.json` 中保存 `project.sync`：
 5. 生成同步预览；预览会以 `pending-confirmation` 状态持久化；
 6. 在同步中心审阅创建、更新、迁移、冲突和生命周期操作；
 7. 核对计划哈希，显式确认并执行；
-8. 冻结迭代；
-9. 从 Flowlark 发起开始、结束或取消。
+8. 以 `action: "freeze"` 生成冻结计划；完成远端回读后，服务端写入 `scopeHash` 和 `verifiedAt`，再把迭代置为已冻结；
+9. 从 Flowlark 生成并确认 Sprint 启动计划；只有远端启动回读成功后，迭代进入进行中，范围内已确认需求进入开发中。
 
 同步中心只暴露服务端固定的“执行”、“重试”和“取消”动作。浏览器可提交计划哈希、原因和未完成任务确认，但不能指定 MCP 服务、工具名或任意远端操作。执行和重试都以持久化的 `intent` 为准：服务端从记录取出 `entityKey`、`intent` 和 `planHash`，重新读取当前本地数据与远端对象并重建计划。哈希一致时才会执行；发现变化时会保存新的 `pending-confirmation` 预览，不执行旧计划。
 
-开始、结束、取消和进行中范围变化属于高风险操作，必须填写原因并确认未完成任务的处理方式。
+Sprint 启动、取消和进行中范围变化属于高风险操作，必须填写原因并确认影响。正式发版不会自动结束 Sprint 或归档迭代；把 Sprint end 和归档接入验收闭环属于后续版本。
 解除冻结同样必须填写原因，原因会进入操作日志。
 
 CLI 对应命令：
 
 ```bash
 flowlark milestone preflight S12
-flowlark milestone plan S12 --json
+flowlark milestone plan S12 --action freeze --json
 flowlark milestone plan S12 --action start --json
 flowlark milestone sync S12 --plan-hash sha256:... --action start --confirm --reason "进入开发" --unfinished
 flowlark milestone resume S12
@@ -169,8 +180,27 @@ flowlark milestone transition S12 reviewing
 
 - 不自动覆盖；
 - 计划显示冲突；
-- 用户选择恢复 Flowlark 值或接受平台值；
-- 接受平台值必须形成可审阅的本地文件修改。
+- 用户只能显式选择恢复 Flowlark 值；
+- 需要采用平台文本时，先手工修改 Flowlark 文件，再生成新计划。
+
+## 受控绑定和未知创建结果恢复
+
+需求任务和迭代 Sprint 的首次绑定、重新绑定都走同步中心：服务端从项目设置解析目标，读取远端对象并验证项目归属，生成高风险计划，再使用计划哈希、统一绑定锁、反向唯一性和 `expectedTaskId` / `expectedSprintId` CAS 执行。浏览器只能提交本地项目、远端 ID、预期旧 ID、原因和确认标记，不能选择服务、工具或请求体。
+
+如果 `sprint.create` 或 `task.create` 的请求可能已经送达，但响应超时、断线或无法解析，记录会停在 `paused`，错误为 `MCP_SYNC_LINK_REQUIRED`。不要直接重试创建。先在平台确认实际对象，再调用固定恢复接口：
+
+```text
+POST /api/sync/<同步记录 ID>/link-result
+{
+  "operationKey": "sprint:S12:create",
+  "remoteId": 123,
+  "reason": "人工核对平台结果"
+}
+```
+
+服务端会重新解析当前项目目标，读取候选对象，并检查远端 ID、项目归属、托管字段投影、任务类型、所属 Sprint 和绑定唯一性。验证通过后立即保存 binding 和 `remoteResult`，把步骤改为 `remote-complete`。用户随后仍需点击重试；重试只补本地持久化、验证和后续步骤，不会重发已经完成的 create。
+
+冻结计划另有一份覆盖迭代业务字段、排序范围、需求生命周期及投影、稳定绑定、项目目标和托管字段的 `sourceHash`。执行进入锁后会重算该哈希；不一致时旧计划失效。只有所有远端任务和 Sprint 回读存在且托管字段匹配，才会原子写入 `external.scopeHash`、`external.verifiedAt` 和本地 `frozen` 状态。
 
 新的同步预览和执行步骤记录在：
 
@@ -245,7 +275,7 @@ flowlark milestone transition S12 reviewing
 - [ ] 制造过期 `revision`，确认不会覆盖；
 - [ ] 开始冲刺；
 - [ ] 验证未完成任务确认规则；
-- [ ] 结束一个冲刺并取消另一个冲刺；
+- [ ] 验证 Sprint 启动和显式取消；Sprint end 与归档待后续验收闭环开放后再验收；
 - [ ] 检查 Git、日志、API 响应和同步记录中没有凭据；
 - [ ] 用真实结果更新工具名、枚举和时间格式兼容说明。
 
