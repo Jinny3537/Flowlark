@@ -128,6 +128,10 @@ try {
     endAt: '2026-09-06',
     items: [{ requirement: selected.code, project, version: versionNo }]
   })
+  const requirementDetail = await api(base, 'GET', `/api/requirements/${encodeURIComponent(selected.code)}`)
+  assertRequirementLinkedToVersion(requirementDetail, project, versionNo)
+  const milestoneDetail = await api(base, 'GET', `/api/milestones/${encodeURIComponent(milestoneName)}`)
+  assertMilestoneIncludesRequirement(milestoneDetail, selected.code, project, versionNo)
   milestones.updateMilestone(root, milestoneName, { status: 'active' }, { system: true })
 
   const release = await api(base, 'POST', `/api/milestones/${milestoneName}/versions/${project}/${encodeURIComponent(versionNo)}/formal-release`, {
@@ -319,6 +323,18 @@ function assertRequirementSourceFrozen(source, requirement) {
   assert.equal(source.syncedAt, requirement.external?.syncedAt || '')
   assert.match(source.syncedAt || '', /^\d{4}-\d{2}-\d{2}T/, '交付快照缺少需求池同步时间')
   if (requirement.external?.url) assert.equal(source.url, requirement.external.url)
+}
+
+function assertRequirementLinkedToVersion(requirement, project, versionNo) {
+  assert.ok((requirement.versions || []).some((item) =>
+    item.project === project && item.versionNo === versionNo),
+  `需求 ${requirement.code} 未回读到关联版本 ${project}/${versionNo}`)
+}
+
+function assertMilestoneIncludesRequirement(milestone, code, project, versionNo) {
+  assert.ok((milestone.items || []).some((item) =>
+    item.requirement === code && item.project === project && item.version === versionNo),
+  `迭代 ${milestone.name} 未回读到需求范围 ${code} ${project}/${versionNo}`)
 }
 
 function git(root, ...args) {
