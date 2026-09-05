@@ -4,6 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { cleanup, tmpRepo } from './helpers.js'
 import { Hub } from '../src/core/service.js'
+import * as gitx from '../src/core/git.js'
+import { readDeliverySnapshot } from '../src/core/delivery-snapshots.js'
 import {
   assertReleaseMailConfig,
   enqueueReleaseMail,
@@ -115,6 +117,9 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
   const root = tmpRepo()
   t.after(() => cleanup(root))
   const calls = []
+  gitx.git(root, ['init'])
+  gitx.git(root, ['config', 'user.name', 'Release Test'])
+  gitx.git(root, ['config', 'user.email', 'release@example.invalid'])
   const wecomMcp = {
     authStatus: async () => ({
       installed: true, version: '1.1.0', versionOk: true, authorized: true,
@@ -132,7 +137,11 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
   }
   const hub = new Hub(root, {
     wecomMcp,
-    gitSync: gitSync || (() => { calls.push('git'); return { ok: true, pushed: true } })
+    gitSync: async (options) => {
+      calls.push('git')
+      if (gitSync) await gitSync(options)
+      return gitx.sync(root, { ...options, push: false })
+    }
   })
   const project = hub.createProject({
     name: '订单中心', code: 'ORDERS',
@@ -144,12 +153,16 @@ function releaseFixture(t, { gitSync, sendReleaseMail, resolveContacts } = {}) {
   })
   hub.addVersion(project.slug, { versionNo: 'v1', title: '首版', html: '<html>v1</html>' })
   hub.setBaseline(project.slug, 'v1')
-  hub.createRequirement({ code: 'REQ-2', title: '筛选优化' })
+  hub.createRequirement({ code: 'REQ-2', title: '筛选优化', description: '优化筛选体验', owner: 'PM' })
+  hub.writeRequirementSpec('REQ-2', '# 筛选优化验收')
+  hub.transitionRequirement('REQ-2', { target: 'confirmed' })
+  hub.transitionRequirementSystem('REQ-2', 'developing', { reason: 'Sprint 已启动' })
   hub.addVersion(project.slug, {
     versionNo: 'v2', title: '筛选升级', html: '<html>v2</html>',
     changes: [{ type: 'MODIFY', location: '列表', content: '保留筛选条件' }],
     requirements: ['REQ-2']
   })
+  hub.setSpec(project.slug, 'v2', '# 筛选升级规格')
   const milestone = hub.createMilestone({
     name: 'S1',
     title: '迭代一',
@@ -209,7 +222,7 @@ test('正式执行会重新校验迭代状态', async (t) => {
 })
 
 test('正式发版严格按基线、Git、邮件顺序且重复请求不重复发送', async (t) => {
-  const { hub, project, milestone, calls, wecomMcp } = releaseFixture(t)
+  const { root, hub, project, milestone, calls, wecomMcp } = releaseFixture(t)
   const preflight = await hub.preflightMilestoneFormalRelease(milestone.name, project.slug, 'v2', { releasedAt: '2026-08-28T10:00:00Z' })
   assert.equal(preflight.ready, true)
   assert.equal(preflight.previousBaseline, 'v1')
@@ -219,6 +232,11 @@ test('正式发版严格按基线、Git、邮件顺序且重复请求不重复�
 
   const result = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2', { releasedAt: preflight.releasedAt })
   assert.equal(result.status, 'complete')
+  assert.match(result.snapshot, /^delivery-[a-f0-9]{48}$/)
+  assert.equal(readDeliverySnapshot(root, result.snapshot).releaseCommit, result.git.releaseCommit)
+  assert.equal(hub.getMilestone(milestone.name).status, 'delivered')
+  assert.equal(hub.getMilestone(milestone.name).deliveries[0].snapshot, result.snapshot)
+  assert.equal(hub.getRequirement('REQ-2').status, 'pending-acceptance')
   assert.deepEqual(calls, ['baseline', 'git', 'mail'])
   assert.equal(hub.getBaseline(project.slug).versionNo, 'v2')
   assert.equal(result.mail.status, 'sent')
@@ -233,9 +251,7 @@ test('Git 失败不发送邮件，续跑不重复设置基线', async (t) => {
   let shouldFail = true
   const { hub, project, milestone, calls } = releaseFixture(t, {
     gitSync: () => {
-      calls.push('git')
       if (shouldFail) throw new Error('push failed')
-      return { ok: true }
     }
   })
   const first = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2')
@@ -246,6 +262,30 @@ test('Git 失败不发送邮件，续跑不重复设置基线', async (t) => {
   const second = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2')
   assert.equal(second.status, 'complete')
   assert.deepEqual(calls, ['baseline', 'git', 'git', 'mail'])
+})
+
+test('正式交付后的验收结论会推进需求生命周期', async (t) => {
+  const approved = releaseFixture(t)
+  const release = await approved.hub.formalReleaseMilestoneVersion(approved.milestone.name, approved.project.slug, 'v2')
+  for (const role of ['product', 'development', 'qa']) {
+    approved.hub.recordAcceptance(release.snapshot, {
+      role,
+      verdict: 'approved',
+      expectedSnapshotHash: readDeliverySnapshot(approved.root, release.snapshot).contentHash
+    })
+  }
+  assert.equal(approved.hub.deliveryAcceptance(release.snapshot).ready, true)
+  assert.equal(approved.hub.getRequirement('REQ-2').status, 'completed')
+
+  const rejected = releaseFixture(t)
+  const rejectedRelease = await rejected.hub.formalReleaseMilestoneVersion(rejected.milestone.name, rejected.project.slug, 'v2')
+  rejected.hub.recordAcceptance(rejectedRelease.snapshot, {
+    role: 'product',
+    verdict: 'rejected',
+    note: '需要补充边界场景'
+  })
+  assert.equal(rejected.hub.deliveryAcceptance(rejectedRelease.snapshot).status, 'rejected')
+  assert.equal(rejected.hub.getRequirement('REQ-2').status, 'developing')
 })
 
 test('邮件失败保留 pending，重试只调用邮件', async (t) => {
@@ -261,9 +301,12 @@ test('邮件失败保留 pending，重试只调用邮件', async (t) => {
   const first = await hub.formalReleaseMilestoneVersion(milestone.name, project.slug, 'v2')
   assert.equal(first.status, 'mail_pending')
   assert.equal(first.released, true)
+  assert.equal(first.run.status, 'mail_pending')
   assert.equal(first.mail.lastInstruction, '稍后重试')
   const retried = await hub.retryReleaseMail(first.mail.id)
   assert.equal(retried.status, 'complete')
+  assert.equal(retried.run.status, 'complete')
+  assert.equal(retried.snapshot, first.snapshot)
   assert.deepEqual(calls, ['baseline', 'git', 'mail', 'mail'])
 })
 

@@ -42,3 +42,28 @@ The previous interrupted final-review agent did not deliver a final report. Do n
 ```sh
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node scripts/smoke-v074.mjs
 ```
+
+## v0.7.4 formal release integration
+
+- Formal milestone release now persists a local release-run under `.flowlark/cache/formal-release-runs` and records baseline, Git, immutable snapshot, lifecycle and mail steps with resumable evidence.
+- The release path creates delivery snapshots from the verified Git HEAD after baseline sync, records `milestone.deliveries`, and moves delivered requirements to `pending-acceptance`.
+- Repeated release requests after the milestone becomes `delivered` are allowed only when an existing delivery snapshot proves the same project/version release. New releases from non-active milestones remain blocked.
+- Mail retry now links back to the release-run, so a pending mail can complete the existing run without replaying baseline, Git or snapshot work.
+- Acceptance decisions now update requirement lifecycle: all required approvals with no blocking feedback move requirements to `completed`; a required rejection moves pending requirements back to `developing`.
+- Git synchronization now treats `requirements`, `milestones`, `snapshots`, `acceptances` and `views` as Flowlark-owned paths. This is required for release commits to contain the milestone scope and requirement specifications used by immutable delivery snapshots.
+- Verified focused release, acceptance and lifecycle runs: 19/19 and 23/23 passed.
+- Full suite after formal release integration: 685/685 passed, zero failures.
+- `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
+
+```sh
+node --test test/release-mail.test.js test/release-mail-api.test.js test/acceptances.test.js
+node --test
+npm run build:web
+git diff --check
+```
+
+Remaining v0.7.4 scope:
+
+- External delivery/status preview, verified external task closure, Sprint end and archive gates are not yet implemented.
+- Failure injection currently covers Git and mail for formal release. Snapshot, lifecycle and external/archive step failures still need dedicated recovery tests.
+- Milestone and requirement UI summaries for formal release continuation are still incomplete.

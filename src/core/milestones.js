@@ -97,9 +97,26 @@ export function updateMilestone(root, name, patch, { system = false } = {}) {
   if (patch.startAt !== undefined) item.startAt = patch.startAt || null
   if (patch.endAt !== undefined) item.endAt = patch.endAt || null
   if (patch.items !== undefined) item.items = normalizeMilestoneItems(root, patch.items)
+  if (system && patch.deliveries !== undefined) item.deliveries = normalizeMilestoneDeliveries(root, item, patch.deliveries)
   if (patch.external !== undefined) item.external = patch.external || null
   item.updatedAt = new Date().toISOString()
   fs.writeFileSync(store.paths.milestoneFile(root, item.name), stringify(item, 'milestone'))
+  return inspectMilestone(root, item)
+}
+
+export function recordMilestoneDelivery(root, name, input) {
+  const item = readMilestone(root, name)
+  const next = normalizeMilestoneDeliveries(root, item, [
+    ...item.deliveries.filter((entry) => !(entry.project === input.project && entry.version === input.version)),
+    input
+  ])
+  item.deliveries = next
+  if (item.status === 'active' && allScopedProjectVersionsDelivered(item)) {
+    transitionMilestoneStatus(item.status, 'delivered', { remoteExists: false })
+    item.status = 'delivered'
+  }
+  item.updatedAt = new Date().toISOString()
+  writeMilestoneFileAtomic(root, item)
   return inspectMilestone(root, item)
 }
 
@@ -198,6 +215,38 @@ function normalizeStoredMilestone(input = {}) {
     items: Array.isArray(input.items) ? input.items : [],
     external: input.external || null
   }
+}
+
+function normalizeMilestoneDeliveries(root, milestone, deliveries) {
+  if (!Array.isArray(deliveries)) throw err.bad('MILESTONE_DELIVERIES_INVALID', '迭代交付记录必须是数组')
+  const scoped = new Set((milestone.items || []).map((item) => `${item.project}:${item.version}`))
+  const seen = new Set()
+  const out = []
+  for (const raw of deliveries) {
+    const item = {
+      project: String(raw?.project || '').trim(),
+      version: String(raw?.version || '').trim(),
+      snapshot: String(raw?.snapshot || '').trim(),
+      releaseRunId: String(raw?.releaseRunId || '').trim()
+    }
+    const key = `${item.project}:${item.version}`
+    if (!scoped.has(key)) throw err.bad('MILESTONE_DELIVERY_OUT_OF_SCOPE', '交付记录不在迭代范围内')
+    if (seen.has(key)) throw err.bad('MILESTONE_DELIVERY_DUPLICATE', '同一项目版本不能重复交付')
+    store.readProject(root, item.project)
+    store.readVersion(root, item.project, item.version)
+    if (!/^delivery-[a-f0-9]{48}$/.test(item.snapshot)) {
+      throw err.bad('MILESTONE_DELIVERY_SNAPSHOT_INVALID', '交付快照标识无效')
+    }
+    seen.add(key)
+    out.push(item)
+  }
+  return out.sort((a, b) => `${a.project}:${a.version}`.localeCompare(`${b.project}:${b.version}`))
+}
+
+function allScopedProjectVersionsDelivered(milestone) {
+  const required = new Set((milestone.items || []).map((item) => `${item.project}:${item.version}`))
+  for (const delivery of milestone.deliveries || []) required.delete(`${delivery.project}:${delivery.version}`)
+  return required.size === 0
 }
 
 function isLocked(status) {

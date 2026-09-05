@@ -2,10 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { cleanup, html, newHub } from './helpers.js'
 import { startServer } from '../src/server/index.js'
+import * as gitx from '../src/core/git.js'
 
 test('正式发版 API 完成预检、发布和队列查询且不暴露内部 ID', async (t) => {
   const { root, hub } = newHub()
   t.after(() => cleanup(root))
+  gitx.git(root, ['init'])
+  gitx.git(root, ['config', 'user.name', 'Release API Test'])
+  gitx.git(root, ['config', 'user.email', 'release-api@example.invalid'])
   const project = hub.createProject({
     name: '订单中心', code: 'ORDERS',
     releaseMail: {
@@ -20,7 +24,11 @@ test('正式发版 API 完成预检、发布和队列查询且不暴露内部 ID
     versionNo: 'v2', title: '筛选升级', html: html('v2'),
     changes: [{ type: 'MODIFY', location: '列表', content: '保留筛选条件' }]
   })
-  hub.createRequirement({ code: 'REQ-2', title: '筛选优化' })
+  hub.createRequirement({ code: 'REQ-2', title: '筛选优化', description: '优化筛选体验', owner: 'PM' })
+  hub.writeRequirementSpec('REQ-2', '# 筛选优化验收')
+  hub.transitionRequirement('REQ-2', { target: 'confirmed' })
+  hub.transitionRequirementSystem('REQ-2', 'developing', { reason: 'Sprint 已启动' })
+  hub.setSpec(project.slug, 'v2', '# 筛选升级规格')
   const milestone = hub.createMilestone({
     name: 'S1',
     title: '迭代一',
@@ -45,7 +53,7 @@ test('正式发版 API 完成预检、发布和队列查询且不暴露内部 ID
     port: 0,
     previewPort: 0,
     wecomMcp: fakeWecom,
-    gitSync: () => ({ ok: true, pushed: true })
+    gitSync: (options) => gitx.sync(root, { ...options, push: false })
   })
   t.after(() => server.close())
   const base = `http://127.0.0.1:${server.port}`

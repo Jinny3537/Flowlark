@@ -56,7 +56,7 @@ node --test test/migrate.test.js test/migrate-schema5.test.js test/metadata-back
 
 ## 3. Immutable delivery materials
 
-Core storage is implemented in `delivery-snapshots.js` and covered by `delivery-snapshots.test.js`; release-run integration remains in Task 5.
+Core storage is implemented in `delivery-snapshots.js`, covered by `delivery-snapshots.test.js`, and now integrated into formal milestone release through `formal-release-run.js`.
 
 Files: add `src/core/delivery-snapshots.js`, `test/delivery-snapshots.test.js`; integrate `snapshots.js` and the formal release service.
 
@@ -66,10 +66,10 @@ readDeliverySnapshot(root, name)
 verifyDeliverySnapshot(root, name)
 ```
 
-- [ ] Derive identity from the release and reject mismatched repeated requests.
-- [ ] Copy version specification, changelog, requirement metadata/specifications and acceptance rules. Include HTML/attachment hashes and preserve retrievable released bytes.
-- [ ] Write snapshots exclusively, without update/delete endpoints. Verify overall content hash and individual material integrity.
-- [ ] Refuse legacy snapshots as acceptance evidence. Show current feedback separately from immutable release contents.
+- [x] Derive identity from the release and reject mismatched repeated requests.
+- [x] Copy version specification, changelog, requirement metadata/specifications and acceptance rules. Include HTML/attachment hashes and preserve retrievable released bytes.
+- [x] Write snapshots exclusively, without update/delete endpoints. Verify overall content hash and individual material integrity.
+- [x] Refuse legacy snapshots as acceptance evidence. Show current feedback separately from immutable release contents.
 
 ## 4. Append-only decisions and feedback
 
@@ -78,7 +78,7 @@ Files: add `src/core/acceptances.js`, `delivery-feedback.js` and corresponding t
 - [x] Append decisions under `acceptances/<snapshot>/<record-id>.json`; derive actor/time/ID server-side and bind each decision to the snapshot hash and frozen role definition.
 - [x] No decision edit/delete route. Revisions are new records; condition closure also creates a new decision.
 - [x] Persist feedback against a delivery snapshot with blocker/important/normal severity. Resolve with actor, timestamp and reason; preserve history.
-- [ ] Validate all bodies and references; preserve read-only access and reject writes in LAN/mirror/Git read-only modes.
+- [x] Validate all bodies and references; preserve read-only access and reject writes in LAN/mirror/Git read-only modes.
 
 ```text
 GET/PUT /api/projects/:slug/acceptance-rules
@@ -93,10 +93,12 @@ POST /api/snapshots/:name/feedback/:id/resolve
 Files: add `src/core/formal-release-run.js` and tests; extend formal release methods in `service.js` and lifecycle modules.
 
 - [ ] Persist the sequence: preflight → baseline → Git → immutable snapshot → notification → external preview → local completion.
-- [ ] Verify completed artifacts before retry; no repeated baseline, snapshot, mail or external create after partial failure.
-- [ ] Git failure prevents snapshot and delivery-state writes. Later failures retain the snapshot and resume at the incomplete step.
-- [ ] Delivered requirements enter pending-acceptance; required rejection returns them to developing. Record all transitions with evidence and actor.
-- [ ] A multi-project milestone becomes delivered only after all scoped project versions have release snapshots.
+- [x] Persist and resume the local sequence through baseline → Git → immutable snapshot → notification → local completion.
+- [x] Verify completed artifacts before retry; no repeated baseline, Git, snapshot or mail after partial failure.
+- [x] Git failure prevents snapshot and delivery-state writes. Mail failure retains the snapshot and resumes at the incomplete step.
+- [x] Delivered requirements enter pending-acceptance; required rejection returns them to developing. Acceptance pass moves them to completed. Record all transitions with evidence and actor.
+- [x] A multi-project milestone becomes delivered only after all scoped project versions have release snapshots.
+- [ ] External preview/close/archive continuation remains for Task 6.
 
 ## 6. Manual external completion and archive gates
 
@@ -121,7 +123,9 @@ Files: project settings, delivery detail, requirement detail, milestone detail, 
 ## 8. Release verification
 
 - [ ] Tests cover default/custom roles, rejection, waiver, conditional completion, blockers, cross-project aggregation and append-only history.
+- [x] Tests cover default/custom roles, rejection, waiver, conditional completion, blockers, append-only history and release-driven requirement lifecycle.
 - [ ] Inject a failure after every release and archive step; prove retries never replay completed side effects.
+- [x] Injected Git and mail failures prove release retries do not replay completed baseline/Git/snapshot/mail side effects in the implemented local release sequence.
 - [ ] Verify initialization, migration, rollback, offline reading and old snapshot compatibility.
 - [ ] Run full tests/build and product/security review, update STORAGE/MCP documentation and CHANGELOG, and record the evidence.
 - [ ] Only after manual acceptance/release/archive works end-to-end, implement v0.7.5 qualification, automatic synchronization, health reporting and recovery.

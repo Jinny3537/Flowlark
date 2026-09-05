@@ -25,9 +25,18 @@ export function transitionRequirementStatus(current, target, { system = false } 
   if (bySystem && from === 'confirmed' && to === 'developing') {
     return { from, to, changed: true }
   }
+  if (bySystem && ['confirmed', 'developing'].includes(from) && to === 'pending-acceptance') {
+    return { from, to, changed: true }
+  }
+  if (bySystem && from === 'pending-acceptance' && to === 'developing') {
+    return { from, to, changed: true }
+  }
+  if (bySystem && from === 'pending-acceptance' && to === 'completed') {
+    return { from, to, changed: true }
+  }
   throw err.conflict(
     'REQUIREMENT_TRANSITION_INVALID',
-    `v0.7.3 不允许${bySystem ? '系统' : '用户'}将需求从 ${from} 转为 ${to}`
+    `不允许${bySystem ? '系统' : '用户'}将需求从 ${from} 转为 ${to}`
   )
 }
 
