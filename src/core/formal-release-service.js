@@ -1,11 +1,18 @@
 import { err } from './errors.js'
 import * as store from './store.js'
 import * as rules from './rules.js'
+import * as gitx from './git.js'
 import * as milestones from './milestones.js'
 import * as requirements from './requirements.js'
 import * as releaseMail from './release-mail.js'
-import { readDeliverySnapshot } from './delivery-snapshots.js'
 import {
+  createDeliverySnapshot,
+  readDeliverySnapshot,
+  verifyDeliverySnapshot
+} from './delivery-snapshots.js'
+import {
+  ensureFormalReleaseRun,
+  findFormalReleaseRun,
   findFormalReleaseRunByMail,
   markFormalReleaseStep,
   publicFormalReleaseRun
@@ -15,6 +22,28 @@ import { currentUser } from './repo.js'
 export async function preflightMilestoneFormalRelease(context, name, slug, versionNo, input = {}) {
   assertMilestoneFormalReleaseTarget(context.root, name, slug, versionNo)
   return publicFormalReleasePreflight(await prepareFormalRelease(context, slug, versionNo, input))
+}
+
+export async function formalReleaseMilestoneVersion(context, name, slug, versionNo, input = {}) {
+  const item = milestones.readMilestone(context.root, name)
+  const delivery = milestoneDelivery(item, slug, versionNo)
+  if (item.status !== 'active' && !delivery) {
+    throw err.conflict(
+      'MILESTONE_FORMAL_RELEASE_STATUS_INVALID',
+      `迭代「${item.name}」只有在进行中状态才能正式发版`
+    )
+  }
+  if (item.status === 'active') {
+    assertMilestoneFormalReleaseTarget(context.root, name, slug, versionNo)
+  } else if (!item.items.some((entry) => entry.project === slug && entry.version === versionNo)) {
+    throw err.conflict(
+      'MILESTONE_FORMAL_RELEASE_OUT_OF_SCOPE',
+      `${slug}/${versionNo} 不在迭代「${item.name}」的版本范围内`,
+      '先核对迭代版本范围'
+    )
+  }
+  return context.withLock(`formal-release:${name}:${slug}:${versionNo}`, () =>
+    executeFormalRelease(context, name, slug, versionNo, input))
 }
 
 export function listReleaseMails(context) {
@@ -226,6 +255,199 @@ async function prepareFormalRelease(context, slug, versionNo, input = {}) {
   }
 }
 
+async function executeFormalRelease(context, milestoneName, slug, versionNo, input = {}) {
+  const earlyBaseline = store.readBaseline(context.root, slug)
+  const earlyVersion = store.readVersion(context.root, slug, versionNo)
+  const earlyDelivery = milestoneDelivery(milestones.readMilestone(context.root, milestoneName), slug, versionNo)
+  if (earlyBaseline === versionNo && earlyVersion.baselineAt) {
+    const existing = releaseMail.listReleaseMails(context.root)
+      .find((item) => item.project === slug && item.version === versionNo && item.baselineAt === earlyVersion.baselineAt)
+    const earlyRun = earlyDelivery?.releaseRunId
+      ? findFormalReleaseRun(context.root, {
+        milestone: milestoneName,
+        project: slug,
+        version: versionNo,
+        baselineAt: earlyVersion.baselineAt
+      })
+      : null
+    if (earlyDelivery) verifyDeliverySnapshot(context.root, earlyDelivery.snapshot)
+    if (existing?.status === 'sent' && earlyDelivery) {
+      return {
+        status: 'complete',
+        released: true,
+        duplicate: true,
+        baseline: { project: slug, version: versionNo, baselineAt: earlyVersion.baselineAt },
+        git: { ok: true, skipped: true },
+        snapshot: earlyDelivery.snapshot,
+        delivery: earlyDelivery,
+        mail: releaseMail.publicReleaseMail(existing),
+        run: earlyRun ? publicFormalReleaseRun(earlyRun) : null
+      }
+    }
+    if (existing && earlyDelivery) {
+      return sendReleaseMailTask(context, existing, {
+        git: { ok: true, skipped: true },
+        snapshot: earlyDelivery.snapshot,
+        releaseRunId: earlyRun?.id || null
+      })
+    }
+  }
+  const prepared = await prepareFormalRelease(context, slug, versionNo, input)
+  if (!prepared.ready) {
+    throw err.bad(
+      'FORMAL_RELEASE_BLOCKED',
+      prepared.blockers[0]?.message || '正式发版预检未通过',
+      prepared.blockers.map((item) => item.message).join('；')
+    )
+  }
+
+  const currentBaseline = store.readBaseline(context.root, slug)
+  const baseline = currentBaseline !== versionNo
+    ? context.setBaseline(slug, versionNo)
+    : context.getVersion(slug, versionNo)
+  const baselineAt = baseline.baselineAt
+  let run = ensureFormalReleaseRun(context.root, { milestone: milestoneName, project: slug, version: versionNo, baselineAt })
+  run = markFormalReleaseStep(context.root, run.id, 'baseline', {
+    status: 'complete',
+    project: slug,
+    version: versionNo,
+    baselineAt
+  })
+  const existing = releaseMail.listReleaseMails(context.root)
+    .find((item) => item.project === slug && item.version === versionNo && item.baselineAt === baselineAt)
+  const existingDelivery = milestoneDelivery(milestones.readMilestone(context.root, milestoneName), slug, versionNo)
+  if (existingDelivery) verifyDeliverySnapshot(context.root, existingDelivery.snapshot)
+  if (existing?.status === 'sent' && existingDelivery) {
+    run = markFormalReleaseStep(context.root, run.id, 'mail', { status: 'sent', mailId: existing.id })
+    return {
+      status: 'complete',
+      released: true,
+      duplicate: true,
+      baseline: { project: slug, version: versionNo, baselineAt },
+      git: { ok: true, skipped: true },
+      snapshot: existingDelivery.snapshot,
+      delivery: existingDelivery,
+      mail: releaseMail.publicReleaseMail(existing),
+      run: publicFormalReleaseRun(run)
+    }
+  }
+  if (existing && existingDelivery) {
+    return sendReleaseMailTask(context, existing, {
+      git: { ok: true, skipped: true },
+      snapshot: existingDelivery.snapshot,
+      releaseRunId: run.id
+    })
+  }
+
+  let gitResult = run.steps.git?.result || null
+  let releaseCommit = run.steps.git?.releaseCommit || ''
+  if (!releaseCommit) {
+    try {
+      gitResult = await Promise.resolve(context.gitSyncOverride
+        ? context.gitSyncOverride({ message: `release: ${slug}/${versionNo}`, push: true })
+        : context.gitSync({ message: `release: ${slug}/${versionNo}`, push: true }))
+      if (gitResultFailed(gitResult)) {
+        throw Object.assign(new Error(firstFailedGitStep(gitResult)?.detail || 'Git 同步失败'), {
+          code: 'GIT_SYNC_FAILED'
+        })
+      }
+      releaseCommit = currentGitHead(context.root)
+      run = markFormalReleaseStep(context.root, run.id, 'git', {
+        status: 'complete',
+        releaseCommit,
+        result: gitResult
+      })
+    } catch (error) {
+      run = markFormalReleaseStep(context.root, run.id, 'git', {
+        status: 'failed',
+        error: error.message,
+        hint: error.hint || null
+      })
+      return {
+        status: 'git_failed',
+        released: false,
+        baseline: { project: slug, version: versionNo, baselineAt },
+        git: { ok: false, error: error.message, hint: error.hint || null },
+        snapshot: null,
+        delivery: null,
+        mail: null,
+        run: publicFormalReleaseRun(run)
+      }
+    }
+  }
+
+  let snapshotName = run.steps.snapshot?.name || ''
+  try {
+    if (snapshotName) verifyDeliverySnapshot(context.root, snapshotName)
+    else {
+      const snapshot = createDeliverySnapshot(context.root, {
+        milestone: milestoneName,
+        project: slug,
+        version: versionNo,
+        releaseCommit
+      })
+      snapshotName = snapshot.name
+    }
+    run = markFormalReleaseStep(context.root, run.id, 'snapshot', {
+      status: 'complete',
+      name: snapshotName,
+      releaseCommit
+    })
+  } catch (error) {
+    run = markFormalReleaseStep(context.root, run.id, 'snapshot', {
+      status: 'failed',
+      error: error.message,
+      hint: error.hint || null,
+      releaseCommit
+    })
+    return {
+      status: 'snapshot_failed',
+      released: false,
+      baseline: { project: slug, version: versionNo, baselineAt },
+      git: { ok: true, result: gitResult, releaseCommit },
+      snapshot: null,
+      delivery: null,
+      mail: null,
+      run: publicFormalReleaseRun(run)
+    }
+  }
+
+  let delivery = milestoneDelivery(milestones.readMilestone(context.root, milestoneName), slug, versionNo)
+  if (!delivery || run.steps.lifecycle?.status !== 'complete') {
+    delivery = completeReleaseLifecycle(context, milestoneName, slug, versionNo, snapshotName, run.id)
+    run = markFormalReleaseStep(context.root, run.id, 'lifecycle', {
+      status: 'complete',
+      delivery
+    })
+  }
+
+  if (existing) {
+    return sendReleaseMailTask(context, existing, {
+      git: { ok: true, result: gitResult, releaseCommit, skipped: Boolean(run.steps.git?.releaseCommit && !gitResult) },
+      snapshot: snapshotName,
+      releaseRunId: run.id
+    })
+  }
+  const task = releaseMail.enqueueReleaseMail(context.root, {
+    project: slug,
+    version: versionNo,
+    baselineAt,
+    subject: prepared.subject,
+    markdown: prepared.markdown,
+    to: prepared.internalTo,
+    cc: prepared.internalCc
+  })
+  run = markFormalReleaseStep(context.root, run.id, 'mail', {
+    status: 'pending',
+    mailId: task.id
+  })
+  return sendReleaseMailTask(context, task, {
+    git: { ok: true, result: gitResult, releaseCommit },
+    snapshot: snapshotName,
+    releaseRunId: run.id
+  })
+}
+
 function validReleaseTime(value) {
   if (value === undefined || value === null || value === '') return new Date().toISOString()
   const time = new Date(value)
@@ -236,6 +458,22 @@ function validReleaseTime(value) {
 function publicFormalReleasePreflight(value) {
   const { internalTo, internalCc, ...publicValue } = value
   return publicValue
+}
+
+function gitResultFailed(result) {
+  return Array.isArray(result?.steps) && result.steps.some((step) => step && step.ok === false)
+}
+
+function firstFailedGitStep(result) {
+  return Array.isArray(result?.steps) ? result.steps.find((step) => step && step.ok === false) : null
+}
+
+function currentGitHead(root) {
+  const result = gitx.git(root, ['rev-parse', 'HEAD'])
+  if (!result.ok || !result.out) {
+    throw err.conflict('GIT_COMMIT_REQUIRED', '正式发版没有可验证的 Git 提交')
+  }
+  return result.out
 }
 
 async function sendReleaseMailTask(
@@ -307,4 +545,40 @@ function deliveryForSnapshot(root, snapshotName) {
   const snapshot = readDeliverySnapshot(root, snapshotName)
   const milestone = milestones.readMilestone(root, snapshot.milestone)
   return milestoneDelivery(milestone, snapshot.project, snapshot.version)
+}
+
+function completeReleaseLifecycle(context, milestoneName, slug, versionNo, snapshotName, releaseRunId) {
+  const snapshot = readDeliverySnapshot(context.root, snapshotName)
+  if (snapshot.milestone !== milestoneName || snapshot.project !== slug || snapshot.version !== versionNo) {
+    throw err.conflict('DELIVERY_SCOPE_MISMATCH', '交付快照与正式发版目标不匹配')
+  }
+  const updated = milestones.recordMilestoneDelivery(context.root, milestoneName, {
+    project: slug,
+    version: versionNo,
+    snapshot: snapshotName,
+    releaseRunId
+  })
+  const at = new Date().toISOString()
+  for (const code of [...new Set(snapshot.items.map((item) => item.requirement))]) {
+    const current = requirements.readRequirement(context.root, code)
+    if (current.status === 'pending-acceptance' || current.status === 'completed') continue
+    const { item, transition } = requirements.updateRequirementLifecycle(context.root, code, 'pending-acceptance', {
+      system: true,
+      actor: currentUser(),
+      now: at,
+      reason: `正式交付 ${snapshotName}`
+    })
+    if (transition.changed) {
+      context.appendLog(null, null, 'REQUIREMENT_STATUS_TRANSITION',
+        `需求 ${item.code} 从 ${transition.from} 流转到 ${transition.to}：正式交付 ${snapshotName}`,
+        { requirement: item.code, from: transition.from, to: transition.to, statusReason: `正式交付 ${snapshotName}` })
+    }
+  }
+  context.appendLog(slug, versionNo, 'FORMAL_RELEASE_DELIVERY_RECORDED', `正式交付 ${snapshotName}`, {
+    milestone: milestoneName,
+    snapshot: snapshotName,
+    releaseRunId,
+    milestoneStatus: updated.status
+  })
+  return milestoneDelivery(updated, slug, versionNo)
 }
