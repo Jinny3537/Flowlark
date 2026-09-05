@@ -1160,6 +1160,7 @@ export class Hub {
     const reason = String(input.reason || '').trim()
     if (target === 'canceled' && !reason) throw err.bad('MILESTONE_REASON_REQUIRED', '取消迭代必须填写原因')
     if (item.status === 'frozen' && target === 'reviewing' && !reason) throw err.bad('MILESTONE_REASON_REQUIRED', '解除冻结必须填写原因')
+    if (target === 'archived') this.#assertMilestoneArchiveReady(item)
     const transition = transitionMilestoneStatus(item.status, target, { remoteExists: Boolean(item.external?.sprintId) })
     if (transition.requiresRemote) {
       throw err.conflict('MILESTONE_REMOTE_TRANSITION_REQUIRES_SYNC', '该状态流转需要生成并执行平台同步计划')
@@ -3250,6 +3251,48 @@ export class Hub {
     return aggregate
   }
 
+  #assertMilestoneArchiveReady(milestone) {
+    if (milestone.status !== 'delivered') return
+    const deliveries = new Map((milestone.deliveries || []).map((entry) => [`${entry.project}:${entry.version}`, entry]))
+    for (const key of [...new Set((milestone.items || []).map((entry) => `${entry.project}:${entry.version}`))]) {
+      const delivery = deliveries.get(key)
+      if (!delivery) {
+        throw err.conflict('MILESTONE_ARCHIVE_DELIVERY_REQUIRED', `迭代 ${milestone.name} 还有范围版本未形成正式交付`)
+      }
+      const acceptance = this.deliveryAcceptance(delivery.snapshot)
+      if (!acceptance.ready) {
+        throw err.conflict('MILESTONE_ARCHIVE_ACCEPTANCE_BLOCKED', `交付 ${delivery.snapshot} 尚未通过验收`)
+      }
+    }
+    const codes = [...new Set((milestone.items || []).map((entry) => entry.requirement))]
+    for (const code of codes) {
+      const requirement = reqx.readRequirement(this.root, code)
+      if (requirement.status !== 'completed') {
+        throw err.conflict('MILESTONE_ARCHIVE_REQUIREMENT_PENDING', `需求 ${code} 尚未完成验收`)
+      }
+    }
+    const external = milestone.external
+    if (!external?.sprintId) {
+      throw err.conflict('MILESTONE_ARCHIVE_EXTERNAL_REQUIRED', '归档前必须先验证外部 Sprint 已结束')
+    }
+    if (!closedExternalStatus(external.remoteStatus)) {
+      throw err.conflict('MILESTONE_ARCHIVE_SPRINT_OPEN', '外部 Sprint 尚未结束或未完成回读验证')
+    }
+    for (const code of codes) {
+      const requirement = reqx.readRequirement(this.root, code)
+      const binding = (requirement.externalTasks || []).find((entry) =>
+        entry.provider === 'assess-task' &&
+        entry.server === external.server &&
+        Number(entry.projectId) === Number(external.projectId))
+      if (!binding?.taskId) {
+        throw err.conflict('MILESTONE_ARCHIVE_TASK_BINDING_REQUIRED', `需求 ${code} 缺少外部任务绑定`)
+      }
+      if (!closedExternalStatus(binding.remoteStatus)) {
+        throw err.conflict('MILESTONE_ARCHIVE_TASK_OPEN', `需求 ${code} 的外部任务尚未关闭或未完成回读验证`)
+      }
+    }
+  }
+
   #transitionRequirement(code, target, { system, reason }) {
     const now = new Date().toISOString()
     const { item, transition } = reqx.updateRequirementLifecycle(this.root, code, target, {
@@ -3328,6 +3371,14 @@ function gitResultFailed(result) {
 
 function firstFailedGitStep(result) {
   return Array.isArray(result?.steps) ? result.steps.find((step) => step && step.ok === false) : null
+}
+
+function closedExternalStatus(value) {
+  const status = String(value ?? '').trim().toLowerCase()
+  return [
+    'done', 'complete', 'completed', 'closed', 'finished', 'ended', 'archived',
+    '已完成', '完成', '已关闭', '关闭', '已结束', '结束', '已归档'
+  ].includes(status)
 }
 
 function publicFormalReleasePreflight(value) {

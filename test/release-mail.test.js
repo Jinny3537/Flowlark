@@ -6,6 +6,8 @@ import { cleanup, tmpRepo } from './helpers.js'
 import { Hub } from '../src/core/service.js'
 import * as gitx from '../src/core/git.js'
 import { readDeliverySnapshot } from '../src/core/delivery-snapshots.js'
+import * as milestones from '../src/core/milestones.js'
+import * as requirements from '../src/core/requirements.js'
 import {
   assertReleaseMailConfig,
   enqueueReleaseMail,
@@ -286,6 +288,42 @@ test('正式交付后的验收结论会推进需求生命周期', async (t) => {
   })
   assert.equal(rejected.hub.deliveryAcceptance(rejectedRelease.snapshot).status, 'rejected')
   assert.equal(rejected.hub.getRequirement('REQ-2').status, 'developing')
+})
+
+test('归档迭代必须先完成交付验收和外部关闭回读', async (t) => {
+  const ctx = releaseFixture(t)
+  const release = await ctx.hub.formalReleaseMilestoneVersion(ctx.milestone.name, ctx.project.slug, 'v2')
+  assert.throws(
+    () => ctx.hub.transitionMilestone(ctx.milestone.name, { target: 'archived' }),
+    (error) => error.code === 'MILESTONE_ARCHIVE_ACCEPTANCE_BLOCKED'
+  )
+  const hash = readDeliverySnapshot(ctx.root, release.snapshot).contentHash
+  for (const role of ['product', 'development', 'qa']) {
+    ctx.hub.recordAcceptance(release.snapshot, { role, verdict: 'approved', expectedSnapshotHash: hash })
+  }
+  assert.throws(
+    () => ctx.hub.transitionMilestone(ctx.milestone.name, { target: 'archived' }),
+    (error) => error.code === 'MILESTONE_ARCHIVE_EXTERNAL_REQUIRED'
+  )
+  milestones.updateMilestone(ctx.root, ctx.milestone.name, {
+    external: {
+      provider: 'assess-task',
+      server: 'assess',
+      projectId: 123,
+      sprintId: 10,
+      revision: 2,
+      remoteStatus: 'ended'
+    }
+  }, { system: true })
+  requirements.upsertExternalTask(ctx.root, 'REQ-2', {
+    provider: 'assess-task',
+    server: 'assess',
+    projectId: 123,
+    taskId: 20,
+    revision: 3,
+    remoteStatus: 'closed'
+  })
+  assert.equal(ctx.hub.transitionMilestone(ctx.milestone.name, { target: 'archived' }).status, 'archived')
 })
 
 test('邮件失败保留 pending，重试只调用邮件', async (t) => {

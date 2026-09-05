@@ -98,7 +98,7 @@ Files: add `src/core/formal-release-run.js` and tests; extend formal release met
 - [x] Git failure prevents snapshot and delivery-state writes. Mail failure retains the snapshot and resumes at the incomplete step.
 - [x] Delivered requirements enter pending-acceptance; required rejection returns them to developing. Acceptance pass moves them to completed. Record all transitions with evidence and actor.
 - [x] A multi-project milestone becomes delivered only after all scoped project versions have release snapshots.
-- [ ] External preview/close/archive continuation remains for Task 6.
+- [ ] External delivery/status preview and remote close/end continuation remains for Task 6.
 
 ## 6. Manual external completion and archive gates
 
@@ -106,7 +106,7 @@ Files: milestone planner/executor, acceptance aggregation, service/routes and re
 
 - [ ] Generate delivery/status previews using managed fields and frozen snapshot evidence.
 - [ ] Complete acceptance locally when its frozen rule and feedback gates pass; separately show external write progress.
-- [ ] Archive requires all deliveries accepted, no blocking feedback, verified external task closure and verified Sprint end.
+- [x] Archive requires all deliveries accepted, no blocking feedback, verified external task closure and verified Sprint end.
 - [ ] Use explicit manual confirmation, plan/source hashes, revisions, locks, read-back and audit. Preserve partial successes and safe recovery.
 - [ ] Cancellation remains manual. No automatic worker is activated in v0.7.4.
 

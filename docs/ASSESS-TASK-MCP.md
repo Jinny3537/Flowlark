@@ -122,9 +122,9 @@ Schema 3 在 `projects/<项目>/project.json` 中保存 `project.sync`：
 - `assignee`：任务或 Sprint 负责人；
 - `sprint`：任务移入或移出 Sprint；
 - `status`：按能力配置中的显式状态映射更新任务状态；
-- `delivery`：`v0.7.3` 只显示提示，不执行远端写入。
+- `delivery`：当前仍只显示提示，不执行远端写入；交付证据由本地不可变 delivery snapshot 承载。
 
-更新只覆盖托管字段，并把平台对象的非托管字段合并回请求。远端值与上次同步摘要不一致时，`v0.7.3` 只支持高风险的 `restore-local`：显式确认后恢复 Flowlark 值；不会把远端文本静默写回本地。
+更新只覆盖托管字段，并把平台对象的非托管字段合并回请求。远端值与上次同步摘要不一致时，当前只支持高风险的 `restore-local`：显式确认后恢复 Flowlark 值；不会把远端文本静默写回本地。
 
 `trusted-auto` 仍是禁用的保留模式，不能跳过预览或确认。无人值守执行要等后续版本完成资格验证后才会开放。
 

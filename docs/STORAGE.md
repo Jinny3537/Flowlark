@@ -95,7 +95,7 @@ Schema 4 在 `requirements/<编号>/requirement.json` 中保存权威生命周�
 }
 ```
 
-生命周期值包括 `draft`、`confirmed`、`developing`、`pending-acceptance`、`completed` 和 `archived`。`v0.7.3` 只开放用户执行 `draft → confirmed`，以及经过远端验证的 Sprint 启动执行 `confirmed → developing`。`pending-acceptance`、`completed` 和 `archived` 是后续验收闭环的保留状态，本版没有用户入口。
+生命周期值包括 `draft`、`confirmed`、`developing`、`pending-acceptance`、`completed` 和 `archived`。用户只能直接执行 `draft → confirmed`。系统在经过验证的 Sprint 启动后执行 `confirmed → developing`，正式交付后执行 `confirmed/developing → pending-acceptance`，验收通过后执行 `pending-acceptance → completed`，验收拒绝后执行 `pending-acceptance → developing`。`archived` 只由迭代归档门禁间接约束，不接受普通需求编辑请求写入。
 
 需求规格独立保存在 `requirements/<编号>/spec.md`。确认需求前，标题、描述、负责人和规格书必须齐备。普通需求创建或编辑不能写入 `status`、`statusChanged*`、`statusOverride`、`external` 或 `externalTasks`。
 
