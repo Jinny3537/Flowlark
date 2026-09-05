@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -163,6 +164,7 @@ try {
     repo: keepRepo ? root : null,
     manifest: {
       path: path.resolve(manifestPath),
+      sha256: manifestFingerprint(rawManifest),
       manifestVersion: preview.manifestVersion,
       platform: preview.platform,
       project: preview.capability?.project || '',
@@ -277,6 +279,18 @@ function smokeSecretName(expr, serverId) {
 
 function envSuffix(value) {
   return String(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+function manifestFingerprint(value) {
+  return crypto.createHash('sha256').update(stableJson(value)).digest('hex')
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
 }
 
 function fakeWecomMcp() {

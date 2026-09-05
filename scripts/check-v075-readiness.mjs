@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { inspectRequirementPoolManifest } from '../src/core/mcp-config.js'
@@ -144,6 +145,7 @@ function checkSmokeResult() {
   try {
     const result = readJsonFile(resolved)
     const source = result?.requirementSource || {}
+    const expectedManifestHash = currentManifestFingerprint()
     const checks = new Set(Array.isArray(result?.checks) ? result.checks : [])
     const requiredChecks = [
       'manifest-inspect',
@@ -163,6 +165,7 @@ function checkSmokeResult() {
       result?.mode === 'live' &&
       result?.evidenceVersion === 'v075-requirement-pool-smoke/v1' &&
       result?.connection?.connected === true &&
+      (!expectedManifestHash || result?.manifest?.sha256 === expectedManifestHash) &&
       Boolean(result?.manifest?.manifestVersion && result?.manifest?.platform?.id && result?.manifest?.project && result?.manifest?.transport?.type)
     const ready = sourceReady && auditReady && missingChecks.length === 0
     addCheck('real-smoke-result', ready,
@@ -177,9 +180,16 @@ function checkSmokeResult() {
 function formatRealSmokeEvidenceFailure({ sourceReady, auditReady, missingChecks }) {
   const reasons = []
   if (!sourceReady) reasons.push('passed requirement/snapshot/source evidence')
-  if (!auditReady) reasons.push('generatedBy/mode/evidenceVersion/manifest/connection audit evidence')
+  if (!auditReady) reasons.push('generatedBy/mode/evidenceVersion/manifest fingerprint/connection audit evidence')
   if (missingChecks.length) reasons.push(`checks: ${missingChecks.join(', ')}`)
   return `real smoke result is missing ${reasons.join('; ')}`
+}
+
+function currentManifestFingerprint() {
+  if (!manifestPath) return ''
+  const resolved = path.resolve(manifestPath)
+  if (!fs.existsSync(resolved)) return ''
+  return manifestFingerprint(readJsonFile(resolved))
 }
 
 function checkUiSmokeResult() {
@@ -256,6 +266,18 @@ function headerSecretReferences(input, serverId) {
 
 function envSuffix(value) {
   return String(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+function manifestFingerprint(value) {
+  return crypto.createHash('sha256').update(stableJson(value)).digest('hex')
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
 }
 
 function nextActions(failedChecks) {

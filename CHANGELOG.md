@@ -30,7 +30,7 @@
 - v0.7.5 浏览器 smoke 覆盖需求页默认配置导入、密钥补录、只读连接测试、需求搜索导入和 MCP 设置页高级诊断，并改用稳定按钮定位避免 Ant Design 图标/中文间距造成误报。
 - v0.7.5 真实平台 smoke 会校验正式交付快照冻结完整需求池来源摘要，包括来源类型、provider、外部 ID、状态、同步时间和来源 URL。
 - v0.7.5 真实平台 smoke 在创建测试迭代后回读需求详情和迭代详情，确认测试需求已关联原型版本并进入迭代范围。
-- v0.7.5 真实平台 smoke 输出升级为 `v075-requirement-pool-smoke/v1` 审计证据，记录生成脚本、live 模式、manifest 摘要、连接证明和关键链路步骤；readiness 会拒绝缺少这些字段的旧版最小结果。
+- v0.7.5 真实平台 smoke 输出升级为 `v075-requirement-pool-smoke/v1` 审计证据，记录生成脚本、live 模式、manifest 摘要、manifest 指纹、连接证明和关键链路步骤；readiness 会拒绝缺少这些字段或与当前 manifest 不匹配的旧结果。
 - 新增 `check:v075:readiness` 只读发布门禁，支持 `pre-bump` 和 `final` 两个阶段，检查最终交付前的版本号、manifest、凭据环境变量、真实平台 smoke 结果、浏览器 smoke 结果和 Playwright 入口，避免未完成真实验收时误标 v0.7.5。
 - `check:v075:readiness` 的 `next` 提示会按失败项收敛；本机 UI smoke 通过后不再继续提示浏览器验收，只保留真实平台 smoke 缺口。
 - 新增 `upgrade:v075` 一键升级编排入口：有真实 manifest、凭据和 Playwright 时自动执行 Web 构建、浏览器 smoke、真实平台 smoke、pre-bump readiness、受保护 finalizer 和 final readiness；已有合格 smoke 证据时支持显式复用，并在 preflight 阶段校验复用证据文件存在。

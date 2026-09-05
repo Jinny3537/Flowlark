@@ -1,5 +1,6 @@
 import { after, before, describe, test } from 'node:test'
 import { execFile } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -58,7 +59,7 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
-function v075RequirementPoolSmokeEvidence() {
+function v075RequirementPoolSmokeEvidence(manifest) {
   return {
     passed: true,
     generatedBy: 'smoke:v075:requirement-pool',
@@ -66,6 +67,7 @@ function v075RequirementPoolSmokeEvidence() {
     evidenceVersion: 'v075-requirement-pool-smoke/v1',
     generatedAt: '2026-09-05T08:00:00.000Z',
     manifest: {
+      sha256: manifestFingerprint(manifest),
       manifestVersion: '2026-09',
       platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
       project: 'safe-prod',
@@ -100,6 +102,18 @@ function v075RequirementPoolSmokeEvidence() {
       'snapshot-source-freeze'
     ]
   }
+}
+
+function manifestFingerprint(value) {
+  return crypto.createHash('sha256').update(stableJson(value)).digest('hex')
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
 }
 
 describe('v0.7 升级能力', () => {
@@ -264,6 +278,7 @@ describe('v0.7 升级能力', () => {
     t.assert.strictEqual(result.mode, 'live')
     t.assert.strictEqual(result.evidenceVersion, 'v075-requirement-pool-smoke/v1')
     t.assert.match(result.generatedAt, /^\d{4}-\d{2}-\d{2}T/)
+    t.assert.strictEqual(result.manifest.sha256, manifestFingerprint(manifest))
     t.assert.strictEqual(result.manifest.manifestVersion, '2026-09')
     t.assert.strictEqual(result.manifest.platform.id, 'fixture-pool')
     t.assert.strictEqual(result.manifest.project, 'safe-prod')
@@ -302,9 +317,14 @@ describe('v0.7 升级能力', () => {
     const manifestFile = path.join(directory, 'requirement-pool.json')
     const smokeResultFile = path.join(directory, 'smoke-result.json')
     const legacySmokeResultFile = path.join(directory, 'legacy-smoke-result.json')
+    const mismatchSmokeResultFile = path.join(directory, 'mismatch-smoke-result.json')
     const uiSmokeResultFile = path.join(directory, 'ui-smoke-result.json')
     fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8')
-    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence())
+    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence(manifest))
+    writeJson(mismatchSmokeResultFile, v075RequirementPoolSmokeEvidence({
+      ...manifest,
+      project: { id: 'other-prod' }
+    }))
     writeJson(legacySmokeResultFile, {
       passed: true,
       requirement: 'REQ-7',
@@ -379,7 +399,34 @@ describe('v0.7 升级能力', () => {
         const check = result.checks.find((item) => item.key === 'real-smoke-result')
         t.assert.strictEqual(result.passed, false)
         t.assert.strictEqual(check.status, 'fail')
-        t.assert.match(check.message, /generatedBy\/mode\/evidenceVersion\/manifest\/connection audit evidence/)
+        t.assert.match(check.message, /generatedBy\/mode\/evidenceVersion\/manifest fingerprint\/connection audit evidence/)
+        return true
+      }
+    )
+
+    await t.assert.rejects(
+      execFileAsync(process.execPath, [
+        'scripts/check-v075-readiness.mjs',
+        '--phase', 'pre-bump',
+        '--manifest', manifestFile,
+        '--smoke-result', mismatchSmokeResultFile,
+        '--ui-smoke-result', uiSmokeResultFile
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          PLAYWRIGHT_MODULE: process.execPath,
+          FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+        }
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout)
+        const check = result.checks.find((item) => item.key === 'real-smoke-result')
+        t.assert.strictEqual(result.passed, false)
+        t.assert.strictEqual(check.status, 'fail')
+        t.assert.match(check.message, /manifest fingerprint/)
         return true
       }
     )
@@ -460,7 +507,7 @@ describe('v0.7 升级能力', () => {
     const manifestFile = path.join(directory, 'requirement-pool.json')
     const smokeResultFile = path.join(directory, 'smoke-result.json')
     const uiSmokeResultFile = path.join(directory, 'ui-smoke-result.json')
-    writeJson(manifestFile, {
+    const manifest = {
       manifestVersion: '2026-09',
       platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
       project: { id: 'safe-prod' },
@@ -469,8 +516,9 @@ describe('v0.7 升级能力', () => {
       fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
       statuses: { open: '待处理' },
       safety: { readOnly: true, writes: [], dangerous: [] }
-    })
-    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence())
+    }
+    writeJson(manifestFile, manifest)
+    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence(manifest))
     writeJson(uiSmokeResultFile, {
       passed: true,
       checks: [
@@ -533,7 +581,7 @@ describe('v0.7 升级能力', () => {
     const manifestFile = path.join(directory, 'requirement-pool.json')
     const smokeResultFile = path.join(directory, 'smoke-result.json')
     const uiSmokeResultFile = path.join(directory, 'ui-smoke-result.json')
-    writeJson(manifestFile, {
+    const manifest = {
       manifestVersion: '2026-09',
       platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
       project: { id: 'safe-prod' },
@@ -542,8 +590,10 @@ describe('v0.7 升级能力', () => {
       fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
       statuses: { open: '待处理' },
       safety: { readOnly: true, writes: [], dangerous: [] }
-    })
-    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence())
+    }
+    writeJson(manifestFile, manifest)
+    const smokeEvidence = v075RequirementPoolSmokeEvidence(manifest)
+    writeJson(smokeResultFile, smokeEvidence)
     writeJson(uiSmokeResultFile, {
       passed: true,
       checks: [
