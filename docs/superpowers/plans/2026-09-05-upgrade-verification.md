@@ -99,6 +99,16 @@ Remaining v0.7.4 scope:
 - Focused verification for imported requirement-pool demand linking into a prototype version while retaining external source authority: 5/5 passed.
 - Full suite after the requirement-pool configuration foundation, MCP Center import UI, delivery source freezing, integration diagnostics, single-requirement refresh, requirement-pool list refresh, remote-missing marking, manifest file selection, canonical template loading, schema publication and direct version linking: 709/709 passed, zero failures.
 - Follow-up focused verification after adding the direct iteration-entry action: `node --test test/v07-upgrade.test.js` passed 5/5 and `npm run build:web` passed.
+- `scripts/smoke-v075-requirement-pool.mjs` now provides the real-platform acceptance harness. Given a platform manifest and local credentials, it runs the product path in a temporary repository: manifest inspect/import, connection probe, list refresh, single detail refresh, version linking, iteration scoping and formal delivery snapshot source verification.
 - `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
 
 This does not complete real platform acceptance. A real v0.7.5 exit still requires a sample platform JSON, credentials entered locally, connection test, requirement list/detail pull, manual version association and delivery snapshot evidence against a test requirement pool.
+
+Run the real-platform acceptance harness only with a disposable requirement-pool project:
+
+```sh
+FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
+FLOWLARK_V075_QUERY="safe test requirement" \
+FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \
+node scripts/smoke-v075-requirement-pool.mjs --keep
+```
