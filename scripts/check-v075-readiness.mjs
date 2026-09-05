@@ -77,6 +77,8 @@ function checkNpmScripts() {
     'package.json must expose smoke:v075:mcp-ui')
   addCheck('finalize-v075-script', scripts['release:v075:finalize'] === 'node scripts/finalize-v075-release.mjs',
     'package.json must expose release:v075:finalize')
+  addCheck('upgrade-v075-script', scripts['upgrade:v075'] === 'node scripts/upgrade-v075.mjs',
+    'package.json must expose upgrade:v075')
 }
 
 function checkManifest() {
@@ -268,8 +270,8 @@ function nextActions(failedChecks) {
   if (failedKeys.has('playwright-module') || failedKeys.has('ui-smoke-result')) {
     actions.push('Run the browser MCP UI smoke with PLAYWRIGHT_MODULE set and save its JSON output.')
   }
-  if (['smoke-requirement-pool-script', 'smoke-mcp-ui-script', 'finalize-v075-script'].some((key) => failedKeys.has(key))) {
-    actions.push('Restore the v0.7.5 readiness, finalize and smoke npm script entries in package.json.')
+  if (['smoke-requirement-pool-script', 'smoke-mcp-ui-script', 'finalize-v075-script', 'upgrade-v075-script'].some((key) => failedKeys.has(key))) {
+    actions.push('Restore the v0.7.5 readiness, upgrade, finalize and smoke npm script entries in package.json.')
   }
   if (['package-version', 'web-package-version', 'package-lock-version', 'web-package-lock-version'].some((key) => failedKeys.has(key))) {
     if (phase === 'pre-bump') actions.push('Restore package-lock.json and web/package-lock.json before rerunning pre-bump readiness.')

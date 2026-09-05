@@ -275,7 +275,27 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run smoke:v075:mcp-ui -- --output .flowlark/cache/v075-mcp-ui-smoke.json
 ```
 
-最终发布门禁会检查 manifest、凭据环境变量、真实 smoke 结果和 Playwright 入口。真实平台与浏览器 smoke 证据齐全后，先跑 `pre-bump`；它通过后再把版本号提升到 `0.7.5`，并跑 `final`：
+有真实平台 manifest、凭据和 Playwright 后，推荐使用一键升级入口。它会依次构建 Web、运行浏览器 smoke、运行真实平台 smoke、执行 pre-bump readiness、受保护版本号提升和 final readiness：
+
+```bash
+FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
+FLOWLARK_V075_QUERY="safe test requirement" \
+FLOWLARK_V075_SECRET_DEMAND_POOL_MCP="token-if-manifest-uses-secret" \
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+npm run upgrade:v075
+```
+
+如果已经保存过合格 smoke 证据，可以复用结果继续最终升级：
+
+```bash
+FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \
+FLOWLARK_V075_SMOKE_RESULT=.flowlark/cache/v075-requirement-pool-smoke.json \
+FLOWLARK_V075_UI_SMOKE_RESULT=.flowlark/cache/v075-mcp-ui-smoke.json \
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+npm run upgrade:v075 -- --reuse-real-smoke-result --reuse-ui-smoke-result
+```
+
+分步诊断时，最终发布门禁会检查 manifest、凭据环境变量、真实 smoke 结果和 Playwright 入口。真实平台与浏览器 smoke 证据齐全后，先跑 `pre-bump`；它通过后再把版本号提升到 `0.7.5`，并跑 `final`：
 
 ```bash
 FLOWLARK_V075_MANIFEST=/path/to/requirement-pool.json \

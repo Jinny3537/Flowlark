@@ -443,6 +443,7 @@ describe('v0.7 升级能力', () => {
       type: 'module',
       scripts: {
         'check:v075:readiness': 'node scripts/check-v075-readiness.mjs',
+        'upgrade:v075': 'node scripts/upgrade-v075.mjs',
         'release:v075:finalize': 'node scripts/finalize-v075-release.mjs',
         'smoke:v075:requirement-pool': 'node scripts/smoke-v075-requirement-pool.mjs',
         'smoke:v075:mcp-ui': 'node scripts/smoke-v075-mcp-ui.mjs'
@@ -500,6 +501,87 @@ describe('v0.7 升级能力', () => {
     })
     const result = JSON.parse(stdout)
     t.assert.strictEqual(result.passed, true)
+    t.assert.strictEqual(result.finalReadiness.phase, 'final')
+    for (const file of ['package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json']) {
+      const json = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'))
+      t.assert.strictEqual(json.version, '0.7.5')
+      if (json.packages?.['']) t.assert.strictEqual(json.packages[''].version, '0.7.5')
+    }
+    t.assert.doesNotMatch(stdout, /fixture-secret-value/)
+  })
+
+  test('v0.7.5 upgrade script can reuse accepted smoke evidence and finalize versions', async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-upgrade-test-'))
+    dirs.push(directory)
+    fs.mkdirSync(path.join(directory, 'web'), { recursive: true })
+    writeJson(path.join(directory, 'package.json'), {
+      name: 'flowlark',
+      version: '0.7.0',
+      type: 'module',
+      scripts: {
+        'check:v075:readiness': 'node scripts/check-v075-readiness.mjs',
+        'upgrade:v075': 'node scripts/upgrade-v075.mjs',
+        'release:v075:finalize': 'node scripts/finalize-v075-release.mjs',
+        'smoke:v075:requirement-pool': 'node scripts/smoke-v075-requirement-pool.mjs',
+        'smoke:v075:mcp-ui': 'node scripts/smoke-v075-mcp-ui.mjs'
+      }
+    })
+    writeJson(path.join(directory, 'web/package.json'), { name: 'flowlark-web', version: '0.7.0', type: 'module' })
+    writeJson(path.join(directory, 'package-lock.json'), { name: 'flowlark', version: '0.7.0', lockfileVersion: 3, packages: { '': { name: 'flowlark', version: '0.7.0' } } })
+    writeJson(path.join(directory, 'web/package-lock.json'), { name: 'flowlark-web', version: '0.7.0', lockfileVersion: 3, packages: { '': { name: 'flowlark-web', version: '0.7.0' } } })
+
+    const manifestFile = path.join(directory, 'requirement-pool.json')
+    const smokeResultFile = path.join(directory, 'smoke-result.json')
+    const uiSmokeResultFile = path.join(directory, 'ui-smoke-result.json')
+    writeJson(manifestFile, {
+      manifestVersion: '2026-09',
+      platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
+      project: { id: 'safe-prod' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, timeoutMs: 5000, headers: { Authorization: 'Bearer ${secret:fixture-token}' } },
+      tools: { test: 'requirements.test', search: 'requirements.search', get: 'requirements.get' },
+      fields: { title: 'title', owner: 'owner', status: 'status', url: 'url' },
+      statuses: { open: '待处理' },
+      safety: { readOnly: true, writes: [], dangerous: [] }
+    })
+    writeJson(smokeResultFile, v075RequirementPoolSmokeEvidence())
+    writeJson(uiSmokeResultFile, {
+      passed: true,
+      checks: [
+        'requirements-direct-config-import',
+        'requirements-secret-ui',
+        'requirements-env-secret-probe',
+        'requirements-search-import',
+        'settings-advanced-entrypoint',
+        'desktop-mobile-layout',
+        'page-errors'
+      ]
+    })
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      path.resolve('scripts/upgrade-v075.mjs'),
+      '--manifest', manifestFile,
+      '--smoke-result', smokeResultFile,
+      '--ui-smoke-result', uiSmokeResultFile,
+      '--reuse-real-smoke-result',
+      '--reuse-ui-smoke-result'
+    ], {
+      cwd: directory,
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      env: {
+        ...process.env,
+        PLAYWRIGHT_MODULE: process.execPath,
+        FLOWLARK_V075_SECRET_FIXTURE_TOKEN: 'fixture-secret-value'
+      }
+    })
+    const result = JSON.parse(stdout)
+    t.assert.strictEqual(result.passed, true)
+    t.assert.deepStrictEqual(result.steps.map((item) => `${item.key}:${item.status}`), [
+      'ui-smoke:reused',
+      'real-smoke:reused',
+      'pre-bump-readiness:pass',
+      'finalize:pass'
+    ])
     t.assert.strictEqual(result.finalReadiness.phase, 'final')
     for (const file of ['package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json']) {
       const json = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'))
