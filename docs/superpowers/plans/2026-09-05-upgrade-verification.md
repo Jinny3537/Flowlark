@@ -88,6 +88,7 @@ Remaining v0.7.4 scope:
 - Full-list refresh now marks existing external requirements that disappear from the returned requirement-pool list as unavailable, preserving the local record and surfacing `REQUIREMENT_REMOTE_MISSING` instead of deleting or silently treating it as synchronized.
 - Existing-requirement batch refresh now keeps `failed[].code` as the requirement code and reports the integration problem separately as `failed[].errorCode`, so callers can identify both the affected requirement and the cause.
 - Requirement Detail now provides a direct “关联版本” action that selects an existing project/version and calls the existing requirement-link API. The linked version stores a reference to the requirement code while the requirement record keeps its requirement-pool source metadata as the authority.
+- Requirement Detail now also exposes a direct “加入迭代” action from the milestone membership section. It routes to the existing editable milestone selection flow with the current requirement preselected, so imported requirement-pool items can be organized into an iteration without duplicating the external requirement as local master data.
 - Focused verification for MCP config import, existing requirement MCP search/import/comment, HTTP routing and UI manifest parsing: 51/51 passed.
 - Focused verification for requirement-pool status diagnostics, missing local secret gating, HTTP status routing and MCP Center parsing: 53/53 passed.
 - Focused verification for delivery snapshot source freezing and formal release mail flow: 24/24 passed.
@@ -97,6 +98,7 @@ Remaining v0.7.4 scope:
 - Focused verification for requirement-pool template/schema generation, HTTP template/schema routing and MCP settings model parsing: 59/59 passed.
 - Focused verification for imported requirement-pool demand linking into a prototype version while retaining external source authority: 5/5 passed.
 - Full suite after the requirement-pool configuration foundation, MCP Center import UI, delivery source freezing, integration diagnostics, single-requirement refresh, requirement-pool list refresh, remote-missing marking, manifest file selection, canonical template loading, schema publication and direct version linking: 709/709 passed, zero failures.
+- Follow-up focused verification after adding the direct iteration-entry action: `node --test test/v07-upgrade.test.js` passed 5/5 and `npm run build:web` passed.
 - `npm run build:web` passed. Existing dependency audit notices (one moderate, one high) and Vite bundle-size warning remain.
 
 This does not complete real platform acceptance. A real v0.7.5 exit still requires a sample platform JSON, credentials entered locally, connection test, requirement list/detail pull, manual version association and delivery snapshot evidence against a test requirement pool.

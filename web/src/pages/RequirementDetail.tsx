@@ -441,7 +441,13 @@ export default function RequirementDetail() {
             </section>
 
             <section className="fl-detail-section">
-              <div className="fl-section-head"><div><h2>所属迭代</h2><p>需求进入开发后，以迭代为执行上下文。</p></div><Tag>{memberships.length} 个</Tag></div>
+              <div className="fl-section-head">
+                <div><h2>所属迭代</h2><p>需求进入开发后，以迭代为执行上下文。</p></div>
+                <Space size="small">
+                  <Tag>{memberships.length} 个</Tag>
+                  <Button size="small" icon={<LinkOutlined />} disabled={!writable} title={!writable ? readonlyReason : undefined} onClick={() => navigate(`/milestones?requirement=${encodeURIComponent(code)}`)}>加入迭代</Button>
+                </Space>
+              </div>
               <List size="small" locale={{ emptyText: '尚未加入迭代' }} dataSource={memberships} renderItem={(milestone: any) => {
                 const name = milestoneName(milestone);
                 return <List.Item actions={[<Button key="view" type="link" onClick={() => navigate(`/milestones/${encodeURIComponent(name)}`)}>查看</Button>]}><List.Item.Meta title={<span className="fl-mono">{name}</span>} description={textOf(milestone?.title || milestone?.status, '迭代计划')} /></List.Item>;
