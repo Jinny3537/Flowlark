@@ -50,43 +50,44 @@ try {
   const base = `http://127.0.0.1:${appServer.port}/#`
   await page.goto(`${base}/requirements`)
   await page.waitForLoadState('networkidle')
-  await page.getByRole('button', { name: '从需求池导入', exact: true }).click()
-  await page.getByRole('button', { name: '打开集成配置', exact: true }).click()
-  await page.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
+  await button(page, '从需求池导入').click()
+  await button(page, '打开集成配置').click()
+  const main = page.locator('#main-content')
+  await main.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
   assert.ok(page.url().endsWith('#/settings/mcp'))
 
   await page.goto(`${base}/settings/mcp`)
   await page.waitForLoadState('networkidle')
-  await page.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
+  await main.getByText('导入需求池 MCP 配置 JSON', { exact: true }).waitFor()
 
-  await page.getByRole('button', { name: '加载示例', exact: true }).click()
-  await page.getByText('需求池平台').waitFor()
+  await button(page, '加载示例').click()
+  await main.getByText('需求池平台').waitFor()
 
   const manifestEditor = page.locator('.fl-mcp-editor textarea').first()
   await manifestEditor.fill(JSON.stringify(manifestWithKeychainSecret(mcpUrl), null, 2))
   await expectResponse(page, '/api/mcp/requirement-pool/inspect', () =>
-    page.getByRole('button', { name: '预览配置', exact: true }).click())
-  await page.getByText('配置可导入', { exact: true }).waitFor()
-  await page.getByText('需本机补录密钥：UI Smoke Token').waitFor()
+    button(page, '预览配置').click())
+  await main.getByText('配置可导入', { exact: true }).waitFor()
+  await main.getByText('需本机补录密钥：UI Smoke Token').waitFor()
 
   await expectResponse(page, '/api/mcp/requirement-pool/import', () =>
-    page.getByRole('button', { name: '导入到 MCP 配置', exact: true }).click())
+    button(page, '导入到 MCP 配置').click())
   await expectResponse(page, '/api/mcp/requirement-pool/status', () =>
-    page.getByRole('button', { name: '检查接入状态', exact: true }).click())
-  await page.getByText('需求池配置缺少本机密钥', { exact: true }).waitFor()
+    button(page, '检查接入状态').click())
+  await main.getByText('需求池配置缺少本机密钥', { exact: true }).waitFor()
   const missingSecretRow = page.locator('li').filter({ hasText: 'ui-smoke-token' })
   await missingSecretRow.getByPlaceholder('输入后只保存到本机').fill('not-written-by-smoke')
-  await assertEnabled(missingSecretRow.getByRole('button', { name: '保存密钥', exact: true }))
+  await assertEnabled(button(missingSecretRow, '保存密钥'))
 
   await manifestEditor.fill(JSON.stringify(manifestWithEnvSecret(mcpUrl), null, 2))
   await expectResponse(page, '/api/mcp/requirement-pool/inspect', () =>
-    page.getByRole('button', { name: '预览配置', exact: true }).click())
+    button(page, '预览配置').click())
   await expectResponse(page, '/api/mcp/requirement-pool/import', () =>
-    page.getByRole('button', { name: '导入到 MCP 配置', exact: true }).click())
+    button(page, '导入到 MCP 配置').click())
   await expectResponse(page, '/api/mcp/requirement-pool/status', () =>
-    page.getByRole('button', { name: '执行连接测试', exact: true }).click())
-  await page.getByText('需求池连接测试通过', { exact: true }).waitFor()
-  await page.getByText('身份：MCP UI Smoke').waitFor()
+    button(page, '执行连接测试').click())
+  await main.getByText('需求池连接测试通过', { exact: true }).waitFor()
+  await main.getByText('身份：MCP UI Smoke').waitFor()
   assert.ok(calls.some((item) => item.name === 'requirements.test' && item.authorization === 'Bearer v075-ui-smoke-token'))
 
   for (const width of [1440, 390]) {
@@ -185,6 +186,14 @@ async function expectResponse(page, suffix, action) {
   assert.ok(response.ok(), `${suffix} returned ${response.status()}`)
   await page.waitForLoadState('networkidle')
   return response
+}
+
+function button(scope, name) {
+  return scope.getByRole('button', { name: new RegExp(escapeRegExp(name)) })
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 async function assertEnabled(locator) {
