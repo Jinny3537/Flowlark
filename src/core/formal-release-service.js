@@ -4,11 +4,35 @@ import * as rules from './rules.js'
 import * as milestones from './milestones.js'
 import * as requirements from './requirements.js'
 import * as releaseMail from './release-mail.js'
+import { readDeliverySnapshot } from './delivery-snapshots.js'
+import {
+  findFormalReleaseRunByMail,
+  markFormalReleaseStep,
+  publicFormalReleaseRun
+} from './formal-release-run.js'
 import { currentUser } from './repo.js'
 
 export async function preflightMilestoneFormalRelease(context, name, slug, versionNo, input = {}) {
   assertMilestoneFormalReleaseTarget(context.root, name, slug, versionNo)
   return publicFormalReleasePreflight(await prepareFormalRelease(context, slug, versionNo, input))
+}
+
+export function listReleaseMails(context) {
+  return releaseMail.listReleaseMails(context.root).map(releaseMail.publicReleaseMail)
+}
+
+export async function retryReleaseMail(context, id) {
+  const task = releaseMail.readReleaseMail(context.root, id)
+  const baselineNo = store.readBaseline(context.root, task.project)
+  const version = store.readVersion(context.root, task.project, task.version)
+  if (baselineNo !== task.version || version.baselineAt !== task.baselineAt) {
+    throw err.conflict('RELEASE_BASELINE_CHANGED', '当前基线已变化，不能自动重试这封发版邮件', '请人工核对版本后重新正式发版')
+  }
+  const run = findFormalReleaseRunByMail(context.root, task)
+  return sendReleaseMailTask(context, task, {
+    releaseRunId: run?.id || null,
+    snapshot: run?.steps.snapshot?.name || null
+  })
 }
 
 function assertMilestoneFormalReleaseTarget(root, name, slug, versionNo) {
@@ -212,4 +236,75 @@ function validReleaseTime(value) {
 function publicFormalReleasePreflight(value) {
   const { internalTo, internalCc, ...publicValue } = value
   return publicValue
+}
+
+async function sendReleaseMailTask(
+  context,
+  task,
+  { git = { ok: true, skipped: true }, snapshot = null, releaseRunId = null } = {}
+) {
+  if (task.status === 'sent') {
+    const run = releaseRunId
+      ? markFormalReleaseStep(context.root, releaseRunId, 'mail', { status: 'sent', mailId: task.id })
+      : null
+    return {
+      status: 'complete', released: true, duplicate: true,
+      baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+      git,
+      snapshot,
+      delivery: snapshot ? deliveryForSnapshot(context.root, snapshot) : null,
+      mail: releaseMail.publicReleaseMail(task),
+      run: run ? publicFormalReleaseRun(run) : null
+    }
+  }
+  try {
+    await context.wecomMcp.sendReleaseMail({
+      to: task.to,
+      cc: task.cc,
+      subject: task.subject,
+      markdown: task.markdown,
+      idempotencyKey: task.idempotencyKey
+    })
+    const sent = releaseMail.markReleaseMailSent(context.root, task.id)
+    const run = releaseRunId
+      ? markFormalReleaseStep(context.root, releaseRunId, 'mail', { status: 'sent', mailId: task.id })
+      : null
+    return {
+      status: 'complete', released: true, duplicate: false,
+      baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+      git,
+      snapshot,
+      delivery: snapshot ? deliveryForSnapshot(context.root, snapshot) : null,
+      mail: releaseMail.publicReleaseMail(sent),
+      run: run ? publicFormalReleaseRun(run) : null
+    }
+  } catch (error) {
+    const pending = releaseMail.markReleaseMailFailed(context.root, task.id, error)
+    const run = releaseRunId ? markFormalReleaseStep(context.root, releaseRunId, 'mail', {
+      status: 'pending',
+      mailId: task.id,
+      error: error.message,
+      hint: error.hint || null
+    }) : null
+    return {
+      status: 'mail_pending', released: true, duplicate: false,
+      baseline: { project: task.project, version: task.version, baselineAt: task.baselineAt },
+      git,
+      snapshot,
+      delivery: snapshot ? deliveryForSnapshot(context.root, snapshot) : null,
+      mail: releaseMail.publicReleaseMail(pending),
+      run: run ? publicFormalReleaseRun(run) : null
+    }
+  }
+}
+
+function milestoneDelivery(milestone, slug, versionNo) {
+  return (milestone.deliveries || []).find((entry) =>
+    entry.project === slug && entry.version === versionNo) || null
+}
+
+function deliveryForSnapshot(root, snapshotName) {
+  const snapshot = readDeliverySnapshot(root, snapshotName)
+  const milestone = milestones.readMilestone(root, snapshot.milestone)
+  return milestoneDelivery(milestone, snapshot.project, snapshot.version)
 }

@@ -65,7 +65,11 @@ import {
 } from './milestone-sync.js'
 import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
 import { appendSyncAudit, listSyncAudit as readSyncAudit, sanitizeSyncValue } from './sync-audit.js'
-import { preflightMilestoneFormalRelease as preflightFormalRelease } from './formal-release-service.js'
+import {
+  listReleaseMails as readFormalReleaseMails,
+  preflightMilestoneFormalRelease as preflightFormalRelease,
+  retryReleaseMail as retryFormalReleaseMail
+} from './formal-release-service.js'
 import {
   cancelSyncRecord as cancelQueuedSyncRecord,
   findSyncRecord,
@@ -1730,22 +1734,12 @@ export class Hub {
   }
 
   listReleaseMails() {
-    return releaseMail.listReleaseMails(this.root).map(releaseMail.publicReleaseMail)
+    return readFormalReleaseMails(this.#formalReleaseContext())
   }
 
   async retryReleaseMail(id) {
     this.#assertWritable('重试发版邮件')
-    const task = releaseMail.readReleaseMail(this.root, id)
-    const baselineNo = store.readBaseline(this.root, task.project)
-    const version = store.readVersion(this.root, task.project, task.version)
-    if (baselineNo !== task.version || version.baselineAt !== task.baselineAt) {
-      throw err.conflict('RELEASE_BASELINE_CHANGED', '当前基线已变化，不能自动重试这封发版邮件', '请人工核对版本后重新正式发版')
-    }
-    const run = findFormalReleaseRunByMail(this.root, task)
-    return this.#sendReleaseMailTask(task, {
-      releaseRunId: run?.id || null,
-      snapshot: run?.steps.snapshot?.name || null
-    })
+    return retryFormalReleaseMail(this.#formalReleaseContext(), id)
   }
 
   listWorkspaces() { return workspaces.listWorkspaces() }
