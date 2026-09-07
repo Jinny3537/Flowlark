@@ -236,8 +236,9 @@ Flowlark 启动时会自动管理一个只监听 `127.0.0.1` 的企业微信 MCP
 需求池接入默认走「需求 → 从需求池导入 → 需求池配置 JSON」。平台方提供一份配置 JSON，Flowlark 先做本地预检，再写入仓库的 `mcp.json`；「设置 → MCP 中心」仍作为高级配置和诊断入口。完整 manifest 合同见 [需求池 MCP 配置合同](docs/REQUIREMENT-POOL-MCP.md)：
 
 - 必须声明平台、MCP server、HTTP/SSE endpoint，以及 `test`、`search`、`get` 三个只读工具映射。
-- Header 里的凭据只能写 `${secret:name}` 或 `${env:NAME}` 占位符；明文 Token、URL 用户名密码和明文 Authorization 会被拒绝。
+- Header 里的凭据只能写 `${secret:name}` 或 `${env:NAME}` 占位符；明文 Token、URL 用户名密码和明文 Authorization 会被拒绝。本机或内网无鉴权 MCP 可以在配置 JSON 中显式写 `headers: {}`。
 - 字段和状态映射缺失只降级为警告，不会阻塞导入；导入后可以单独执行连接测试。
+- MCP 工具参数同时兼容通用命名和需求池平台命名：列表工具会收到 `query/q/text/keyword/project/projectId/limit`，详情工具会收到 `key/code/id/requirementId/project/projectId`。
 
 本机缺少 `${secret:name}` 时，需求导入弹窗和设置页都会显示缺失项，并允许直接录入本机密钥或执行只读连接测试。密钥使用已有 MCP server secret 存储，不写入 `mcp.json`，也不进入 Git。
 

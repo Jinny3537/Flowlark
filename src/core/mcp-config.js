@@ -428,6 +428,7 @@ function normalizeRequirementPoolManifest(input = {}) {
   const transportType = String(transportInput.type || input.transportType || 'http').trim().toLowerCase()
   const baseUrl = String(transportInput.url || transportInput.baseUrl || input.url || input.baseUrl || '').trim()
   const serverId = slugId(input.serverId || input.server?.id || `${platform.id || 'requirement-pool'}-mcp`)
+  const headerInput = own(transportInput, 'headers') ? transportInput.headers : own(input, 'headers') ? input.headers : undefined
   const server = {
     id: serverId,
     name: String(input.server?.name || platform.name || serverId).trim(),
@@ -435,9 +436,9 @@ function normalizeRequirementPoolManifest(input = {}) {
     enabled: true,
     url: baseUrl,
     timeoutMs: Number(transportInput.timeoutMs || input.timeoutMs || 10000),
-    headers: normalizeHeaders(transportInput.headers || input.headers || {})
+    headers: normalizeHeaders(headerInput)
   }
-  if (!Object.keys(server.headers).length) server.headers = { Authorization: 'Bearer ${secret}' }
+  if (headerInput === undefined && !Object.keys(server.headers).length) server.headers = { Authorization: 'Bearer ${secret}' }
   const project = String(input.project?.id || input.projectId || transportInput.project || '').trim()
   const tools = normalizeTools({
     test: toolsInput.test || toolsInput.connectionTest || toolsInput.ping,
@@ -524,6 +525,10 @@ function normalizeRequirementPoolManifest(input = {}) {
 
 function objectValue(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function own(value, key) {
+  return Object.prototype.hasOwnProperty.call(objectValue(value), key)
 }
 
 function problem(code, message, hint = null) {

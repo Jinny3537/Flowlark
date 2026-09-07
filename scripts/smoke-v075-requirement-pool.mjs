@@ -102,6 +102,16 @@ try {
   const refreshed = await api(base, 'POST', `/api/requirements/${encodeURIComponent(selected.code)}/external/refresh`, {})
   assert.equal(refreshed.external?.provider, 'mcp')
   assert.ok(refreshed.external?.key || refreshed.code, '需求详情缺少稳定外部标识')
+  const localPatch = {}
+  if (!String(refreshed.description || '').trim()) {
+    localPatch.description = `来自需求池 ${selected.code} 的 v0.7.5 集成验收需求。`
+  }
+  if (!String(refreshed.owner || '').trim()) {
+    localPatch.owner = '验收员'
+  }
+  if (Object.keys(localPatch).length) {
+    await api(base, 'PUT', `/api/requirements/${encodeURIComponent(selected.code)}`, localPatch)
+  }
 
   await api(base, 'POST', '/api/projects', {
     name: 'v0.7.5 需求池验收项目',

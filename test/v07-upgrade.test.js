@@ -41,6 +41,15 @@ before(async () => {
       if (params.name === 'requirements.comment') {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { url: 'https://mcp.example/REQ-7#comment' } } }))
       }
+      if (params.name === 'list_projects') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { items: [{ id: 'proj_1', name: '安全生产' }] } } }))
+      }
+      if (params.name === 'list_requirements') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { items: [{ id: 'REQ-HUB-1', name: 'HubPooL 需求', status: '待评审', priority: 'P2', module: '移动端' }] } } }))
+      }
+      if (params.name === 'get_requirement_detail') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { structuredContent: { requirement: { id: 'REQ-HUB-1', name: 'HubPooL 需求详情', description: 'HubPooL 风格详情响应', status: '待评审' } } } }))
+      }
     }
 
     res.statusCode = 404
@@ -175,6 +184,36 @@ describe('v0.7 升级能力', () => {
     const comment = await postRequirementComment('mcp', config, 'REQ-7', '新基线已确认')
     t.assert.strictEqual(comment.ok, true)
     t.assert.ok(requests.some((item) => item.url === '/mcp' && item.body.params.name === 'requirements.comment' && item.body.params.arguments.body === '新基线已确认'))
+  })
+
+  test('MCP Provider 兼容 HubPooL 风格工具名和参数别名', async (t) => {
+    requests.length = 0
+    const config = {
+      baseUrl: `${baseUrl}/mcp`,
+      token: 'x',
+      project: 'proj_1',
+      mePath: 'list_projects',
+      searchPath: 'list_requirements',
+      detailPath: 'get_requirement_detail',
+      limit: 10
+    }
+
+    const probe = await testRequirementConnection('mcp', config)
+    t.assert.strictEqual(probe.ok, true)
+    const found = await searchRequirements('mcp', config, '测试')
+    t.assert.strictEqual(found[0].code, 'REQ-HUB-1')
+    t.assert.strictEqual(found[0].title, 'HubPooL 需求')
+    const detail = await fetchRequirement('mcp', config, 'REQ-HUB-1')
+    t.assert.strictEqual(detail.code, 'REQ-HUB-1')
+    t.assert.strictEqual(detail.title, 'HubPooL 需求详情')
+
+    const listProjects = requests.find((item) => item.body?.params?.name === 'list_projects')
+    const listRequirements = requests.find((item) => item.body?.params?.name === 'list_requirements')
+    const getRequirement = requests.find((item) => item.body?.params?.name === 'get_requirement_detail')
+    t.assert.strictEqual(listProjects.body.params.arguments.projectId, 'proj_1')
+    t.assert.strictEqual(listRequirements.body.params.arguments.projectId, 'proj_1')
+    t.assert.strictEqual(listRequirements.body.params.arguments.keyword, '测试')
+    t.assert.strictEqual(getRequirement.body.params.arguments.requirementId, 'REQ-HUB-1')
   })
 
   test('外部需求可单条刷新，失败时保留本地数据并记录不可访问状态', async (t) => {
@@ -330,6 +369,8 @@ describe('v0.7 升级能力', () => {
   test('v0.7.5 readiness gate reports missing final evidence without leaking secrets', async (t) => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flowlark-v075-readiness-test-'))
     dirs.push(directory)
+    writeV075ReleasePackageTree(directory)
+    const readinessScript = path.resolve('scripts/check-v075-readiness.mjs')
     const manifest = {
       manifestVersion: '2026-09',
       platform: { id: 'fixture-pool', name: 'Fixture Requirement Pool' },
@@ -377,12 +418,12 @@ describe('v0.7 升级能力', () => {
 
     await t.assert.rejects(
       execFileAsync(process.execPath, [
-        'scripts/check-v075-readiness.mjs',
+        readinessScript,
         '--manifest', manifestFile,
         '--smoke-result', smokeResultFile,
         '--ui-smoke-result', uiSmokeResultFile
       ], {
-        cwd: process.cwd(),
+        cwd: directory,
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
         env: {
@@ -405,14 +446,14 @@ describe('v0.7 升级能力', () => {
 
     await t.assert.rejects(
       execFileAsync(process.execPath, [
-        'scripts/check-v075-readiness.mjs',
+        readinessScript,
         '--phase', 'pre-bump',
         '--manifest', manifestFile,
         '--smoke-result', legacySmokeResultFile,
         '--ui-smoke-result', uiSmokeResultFile,
         '--playwright-module', process.execPath
       ], {
-        cwd: process.cwd(),
+        cwd: directory,
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
         env: {
@@ -433,14 +474,14 @@ describe('v0.7 升级能力', () => {
 
     await t.assert.rejects(
       execFileAsync(process.execPath, [
-        'scripts/check-v075-readiness.mjs',
+        readinessScript,
         '--phase', 'pre-bump',
         '--manifest', manifestFile,
         '--smoke-result', mismatchSmokeResultFile,
         '--ui-smoke-result', uiSmokeResultFile,
         '--playwright-module', process.execPath
       ], {
-        cwd: process.cwd(),
+        cwd: directory,
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
         env: {
@@ -460,14 +501,14 @@ describe('v0.7 升级能力', () => {
     )
 
     const preBump = await execFileAsync(process.execPath, [
-      'scripts/check-v075-readiness.mjs',
+      readinessScript,
       '--phase', 'pre-bump',
       '--manifest', manifestFile,
       '--smoke-result', smokeResultFile,
       '--ui-smoke-result', uiSmokeResultFile,
       '--playwright-module', process.execPath
     ], {
-      cwd: process.cwd(),
+      cwd: directory,
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
       env: {
@@ -484,13 +525,13 @@ describe('v0.7 升级能力', () => {
 
     await t.assert.rejects(
       execFileAsync(process.execPath, [
-        'scripts/check-v075-readiness.mjs',
+        readinessScript,
         '--phase', 'pre-bump',
         '--manifest', manifestFile,
         '--ui-smoke-result', uiSmokeResultFile,
         '--playwright-module', process.execPath
       ], {
-        cwd: process.cwd(),
+        cwd: directory,
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
         env: {

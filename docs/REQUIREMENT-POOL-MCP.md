@@ -90,7 +90,7 @@ POST /api/mcp/requirement-pool/status
 - `project.id`：可选。导入后会作为需求池项目或空间标识传给 MCP 工具。
 - `transport.type`：必填，只支持 `http` 或 `sse`。
 - `transport.url`：必填，只支持 HTTP/HTTPS URL，不能携带用户名或密码。
-- `transport.headers`：可选，但凭据必须使用占位符。
+- `transport.headers`：可选。需要鉴权时凭据必须使用占位符；本机或内网无鉴权 MCP 可以显式配置为 `{}`。
 - `tools.test`、`tools.search`、`tools.get`：必填。
 - `tools.comment`：可选。v0.7.5 的 manifest 导入仍按只读验收，不依赖评论或写回。
 - `fields`：可选。缺失时只显示原始外部引用，不阻塞导入。
@@ -125,7 +125,9 @@ Flowlark 通过 JSON-RPC `tools/call` 调用 manifest 指定的工具名。
 
 ```json
 {
-  "project": "safe-prod"
+  "project": "safe-prod",
+  "projectId": "safe-prod",
+  "limit": 1
 }
 ```
 
@@ -148,7 +150,9 @@ Flowlark 通过 JSON-RPC `tools/call` 调用 manifest 指定的工具名。
   "query": "订单",
   "q": "订单",
   "text": "订单",
+  "keyword": "订单",
   "project": "safe-prod",
+  "projectId": "safe-prod",
   "limit": 20
 }
 ```
@@ -182,11 +186,14 @@ Flowlark 通过 JSON-RPC `tools/call` 调用 manifest 指定的工具名。
 {
   "key": "REQ-0275",
   "code": "REQ-0275",
-  "project": "safe-prod"
+  "id": "REQ-0275",
+  "requirementId": "REQ-0275",
+  "project": "safe-prod",
+  "projectId": "safe-prod"
 }
 ```
 
-返回单个需求对象。推荐字段为：
+返回单个需求对象，也可以包在 `requirement`、`item`、`data` 或 `result` 字段内。推荐字段为：
 
 ```text
 code, title, description, project, module, type, priority, owner, status, url

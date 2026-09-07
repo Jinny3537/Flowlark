@@ -86,6 +86,8 @@ v0.7.5 的目标不是把所有流程自动化，而是打通真实需求池平�
 | secrets | 需要用户单独填写的 token、密码或账号占位，不允许包含明文密钥 |
 | safety | 只读/可写能力、危险操作声明、最小权限说明 |
 
+无鉴权的本机或内网 MCP 可以显式声明 `transport.headers: {}`；需要鉴权的平台必须使用 `${secret:name}` 或 `${env:NAME}` 占位符。为兼容 HubPooL 这类需求池 MCP，v0.7.5 的列表工具会同时传 `query/q/text/keyword/project/projectId/limit`，详情工具会同时传 `key/code/id/requirementId/project/projectId`。
+
 P0 范围：
 
 1. 新增“导入需求池 MCP 配置”入口，接受配置 JSON 文件并完成 schema 校验、能力识别和风险提示。

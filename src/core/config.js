@@ -151,11 +151,11 @@ export const SCHEMA = [
   },
   {
     key: 'integrations.requirementSearchPath', type: 'string', default: '', label: '需求搜索 MCP 工具',
-    note: '留空使用 requirements.search；工具参数会收到 query/q/text/project/limit'
+    note: '留空使用 requirements.search；工具参数会收到 query/q/text/keyword/project/projectId/limit'
   },
   {
     key: 'integrations.requirementDetailPath', type: 'string', default: '', label: '需求详情 MCP 工具',
-    note: '留空使用 requirements.get；工具参数会收到 key/code/project'
+    note: '留空使用 requirements.get；工具参数会收到 key/code/id/requirementId/project/projectId'
   },
   {
     key: 'integrations.requirementCommentPath', type: 'string', default: '', label: '需求评论 MCP 工具',

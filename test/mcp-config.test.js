@@ -152,6 +152,32 @@ describe('MCP 配置文件', () => {
     t.assert.doesNotMatch(JSON.stringify(example), /real-token|api[_-]?key=|password=/i)
   })
 
+  test('需求池配置 JSON 支持 HubPooL 风格工具和显式无鉴权 headers', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    const manifest = {
+      manifestVersion: '2026-09',
+      platform: { id: 'hubpool', name: 'HubPooL', type: 'requirement-pool' },
+      project: { id: 'proj_1' },
+      transport: { type: 'http', url: `${baseUrl}/mcp`, headers: {} },
+      tools: { test: 'list_projects', search: 'list_requirements', get: 'get_requirement_detail' },
+      fields: { code: 'id', title: 'name', status: 'status' },
+      statuses: { '待评审': '待评审' },
+      secrets: [],
+      safety: { readOnly: true }
+    }
+
+    const preview = inspectRequirementPoolManifest(manifest)
+    t.assert.deepStrictEqual(preview.blockers, [])
+    t.assert.deepStrictEqual(preview.server.headers, {})
+    t.assert.strictEqual(preview.capability.project, 'proj_1')
+    t.assert.strictEqual(preview.capability.tools.search, 'list_requirements')
+    const info = hub.importRequirementPoolManifest(manifest)
+    const server = info.config.servers.find((item) => item.id === 'hubpool-mcp')
+    t.assert.deepStrictEqual(server.headers, {})
+    t.assert.strictEqual(info.config.capabilities.requirements.tools.get, 'get_requirement_detail')
+  })
+
   test('需求池配置 Schema 覆盖导入必需契约和模板字段', (t) => {
     const schema = requirementPoolManifestSchema()
     const template = requirementPoolManifestTemplate()

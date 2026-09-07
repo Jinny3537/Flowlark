@@ -6,6 +6,11 @@ function itemsFrom(body) {
   return (body && (body.items || body.data || body.results || body.requirements)) || []
 }
 
+function detailFrom(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body
+  return body.requirement || body.item || body.data || body.result || body
+}
+
 function identityFrom(body) {
   if (!body || typeof body !== 'object') return null
   return body.identity || body.name || body.login || body.email || body.text || null
@@ -13,17 +18,26 @@ function identityFrom(body) {
 
 export async function testConnection(config) {
   const name = toolName(config, 'mePath', 'requirements.test')
-  const body = await callTool(config, name, { project: config.project || '' })
+  const project = config.project || ''
+  const body = await callTool(config, name, {
+    project,
+    projectId: project,
+    limit: 1
+  })
   return { provider: 'mcp', ok: true, identity: identityFrom(body) }
 }
 
 export async function searchRequirements(config, text) {
   const name = toolName(config, 'searchPath', 'requirements.search')
+  const query = text || ''
+  const project = config.project || ''
   const body = await callTool(config, name, {
-    query: text || '',
-    q: text || '',
-    text: text || '',
-    project: config.project || '',
+    query,
+    q: query,
+    text: query,
+    keyword: query,
+    project,
+    projectId: project,
     limit: config.limit || 20
   })
   return itemsFrom(body).map((item) => normalizeRequirement('mcp', item))
@@ -31,8 +45,16 @@ export async function searchRequirements(config, text) {
 
 export async function fetchRequirement(config, key) {
   const name = toolName(config, 'detailPath', 'requirements.get')
-  const body = await callTool(config, name, { key, code: key, project: config.project || '' })
-  return normalizeRequirement('mcp', body)
+  const project = config.project || ''
+  const body = await callTool(config, name, {
+    key,
+    code: key,
+    id: key,
+    requirementId: key,
+    project,
+    projectId: project
+  })
+  return normalizeRequirement('mcp', detailFrom(body))
 }
 
 export async function postComment(config, key, body) {
