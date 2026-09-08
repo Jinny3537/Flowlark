@@ -3,9 +3,12 @@ import {
   CodeOutlined,
   CompressOutlined,
   DesktopOutlined,
+  DownloadOutlined,
   EditOutlined,
   ExpandOutlined,
+  ExportOutlined,
   HighlightOutlined,
+  LinkOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Checkbox, Tag, Tooltip, Typography } from 'antd';
@@ -30,6 +33,9 @@ export type PrototypeStageProps = {
   onToggleAnnotation: () => void;
   onOpenPrototypeEditor: () => void;
   onOpenHtmlEditor: () => void;
+  onCopyPreviewLink: () => void;
+  onOpenPreview: () => void;
+  onDownloadPrototype: () => void;
   onToggleDocs: () => void;
   onBuildOffline: () => void;
   onSelectAnchor: (anchor: Anchor, rect: DOMRect) => void;
@@ -150,6 +156,9 @@ export function PrototypeStage({
   onToggleAnnotation,
   onOpenPrototypeEditor,
   onOpenHtmlEditor,
+  onCopyPreviewLink,
+  onOpenPreview,
+  onDownloadPrototype,
   onToggleDocs,
   onBuildOffline,
   onSelectAnchor,
@@ -186,6 +195,21 @@ export function PrototypeStage({
         </div>
 
         <div style={layout.actions}>
+          <Tooltip title="复制可直接访问当前原型的预览地址">
+            <Button size="small" icon={<LinkOutlined />} onClick={onCopyPreviewLink}>
+              复制预览直链
+            </Button>
+          </Tooltip>
+          <Tooltip title="在新的浏览器窗口打开当前原型">
+            <Button size="small" icon={<ExportOutlined />} onClick={onOpenPreview}>
+              新窗口打开
+            </Button>
+          </Tooltip>
+          <Tooltip title="下载当前版本的原型文件">
+            <Button size="small" icon={<DownloadOutlined />} onClick={onDownloadPrototype}>
+              下载原型
+            </Button>
+          </Tooltip>
           <Tooltip title={version?.hasOffline ? '使用已内联外部资源的离线版' : '尚未生成离线版'}>
             <Checkbox
               checked={useOffline}
