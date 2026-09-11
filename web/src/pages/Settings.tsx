@@ -1,7 +1,11 @@
-import { Alert, App, Badge, Menu } from 'antd';
+import { Alert, App, Badge, Button, Menu, Tabs, Space } from 'antd';
 import type { MenuProps } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useAppRuntime } from '@/runtime/AppRuntime';
+import { GitDrawer } from '@/components/GitDrawer';
+import { SETTINGS_NAV, settingsLocation } from './settings/settingsModel.js';
+import { IntegrationActions } from './settings/IntegrationActions';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { api, type ConfigItem, type HealthInfo } from '@/services/api';
@@ -9,7 +13,6 @@ import { errorText } from '@/services/requestModel.js';
 import {
   ConfigGroupSection,
   GitRemoteSection,
-  LanSection,
   WorkspaceSection,
   type SettingsGroup,
   type WorkspaceValues,
@@ -17,18 +20,23 @@ import {
 import { OperationLog } from './settings/OperationLog';
 import { McpSection } from './settings/McpSection';
 import { SoftwareUpdateSection } from './settings/SoftwareUpdateSection';
+import Trash from './Trash';
+import { TeamSection } from './settings/TeamSection';
 import {
   GROUP_LABELS,
   HOISTED_CONFIG_KEYS,
   SECTION_DESCRIPTIONS,
   SETTING_ICONS,
   VISIBLE_CONFIG_KEYS,
-  type SettingsSection,
 } from './settings/settingsConfig';
 
 export default function Settings() {
   const navigate = useNavigate();
   const params = useParams();
+  const [searchParams] = useSearchParams();
+  const runtime = useAppRuntime();
+  const [gitOpen, setGitOpen] = useState(false);
+  const [identity, setIdentity] = useState<any>(null);
   const { message, modal } = App.useApp();
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [items, setItems] = useState<ConfigItem[]>([]);
@@ -40,8 +48,10 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [restartNeeded, setRestartNeeded] = useState(false);
-  const activeSection = params.section || 'workspace';
+  const requestedSection = params.section || 'general';
+  const location = settingsLocation(requestedSection, searchParams.get('tab'));
+  const activeSection = location.section;
+  const activeTab = location.tab;
   const canWrite = health?.canWrite !== false;
 
   const byKey = useCallback((key: string) => items.find((item) => item.key === key), [items]);
@@ -50,32 +60,17 @@ export default function Settings() {
     .map(([key, label]) => ({
       key,
       label,
-      items: items.filter((item) => item.group === key && !HOISTED_CONFIG_KEYS.has(item.key) && VISIBLE_CONFIG_KEYS.has(item.key)),
+      items: items.filter((item) => (key === 'feedback' ? item.key.startsWith('integrations.issue') : key === 'notifications' ? item.key.startsWith('integrations.notification') || item.key.startsWith('integrations.wecom') : key === 'links' ? item.key === 'ui.requirementUrlTemplate' : item.group === key && item.key !== 'ui.requirementUrlTemplate') && !HOISTED_CONFIG_KEYS.has(item.key) && VISIBLE_CONFIG_KEYS.has(item.key)),
     }))
     .filter((group) => group.items.length), [items]);
 
-  const modifiedCount = useCallback((keys: string[]) =>
-    keys.map(byKey).filter((item) => item && !item.isDefault).length, [byKey]);
-
-  const sections = useMemo<SettingsSection[]>(() => [
-    { key: 'workspace', label: '工作区', description: SECTION_DESCRIPTIONS.workspace, modified: 0 },
-    { key: 'lan', label: '局域网分享', description: SECTION_DESCRIPTIONS.lan, modified: modifiedCount(['server.lan', 'server.readonlyFromLan']) },
-    { key: 'gitRemote', label: 'Git 远端', description: SECTION_DESCRIPTIONS.gitRemote, modified: modifiedCount(['git.remote']) },
-    { key: 'softwareUpdate', label: '软件更新', description: SECTION_DESCRIPTIONS.softwareUpdate, modified: 0 },
-    { key: 'oplog', label: '操作日志', description: SECTION_DESCRIPTIONS.oplog, modified: 0 },
-    { key: 'mcp', label: 'MCP 中心', description: SECTION_DESCRIPTIONS.mcp, modified: 0 },
-    ...groups.map((group) => ({
-      key: group.key,
-      label: group.label,
-      description: SECTION_DESCRIPTIONS[group.key] || '',
-      modified: group.items.filter((item) => !item.isDefault).length,
-    })),
-  ], [groups, modifiedCount]);
-
-  const activeMeta = sections.find((section) => section.key === activeSection) || sections[0];
-  const activeGroup = groups.find((group) => group.key === activeMeta?.key);
+  const sections = SETTINGS_NAV.map(section => ({
+    ...section,
+    description: SECTION_DESCRIPTIONS[section.key],
+    modified: section.tabs.reduce((count, [tab]) => count + (groups.find(group => group.key === tab)?.items.filter(item => !item.isDefault).length || 0), 0),
+  }));
+  const activeMeta = sections.find(section => section.key === activeSection)!;
   const lanOn = Boolean(byKey('server.lan')?.value);
-  const readonlyOn = byKey('server.readonlyFromLan')?.value !== false;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,6 +83,7 @@ export default function Settings() {
         api.getRemote().catch(() => null),
         api.listWorkspaces().catch(() => ({ items: [] })),
       ]);
+      setIdentity(await api.gitIdentity().catch(() => null));
       setHealth(nextHealth);
       setItems(cfg.items || []);
       setProblems(cfg.problems || []);
@@ -107,23 +103,32 @@ export default function Settings() {
   }, [load]);
 
   useEffect(() => {
-    if (sections.length && !sections.some((section) => section.key === activeSection)) {
-      navigate('/settings', { replace: true });
+    if (requestedSection !== activeSection || (searchParams.get('tab') && searchParams.get('tab') !== activeTab)) {
+      const next = new URLSearchParams(searchParams);
+      next.set('tab', activeTab);
+      navigate(`/settings/${activeSection}?${next}`, { replace: true });
     }
-  }, [activeSection, navigate, sections]);
+  }, [requestedSection, activeSection, activeTab, navigate, searchParams]);
 
   const selectSection: MenuProps['onClick'] = ({ key }) => {
-    navigate(key === 'workspace' ? '/settings' : `/settings/${key}`);
+    if (busy) return;
+    const section = SETTINGS_NAV.find(item => item.key === key)!;
+    navigate(`/settings/${key}?tab=${section.tabs[0][0]}`);
   };
 
   const save = async (key: string, value: unknown) => {
+    if (JSON.stringify(byKey(key)?.value) === JSON.stringify(value)) return { needsRestart: false };
     setBusy(key);
     try {
       const result: any = await api.setConfig(key, value);
-      if (result.needsRestart) setRestartNeeded(true);
       (result.problems || []).forEach((problem: string) => message.warning(problem));
       (result.sideEffects || []).forEach((sideEffect: string) => message.info(sideEffect));
-      await load();
+      const cfg = await api.getConfig();
+      setItems(cfg.items || []);
+      setProblems(cfg.problems || []);
+      await runtime.reload();
+      if (key.startsWith('git.')) setIdentity(await api.gitIdentity().catch(() => null));
+      return result;
     } finally {
       setBusy('');
     }
@@ -140,15 +145,21 @@ export default function Settings() {
       });
       return;
     }
-    void save(item.key, value);
+    void save(item.key, value).catch(e => message.error(errorText(e, '保存失败')));
   };
 
   const reset = async (key: string) => {
     setBusy(key);
     try {
       await api.resetConfig(key);
-      await load();
-      message.success('已恢复默认值');
+      const cfg = await api.getConfig();
+      setItems(cfg.items || []);
+      setProblems(cfg.problems || []);
+      await runtime.reload();
+      if (key.startsWith('git.')) setIdentity(await api.gitIdentity().catch(() => null));
+      message.success(key.startsWith('server.') ? '已恢复默认值，请重启服务生效' : '已恢复默认值');
+    } catch (e) {
+      message.error(errorText(e, '恢复默认值失败'));
     } finally {
       setBusy('');
     }
@@ -184,7 +195,7 @@ export default function Settings() {
   const removeWorkspace = (path: string) => {
     modal.confirm({
       title: '移除工作区？',
-      content: path,
+      content: `仅从本机注册表移除，不删除磁盘文件：${path}`,
       okText: '移除',
       okButtonProps: { danger: true },
       onOk: async () => {
@@ -252,10 +263,9 @@ export default function Settings() {
 
   return (
     <main className="fl-page">
-      <PageHeader eyebrow="工作区配置" title="设置" description="工作区、网络、Git、规则、集成和外观配置。" />
+      <PageHeader eyebrow="工作区配置" title="设置" description="管理工作区、团队访问和外部连接，让配置清晰生效。" />
       <State loading={loading} error={error} onRetry={load} empty={false}>
         {problems.map((problem) => <Alert key={problem} type="warning" showIcon message={problem} className="fl-dashboard-alert" />)}
-        {!canWrite ? <Alert type="info" showIcon message="只读模式" description="这是别人共享出来的视图，设置项不可修改。" className="fl-dashboard-alert" /> : null}
         <div className="fl-settings-shell">
           <aside className="fl-settings-nav">
             <Menu mode="inline" selectedKeys={[activeMeta?.key]} items={menuItems} onClick={selectSection} />
@@ -269,7 +279,17 @@ export default function Settings() {
               </div>
             </div>
 
-            {activeMeta?.key === 'workspace' ? (
+            {activeMeta.tabs.length > 1 ? <Tabs activeKey={activeTab} onChange={tab => {
+              if (busy) return;
+              const next = new URLSearchParams(searchParams); next.set('tab', tab);
+              navigate(`/settings/${activeSection}?${next}`);
+            }} items={activeMeta.tabs.map(([key, label]) => ({ key, label }))} /> : null}
+            {activeSection === 'workspace' ? <div className="fl-settings-section">
+              <Space wrap><Button onClick={() => setGitOpen(true)}>打开 Git 助手</Button>
+                <span>当前 Git 身份：{identity ? identity.name || '未配置' : '尚未读取'} · {identity?.email || '未配置邮箱'}</span>
+              </Space><p className="fl-settings-help">身份读取自当前 Git 配置（包含继承值）。注册表保存在本机，Git 配置作用于当前仓库。</p>
+            </div> : null}
+            {activeTab === 'workspace' ? (
               <WorkspaceSection
                 health={health}
                 workspaces={workspaces}
@@ -280,55 +300,48 @@ export default function Settings() {
                 onRemove={removeWorkspace}
                 onRegister={(values) => saveWorkspace('existing', values)}
                 onClone={(values) => saveWorkspace('clone', values)}
-                onRebuildIndex={() => void rebuildWorkspaceIndex()}
               />
             ) : null}
 
-            {activeMeta?.key === 'lan' ? (
-              <LanSection
-                lan={lan}
-                lanOn={lanOn}
-                readonlyOn={readonlyOn}
-                canWrite={canWrite}
-                busy={busy}
-                restartNeeded={restartNeeded}
-                onCopy={(text) => void copy(text)}
-                onSave={(key, value) => void save(key, value)}
-              />
-            ) : null}
-
-            {activeMeta?.key === 'gitRemote' ? (
+            {activeTab === 'gitRemote' ? (
               <GitRemoteSection
                 remote={remote}
                 remoteUrl={remoteUrl}
                 canWrite={canWrite}
                 busy={busy}
                 onRemoteUrlChange={setRemoteUrl}
-                onSave={() => void saveRemote()}
-                onRemove={() => void removeRemote()}
+                onSave={() => void saveRemote().catch(e => message.error(errorText(e, '保存远端失败')))}
+                onRemove={() => modal.confirm({ title: '移除 Git 远端？', content: '停止向此远端同步，不删除远端仓库。', onOk: removeRemote })}
               />
             ) : null}
 
-            {activeMeta?.key === 'softwareUpdate' ? (
+            {activeTab === 'softwareUpdate' ? (
               <SoftwareUpdateSection canWrite={canWrite} version={health?.version} />
             ) : null}
 
-            {activeMeta?.key === 'oplog' ? <OperationLog embedded /> : null}
+            {activeTab === 'team' ? <TeamSection lan={lan} lanOn={lanOn} canWrite={canWrite} networkBusy={busy === 'server.lan'} onSaveLan={(enabled) => save('server.lan', enabled)} onCopy={copy} /> : null}
 
-            {activeMeta?.key === 'mcp' ? <McpSection canWrite={canWrite} /> : null}
+            {activeTab === 'trash' ? <Trash /> : null}
 
-            {activeGroup ? (
+            {activeTab === 'oplog' ? <OperationLog embedded /> : null}
+
+            {activeTab === 'mcp' ? <McpSection canWrite={canWrite} /> : null}
+
+            {groups.map(group => <div key={group.key} hidden={group.key !== activeTab}>
               <ConfigGroupSection
-                group={activeGroup}
+                group={group}
                 canWrite={canWrite}
                 busy={busy}
-                onSave={(key, value) => void save(key, value)}
+                onSave={save}
                 onConfirmSave={confirmSave}
                 onReset={(key) => void reset(key)}
               />
-            ) : null}
+            </div>)}
 
-            {activeMeta?.key !== 'mcp' ? (
+            {['feedback', 'notifications'].includes(activeTab) ? <IntegrationActions key={`${activeTab}:${JSON.stringify(items.map(item => item.value))}`} kind={activeTab} items={items} canWrite={canWrite} /> : null}
+            {activeTab === 'server' ? <section className="fl-settings-section"><h2>搜索索引</h2><p>跨工作区搜索缺少内容时，重建本机索引。</p><Button disabled={!canWrite || Boolean(busy)} loading={busy === 'workspaceIndex'} onClick={() => void rebuildWorkspaceIndex()}>重建索引</Button></section> : null}
+
+            {!['mcp', 'team', 'trash', 'softwareUpdate', 'oplog'].includes(activeTab) ? (
               <p className="fl-settings-help">
                 仓库配置会写入根目录的 <code>flowlark.json</code>；工作区注册表只保存在本机。
               </p>
@@ -336,6 +349,7 @@ export default function Settings() {
           </div>
         </div>
       </State>
+      <GitDrawer open={gitOpen} onClose={() => setGitOpen(false)} onChanged={runtime.reload} />
     </main>
   );
 }

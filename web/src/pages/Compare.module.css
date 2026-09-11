@@ -1,4 +1,5 @@
 .page {
+  padding-top: var(--fl-page-top-gap);
   display: flex;
   min-width: 0;
   height: calc(100dvh - 64px);
@@ -8,6 +9,7 @@
 }
 
 .toolbar {
+  margin-bottom: var(--fl-page-section-gap);
   display: flex;
   min-width: 0;
   min-height: 54px;

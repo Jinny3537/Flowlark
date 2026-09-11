@@ -137,7 +137,6 @@ test('maps review states and planning badges to readable labels', () => {
   assert.deepEqual(planningBadges({ review: { pending: 2, questions: 1 }, watchCount: 3 }), [
     { key: 'pending', label: '2 个待评审', color: 'orange' },
     { key: 'questions', label: '1 个有疑问', color: 'red' },
-    { key: 'watch', label: '3 个待归档', color: 'blue' },
   ])
 })
 

@@ -6,33 +6,6 @@ function withinDate(value, from, to) {
   return (!from || day >= from) && (!to || day <= to)
 }
 
-export function draftCounts(items = []) {
-  return {
-    attention: items.filter((item) => item.status === 'pending' || item.status === 'failed').length,
-    failed: items.filter((item) => item.status === 'failed').length,
-    archived: items.filter((item) => item.status === 'archived').length,
-  }
-}
-
-export function filterDraftItems(items = [], filters = {}) {
-  const needle = lower(filters.query)
-  const view = filters.view || 'attention'
-  return items.filter((item) => {
-    const inView = view === 'all'
-      || (view === 'attention' && ['pending', 'failed'].includes(item.status))
-      || item.status === view
-    const haystack = lower(`${item.title} ${item.filename}`)
-    return inView
-      && (!filters.project || item.project === filters.project)
-      && (!needle || haystack.includes(needle))
-      && withinDate(item.collectedAt, filters.dateFrom, filters.dateTo)
-  }).sort((a, b) => {
-    const priority = { failed: 0, pending: 1, archived: 2 }
-    return (priority[a.status] ?? 9) - (priority[b.status] ?? 9)
-      || text(b.collectedAt).localeCompare(text(a.collectedAt))
-  })
-}
-
 export function filterTrashItems(items = [], filters = {}) {
   const needle = lower(filters.query)
   return items.filter((item) => {
@@ -41,16 +14,6 @@ export function filterTrashItems(items = [], filters = {}) {
       && (!needle || haystack.includes(needle))
       && withinDate(item.deletedAt, filters.dateFrom, filters.dateTo)
   }).sort((a, b) => text(b.deletedAt).localeCompare(text(a.deletedAt)))
-}
-
-export function draftSelection(items = [], selectedIds = []) {
-  const selected = new Set(selectedIds)
-  return items.reduce((out, item) => {
-    if (!selected.has(item.id)) return out
-    if (item.status === 'failed') out.failed.push(item.id)
-    if (item.status === 'archived') out.archived.push(item.id)
-    return out
-  }, { failed: [], archived: [] })
 }
 
 export function restoreReasonLabel(reason) {

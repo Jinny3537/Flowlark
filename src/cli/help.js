@@ -28,7 +28,7 @@ ${c.bold('检索与组织')}
   ${c.cyan('offline')} <项目> <版本>  抓取 CDN 依赖生成自包含的离线版
   ${c.cyan('compare')} <项目> <v1> <v2>  浏览器里并排对比两个版本
   ${c.cyan('feedback')}             反馈草稿：list / export / submit / rm
-  ${c.cyan('req')}                  需求：list / show / new / link / unlink
+  ${c.cyan('req')}                  需求：list / show / new / link / unlink / archive / delete / restore
   ${c.cyan('milestone')}            迭代：查看、预检、同步计划、状态流转
   ${c.cyan('export')}               导出需求或迭代静态交付包
   ${c.cyan('workspace')}            工作区：list / add / clone / remove
@@ -62,6 +62,21 @@ ${c.dim('全局：-h 帮助  -V 版本  --json 机器可读输出  NO_COLOR=1 �
 `
 
 export const COMMAND_HELP = {
+  req: `需求与归档原型协作
+
+  flowlark req list|archived|trash
+  flowlark req show <编号> --json
+  flowlark req new <编号> --title "需求标题"
+  flowlark req link <编号> <项目> <版本> [页面位置] --desc "本版范围"
+  flowlark req unlink <编号> <项目> <版本>
+  flowlark req notes <编号> --desc "本地分析，同步保留"
+  flowlark req impact <编号>
+  flowlark req archive|unarchive|delete|restore <编号>
+  flowlark req sync          预览同步差异
+  flowlark req sync apply    执行同步
+
+删除仅进入本地回收站，保留原型与历史；冻结/进行中迭代引用时阻止删除。
+开发依据来自迭代采用版本，不随新归档自动切换。`,
   init: `${c.bold('flowlark init')} [目录]
 
 在指定目录（默认当前目录）创建原型仓库，生成：

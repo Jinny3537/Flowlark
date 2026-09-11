@@ -391,12 +391,9 @@ export function NewVersionDialog({
     if (!latest) return;
     const reusable = reusableMetadata(latest);
     setRequirements(reusable.requirements);
-    if (!changes.length && reusable.locations.length) {
-      setChanges([{ type: 'MODIFY', location: reusable.locations[0], content: '' }]);
-    }
     setPreflight(null);
     setWarningConfirmed(false);
-    message.success('已参考上一版的需求和常用变更位置');
+    message.success('已参考上一版的关联需求');
   };
 
   const setBlockerFields = (blockers: any[]) => {
@@ -719,7 +716,7 @@ export function NewVersionDialog({
         className="fl-new-version-intro"
         type="info"
         showIcon
-        message="新版本创建后处于编辑中；可以从文件、HTML 源码或公开 URL 导入。"
+        message="请导入在外部工具中修改完成的原型，并关联需求、填写变更。归档不会自动切换本次开发依据。"
       />
 
       <Form form={form} layout="vertical">
@@ -791,10 +788,11 @@ export function NewVersionDialog({
                       disabled={item.status === 'creating' || item.status === 'created'}
                       onChange={(event) => updateBatchItem(item.id, { title: event.target.value })}
                     />
-                    <Input
+                    <Input.TextArea
+                      autoSize={{ minRows: 4, maxRows: 16 }}
                       aria-label={`${item.name} 变更说明`}
                       value={item.changeText}
-                      placeholder="本版主要变更"
+                      placeholder="粘贴完整发布说明，包含新增、优化、修复和注意事项"
                       disabled={item.status === 'creating' || item.status === 'created'}
                       onChange={(event) => updateBatchItem(item.id, { changeText: event.target.value })}
                     />
@@ -970,7 +968,7 @@ export function NewVersionDialog({
           </Col>
         </Row>
 
-        <Form.Item label="变更日志" help="除项目首版外，创建待评审版本至少需要 1 条有效变更">
+        <Form.Item label="变更日志" help="除项目首版外，创建待评审版本需要填写发布说明">
           <div className="fl-new-version-editor">
             <ChangeEditor value={changes} onChange={updateChanges} />
           </div>

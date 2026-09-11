@@ -1,20 +1,25 @@
-import { useNavigate } from 'react-router-dom';
-import { App, Button, Col, DatePicker, Form, Input, List, Modal, Row, Select, Space, Statistic, Table, Tag } from 'antd';
-import { CloudDownloadOutlined, PlusOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
+import RequirementPrototypeButton from './RequirementPrototypeButton';
+import { RequirementActions } from './RequirementWorkflow';
+import styles from './Requirements.module.css';
+import RequirementFields from './RequirementFields';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { App, Button, Col, Form, Grid, Input, List, Modal, Row, Select, Space, Table, Tabs, Tag } from 'antd';
+import { CloudDownloadOutlined, FilterOutlined, SearchOutlined, PlusOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
-import { textOf } from '@/utils/format';
+import { fmtTime, textOf } from '@/utils/format';
 import { requirementPayload } from './requirementsModel.js';
+
+const requirementStatuses = ['待评审', '评审通过', '开发中', '已上线', '已拒绝', '暂缓'];
 
 const statusLabels: Record<string, string> = {
   not_started: '未开始',
-  designing: '设计中',
+  designing: '已归档 / 待定稿',
   finalized: '已定稿',
-  delivered: '已交付',
+  delivered: '原型已确认',
 };
 
 const statusColors: Record<string, string> = {
@@ -32,6 +37,12 @@ type ExternalState = {
 
 export default function Requirements() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const [view] = useState(params.get('view') || 'active');
+  const [pending] = useState(params.get('pending') || '');
+  const [syncPreview, setSyncPreview] = useState<any>(null);
+  const [syncResult, setSyncResult] = useState<any>(null);
+  const screens = Grid.useBreakpoint();
   const { message } = App.useApp();
   const { health } = useAppRuntime();
   const writable = health?.canWrite !== false;
@@ -41,10 +52,14 @@ export default function Requirements() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
-  const [projectFilter, setProjectFilter] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('');
+  const [query, setQuery] = useState(params.get('q') || '');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [status, setStatus] = useState(params.get('status') || '');
+  const [stage, setStage] = useState(params.get('stage') || '');
+  const [priority, setPriority] = useState(params.get('priority') || '');
+  const [release, setRelease] = useState(params.get('release') || '');
+  const [projectFilter, setProjectFilter] = useState(params.get('project') || '');
+  const [sourceFilter, setSourceFilter] = useState(params.get('source') || '');
   const [externalOpen, setExternalOpen] = useState(false);
   const [externalLoading, setExternalLoading] = useState(false);
   const [externalResults, setExternalResults] = useState<any[]>([]);
@@ -57,19 +72,28 @@ export default function Requirements() {
     [items],
   );
 
-  const filtered = useMemo(() => items.filter((item) => {
-    const haystack = `${item.code} ${item.title} ${item.project || ''} ${item.module || ''}`.toLowerCase();
-    return (!status || item.derivedStatus === status)
+  const matchingItems = useMemo(() => items.filter((item) => {
+    const haystack = `${item.code} ${item.title} ${item.project || ''} ${item.module || ''} ${item.owner || ''} ${item.description || ''} ${item.businessValue || ''} ${item.businessRule || ''} ${item.acceptanceCriteria || ''} ${item.functionPoints || ''} ${item.versionName || ''}`.toLowerCase();
+    return (view === 'trash' ? !!item.deletedAt : !item.deletedAt && (view === 'archived' ? !!item.archivedAt : !item.archivedAt))
+      && (!pending || (pending === 'prototype' ? !item.versions?.length : pending === 'acceptance' ? !item.acceptanceCriteria?.trim() : item.overdue))
+      && (!stage || item.stage === stage)
+      && (!priority || item.priority === priority)
+      && (!release || (item.versionName || item.versionId || '未分配') === release)
       && (!projectFilter || item.project === projectFilter)
       && (!sourceFilter || (sourceFilter === 'pool' ? Boolean(item.external) : !item.external))
       && (!query || haystack.includes(query.toLowerCase()));
-  }), [items, projectFilter, query, sourceFilter, status]);
+  }), [items, projectFilter, query, sourceFilter, stage, priority, release, view, pending]);
+
+  const filtered = useMemo(
+    () => matchingItems.filter(item => !status || (status === 'local' ? !item.external : status === 'unknown' ? !!item.external && !requirementStatuses.includes(item.external.status) : item.external?.status === status)),
+    [matchingItems, status],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      setItems(await api.listRequirements());
+      setItems(await api.listRequirements(true));
     } catch (nextError) {
       setError(errorText(nextError, '无法读取需求'));
     } finally {
@@ -142,135 +166,140 @@ export default function Requirements() {
     }
   }, [external.provider, external.token, load, message, navigate]);
 
-  const syncPool = useCallback(async () => {
+  const syncPool = useCallback(async (preview = true, codes?: string[]) => {
     setSyncing(true);
     try {
-      const result: any = await api.syncRequirements(external.provider, { token: external.token });
-      setItems(result.items || []);
+      const result: any = await api.syncRequirements(external.provider, { token: external.token }, { preview, codes: codes || (!preview && syncPreview ? syncPreview.changes.map((entry: any) => entry.code) : undefined), expected: !preview && syncPreview ? Object.fromEntries(syncPreview.changes.map((entry: any) => [entry.code, entry.token])) : undefined });
+      if (preview) { setSyncPreview(result); return; }
+      setSyncPreview(null); setSyncResult(result);
+      await load();
       const failed = Array.isArray(result.failed) ? result.failed.length : Number(result.failed || 0);
-      message.success(`已同步 ${result.updated}/${result.total} 条${failed ? `，失败 ${failed} 条` : ''}`);
+      const summary = `已同步 ${result.updated}/${result.total} 条（新增 ${result.imported || 0} 条）`;
+      const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+      if (failed || warnings.length) {
+        const details = Array.isArray(result.failed) ? result.failed.map((item: any) => `${item.code}：${item.message}`).join('；') : '';
+        message.warning([summary, failed ? `失败 ${failed} 条：${details}` : '', ...warnings].filter(Boolean).join('；'));
+      } else {
+        message.success(summary);
+      }
     } catch (nextError) {
       message.error(errorText(nextError, '同步需求池失败'));
     } finally {
       setSyncing(false);
     }
-  }, [external.provider, external.token, message]);
+  }, [external.provider, external.token, message, load, syncPreview]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const next = new URLSearchParams();
+    Object.entries({ q: query, status, stage, priority, release, project: projectFilter, source: sourceFilter, view, pending }).forEach(([key, value]) => { if (value) next.set(key, value); });
+    setParams(next, { replace: true });
+  }, [query, status, stage, priority, release, projectFilter, sourceFilter, view, pending, setParams]);
+
+  const activeFilters = [
+    { key: 'query', label: '关键词', value: query, clear: () => setQuery('') },
+    { key: 'project', label: '项目', value: projectFilter, clear: () => setProjectFilter('') },
+    { key: 'status', label: '需求状态', value: status, clear: () => setStatus('') },
+    { key: 'source', label: '来源', value: sourceFilter ? (sourceFilter === 'pool' ? '需求池' : '本地') : '', clear: () => setSourceFilter('') },
+    { key: 'stage', label: '需求池阶段', value: stage, clear: () => setStage('') },
+    { key: 'priority', label: '优先级', value: priority, clear: () => setPriority('') },
+    { key: 'release', label: '发布计划', value: release, clear: () => setRelease('') },
+  ].filter(filter => filter.value);
+  const advancedCount = [sourceFilter, stage, priority, release].filter(Boolean).length;
+
   return (
-    <main className="fl-page">
-      <PageHeader
-        eyebrow="需求协作"
-        title="需求"
-        description="接入需求池数据，并追踪需求与本地原型版本的演进关系。"
-        actions={(
-          <Space wrap>
-            <Button icon={<SyncOutlined />} loading={syncing} disabled={!writable} onClick={syncPool}>同步需求池</Button>
+    <main className={`fl-page ${styles.page}`}>
+      <div className={styles.workspace}>
+      <header className={styles.header}>
+        <h1 className="fl-visually-hidden">需求</h1>
+        <nav className={styles.statusNav} aria-label="按需求状态筛选需求">
+            <Tabs
+              className={styles.statusTabs}
+              activeKey={status || 'all'}
+              onChange={key => setStatus(key === 'all' ? '' : key)}
+              items={[
+                { key: 'all', label: `全部（${matchingItems.length}）` },
+                { key: 'local', label: `本地需求（${matchingItems.filter(item => !item.external).length}）` },
+                { key: 'unknown', label: `其他外部状态（${matchingItems.filter(item => item.external && !requirementStatuses.includes(item.external.status)).length}）` },
+                ...requirementStatuses.map(key => ({
+                  key,
+                  label: `${key}（${matchingItems.filter(item => item.external?.status === key).length}）`,
+                })),
+              ]}
+            />
+        </nav>
+      </header>
+      <State loading={loading && !items.length} error={error} onRetry={load} empty={false}>
+        <div className={`fl-section-stack ${styles.content}`}>
+          <section className={styles.searchArea} aria-label="需求搜索与筛选">
+            <div className={styles.toolbar}>
+              <Input type="search" prefix={<SearchOutlined aria-hidden />} allowClear aria-label="搜索需求" placeholder="搜索编号、标题、负责人或内容" value={query} onChange={event => setQuery(event.target.value)} />
+              <Select showSearch optionFilterProp="label" allowClear aria-label="项目筛选" value={projectFilter || undefined} placeholder="全部项目" options={projectOptions} onChange={value => setProjectFilter(value || '')} />
+              <Button icon={<FilterOutlined />} aria-expanded={filtersOpen} aria-controls="requirement-advanced-filters" onClick={() => setFiltersOpen(current => !current)}>
+                更多筛选{advancedCount ? `（${advancedCount}）` : ''}
+              </Button>
+        <div className={styles.actions}>
+<Space wrap>
+            <Button icon={<SyncOutlined />} loading={syncing} disabled={!writable} onClick={() => void syncPool()}>同步需求池</Button>
             <Button icon={<CloudDownloadOutlined />} disabled={!writable} onClick={() => setExternalOpen(true)}>从需求池导入</Button>
             <Button type="primary" icon={<PlusOutlined />} disabled={!writable} onClick={() => setOpen(true)}>新建需求</Button>
           </Space>
-        )}
-      />
-      <State loading={loading && !items.length} error={error} onRetry={load} empty={false}>
-        <div className="fl-section-stack">
-          <section className="fl-inline-metrics" aria-label="需求指标">
-            <Statistic title="需求总数" value={items.length} />
-            <Statistic title="来自需求池" value={items.filter((item) => item.external).length} />
-            <Statistic title="已关联版本" value={items.filter((item) => item.versions?.length).length} />
+        </div>
+            </div>
+            <div id="requirement-advanced-filters" hidden={!filtersOpen}>
+              <div className={styles.advanced}>
+                <label>接入来源<Select allowClear aria-label="来源筛选" value={sourceFilter || undefined} placeholder="全部来源" options={[{ value: 'pool', label: '需求池' }, { value: 'local', label: '本地' }]} onChange={value => setSourceFilter(value || '')} /></label>
+                <label>需求池阶段<Select allowClear aria-label="需求池阶段筛选" placeholder="全部阶段" value={stage || undefined} options={[...new Set(items.map(item => item.stage).filter(Boolean))].map(value => ({ value, label: value }))} onChange={value => setStage(value || '')} /></label>
+                <label>优先级<Select allowClear aria-label="优先级筛选" placeholder="全部优先级" value={priority || undefined} options={['P0', 'P1', 'P2', 'P3'].map(value => ({ value, label: value }))} onChange={value => setPriority(value || '')} /></label>
+                <label>发布计划<Select showSearch optionFilterProp="label" allowClear aria-label="发布计划筛选" placeholder="全部发布计划" value={release || undefined} options={[...new Set(items.map(item => item.versionName || item.versionId || '未分配'))].map(value => ({ value, label: value }))} onChange={value => setRelease(value || '')} /></label>
+              </div>
+            </div>
+            <div className={styles.filterSummary}>
+              <span className="fl-muted" aria-live="polite">共 {items.length} 条，当前显示 {filtered.length} 条</span>
+              {activeFilters.map(filter => <Tag key={filter.key} closable onClose={filter.clear} className={styles.filterTag}>{filter.label}：{filter.value}</Tag>)}
+              {activeFilters.length ? <Button type="link" size="small" onClick={() => activeFilters.forEach(filter => filter.clear())}>清空筛选</Button> : null}
+            </div>
           </section>
-          <div className="fl-requirement-filters">
-            <Input.Search allowClear aria-label="搜索需求" placeholder="搜索编号、标题、项目或模块" value={query} onChange={(event) => setQuery(event.target.value)} />
-            <Select allowClear aria-label="项目筛选" value={projectFilter || undefined} placeholder="全部项目" options={projectOptions} onChange={(value) => setProjectFilter(value || '')} />
-            <Select
-              allowClear
-              aria-label="来源筛选"
-              value={sourceFilter || undefined}
-              placeholder="全部来源"
-              options={[{ value: 'pool', label: '需求池' }, { value: 'local', label: '本地' }]}
-              onChange={(value) => setSourceFilter(value || '')}
-            />
-            <Select
-              allowClear
-              aria-label="状态筛选"
-              value={status || undefined}
-              placeholder="全部本地状态"
-              options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
-              onChange={(value) => setStatus(value || '')}
-            />
-          </div>
           <Table
             rowKey="code"
             loading={loading}
-            locale={{ emptyText: query || status || projectFilter || sourceFilter ? '没有匹配的需求' : '还没有需求' }}
+            locale={{ emptyText: query || status || projectFilter || sourceFilter || stage || priority || release ? '没有匹配的需求' : '还没有需求' }}
             dataSource={filtered}
             columns={[
-              {
-                title: '需求',
-                width: 360,
-                render: (_, record: any) => (
-                  <div className="fl-requirement-name">
-                    <Button type="link" className="fl-result-link fl-mono" onClick={() => navigate(`/requirements/${encodeURIComponent(record.code)}`)}>{record.code}</Button>
-                    <strong>{record.title}</strong>
-                    <span className="fl-muted">{textOf(record.description, '暂无描述')}</span>
-                  </div>
-                ),
-              },
-              { title: '项目 / 模块', width: 180, render: (_, record: any) => `${textOf(record.project, '未分项目')} / ${textOf(record.module, '未分模块')}` },
-              {
-                title: '类型 / 优先级',
-                width: 150,
-                render: (_, record: any) => <Space size="small" wrap>{record.type ? <Tag>{record.type}</Tag> : null}{record.priority ? <Tag color="gold">{record.priority}</Tag> : null}{!record.type && !record.priority ? '—' : null}</Space>,
-              },
-              { title: '本地状态', width: 140, dataIndex: 'derivedStatus', render: (value) => <Tag color={statusColors[value]}>{statusLabels[value] || textOf(value, '未开始')}</Tag> },
-              {
-                title: '截止日期', dataIndex: 'dueDate', width: 150,
-                render: (value, record: any) => (
-                  <Space size="small" wrap>
-                    <span>{textOf(value)}</span>
-                    {record.overdue ? <Tag color="error">已逾期</Tag> : null}
-                  </Space>
-                ),
-              },
-              { title: '来源', width: 130, render: (_, record: any) => <Tag color={record.external ? 'success' : 'default'}>{record.external ? '需求池' : '本地'}</Tag> },
-              {
-                title: '关联范围',
-                width: 180,
-                render: (_, record: any) => `${record.versions?.length || 0} 个版本 · ${new Set((record.versions || []).map((version: any) => version.project)).size} 个项目`,
-              },
-              { title: '负责人', dataIndex: 'owner', width: 130, render: (value) => textOf(value) },
+              { title: '需求编号', dataIndex: 'code', width: 210, fixed: screens.lg ? 'left' : undefined, render: (value) => <Button type="link" className="fl-result-link fl-mono" onClick={() => navigate(`/requirements/${encodeURIComponent(value)}`)}>{value}</Button> },
+              { title: '需求标题', dataIndex: 'title', width: 260, fixed: screens.lg ? 'left' : undefined, ellipsis: true, render: value => textOf(value) },
+              { title: '项目', dataIndex: 'project', width: 140, ellipsis: true, render: value => textOf(value, '未分项目') },
+              { title: '优先级', dataIndex: 'priority', width: 100, render: value => value ? <Tag color="gold">{value}</Tag> : '—' },
+              { title: '需求状态', key: 'sourceStatus', width: 120, render: (_, item: any) => item.external?.status || (item.external ? '来源未提供' : '本地需求') },
+              { title: '需求池阶段', dataIndex: 'stage', width: 130, render: value => textOf(value, '待明确') },
+              { title: '本地原型进度', dataIndex: 'derivedStatus', width: 130, render: value => <Tag color={statusColors[value]}>{statusLabels[value] || '未开始'}</Tag> },
+              { title: '负责人', dataIndex: 'owner', width: 110, render: value => textOf(value) },
+              { title: '最近更新', key: 'updated', width: 120, render: (_, record: any) => fmtTime(record.sourceUpdatedAt || record.updatedAt) },
+              { title: '操作', key: 'actions', width: 350, render: (_, item: any) => <Space wrap><RequirementPrototypeButton code={item.code} /><RequirementActions item={item} writable={writable} onChanged={load} /></Space> },
             ]}
-            scroll={{ x: 1280 }}
+            scroll={{ x: 1600 }}
           />
         </div>
       </State>
+      </div>
 
+      <Modal title="同步差异预览" open={!!syncPreview} onCancel={() => setSyncPreview(null)} confirmLoading={syncing} okText="确认同步" onOk={() => void syncPool(false)} width={800}>
+        <p>本地分析保留。确认前校验数据是否变化；有变化的条目需重新预览，已删除需求跳过。</p>
+        <List dataSource={syncPreview?.changes || []} renderItem={(entry: any) => <List.Item><div><strong>{entry.code} · {entry.title}{entry.imported ? '（新增）' : ''}</strong>{entry.fields.length ? entry.fields.map((f: any) => <p key={f.field} style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{f.field}：{String(f.before)} → {String(f.after)}</p>) : <p>内容无变化</p>}</div></List.Item>} />
+        {(syncPreview?.failed || []).map((failure: any) => <p key={failure.code}>{failure.code}：{failure.message}</p>)}
+        {(syncPreview?.warnings || []).map((warning: string) => <p key={warning}>{warning}</p>)}
+      </Modal>
+      <Modal title="同步结果" open={!!syncResult} onCancel={() => setSyncResult(null)} footer={<Space><Button onClick={() => setSyncResult(null)}>关闭</Button>{syncResult?.failed?.length ? <Button loading={syncing} onClick={() => void syncPool(true, syncResult.failed.map((f: any) => f.code))}>重试失败项</Button> : null}</Space>}>
+        <p>已更新 {syncResult?.updated}/{syncResult?.total} 条，新增 {syncResult?.imported} 条。</p>
+        {(syncResult?.failed || []).map((failure: any) => <p key={failure.code}>{failure.code}：{failure.message}</p>)}
+        {(syncResult?.warnings || []).map((warning: string) => <p key={warning}>{warning}</p>)}
+      </Modal>
       <Modal title="新建需求" open={open} confirmLoading={saving} onOk={create} onCancel={() => setOpen(false)} width={760}>
         <Form form={form} layout="vertical">
-          <Row gutter={12}>
-            <Col xs={24} md={8}><Form.Item name="code" label="需求编号" rules={[{ required: true, message: '请填写需求编号' }]}><Input className="fl-mono" placeholder="REQ-0275" /></Form.Item></Col>
-            <Col xs={24} md={16}><Form.Item name="title" label="标题" rules={[{ required: true, message: '请填写标题' }]}><Input placeholder="一句话描述业务目标" /></Form.Item></Col>
-          </Row>
-          <Row gutter={12}>
-            <Col xs={24} md={8}><Form.Item name="project" label="所属项目"><Input placeholder="订单中心" /></Form.Item></Col>
-            <Col xs={24} md={8}><Form.Item name="module" label="业务模块"><Input placeholder="订单列表" /></Form.Item></Col>
-            <Col xs={24} md={8}><Form.Item name="owner" label="负责人"><Input placeholder="PM / 研发负责人" /></Form.Item></Col>
-          </Row>
-          <Row gutter={12}>
-            <Col xs={24} md={8}><Form.Item name="type" label="需求类型"><Select allowClear placeholder="选择类型" options={['功能', '优化', '缺陷', '合规'].map((value) => ({ value, label: value }))} /></Form.Item></Col>
-            <Col xs={24} md={8}><Form.Item name="priority" label="优先级"><Select allowClear placeholder="选择优先级" options={['P0', 'P1', 'P2', 'P3'].map((value) => ({ value, label: value }))} /></Form.Item></Col>
-            <Col xs={24} md={8}><Form.Item name="url" label="外部链接" rules={[{ type: 'url', warningOnly: true, message: '请检查链接格式' }]}><Input placeholder="https://..." /></Form.Item></Col>
-          </Row>
-          <Row gutter={12}>
-            <Col xs={24} md={8}>
-              <Form.Item name="dueDate" label="截止日期">
-                <DatePicker className="fl-full-width" format="YYYY-MM-DD" placeholder="选择截止日期" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="description" label="描述"><Input.TextArea rows={4} placeholder="补充背景、验收边界或关键约束" /></Form.Item>
+          <RequirementFields creating />
         </Form>
       </Modal>
 

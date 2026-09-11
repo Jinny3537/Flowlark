@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { REQUIREMENT_DETAIL_FIELDS, requirementDetailFields } from './requirement-fields.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { err } from './errors.js'
@@ -65,6 +66,7 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
   const title = String(input.title || '').trim()
   if (!title) throw err.bad('REQUIREMENT_TITLE_REQUIRED', '请填写需求标题')
   const item = {
+    ...requirementDetailFields(input, { defaults: true }),
     code,
     title,
     description: String(input.description || ''),
@@ -75,6 +77,10 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
     owner: String(input.owner || ''),
     dueDate: normalizeDueDate(input.dueDate),
     statusOverride: input.statusOverride || null,
+    localNotes: String(input.localNotes || ''),
+    archivedAt: null,
+    deletedAt: null,
+    history: [],
     external: input.external || null,
     externalTasks: normalizeExternalTasks(input.externalTasks),
     url: String(input.url || ''),
@@ -89,14 +95,18 @@ export function createRequirement(root, input, now = new Date().toISOString()) {
 
 export function updateRequirement(root, code, patch) {
   const item = readRequirement(root, code)
-  for (const key of ['title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'statusOverride', 'external', 'url']) {
+  const before = structuredClone(item)
+  for (const key of ['title', 'description', 'project', 'module', 'type', 'priority', 'owner', 'dueDate', 'statusOverride', 'external', 'url', 'localNotes', ...REQUIREMENT_DETAIL_FIELDS]) {
     if (patch[key] !== undefined) item[key] = patch[key]
   }
   if (!String(item.title || '').trim()) throw err.bad('REQUIREMENT_TITLE_REQUIRED', '请填写需求标题')
+  Object.assign(item, requirementDetailFields(item))
   item.title = String(item.title).trim()
   item.dueDate = normalizeDueDate(item.dueDate)
   item.updatedAt = new Date().toISOString()
-  fs.writeFileSync(store.paths.requirementFile(root, item.code), stringify(item, 'requirement'))
+  const changes = Object.keys(item).filter(key => !['history', 'updatedAt'].includes(key) && JSON.stringify(before[key]) !== JSON.stringify(item[key])).map(field => ({ field, before: before[field] ?? null, after: item[field] }))
+  if (changes.length) item.history = [...(item.history || []), { at: item.updatedAt, action: 'update', changes }]
+  writeRequirement(root, item)
   return item
 }
 
@@ -116,6 +126,7 @@ export function upsertExternalTask(root, code, binding) {
 export function ensureRequirement(root, raw) {
   const input = typeof raw === 'string' ? { code: raw, title: raw } : raw
   const code = assertRequirementCode(input && input.code)
+  if (requirementExists(root, code) && readRequirement(root, code).deletedAt) throw err.conflict('REQUIREMENT_DELETED', `需求「${code}」已删除，请先恢复`)
   if (!requirementExists(root, code)) createRequirement(root, { ...input, title: input.title || code })
   return code
 }
@@ -155,11 +166,11 @@ export function buildRequirementIndex(root) {
         const code = typeof raw === 'string' ? raw : raw.code
         if (!code) continue
         if (!byCode[code]) byCode[code] = []
-        byCode[code].push({ project: slug, versionNo: no, title: version.title, isBaseline: no === baseline, status: version.status, reviewStatus: version.reviewStatus, createdAt: version.createdAt })
+        byCode[code].push({ project: slug, versionNo: no, title: version.title, isBaseline: no === baseline, status: version.status, reviewStatus: version.reviewStatus, createdAt: version.createdAt, coverage: version.requirementCoverage?.[code] || {}, changes: (version.changes || []).filter(change => change.requirement === code) })
       }
     }
   }
-  const result = { fingerprint: sourceFingerprint(root), byCode }
+  const result = { schemaVersion: 2, fingerprint: sourceFingerprint(root), byCode }
   const file = indexFile(root)
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, stringify(result))
@@ -170,7 +181,7 @@ export function readRequirementIndex(root) {
   const file = indexFile(root)
   if (fs.existsSync(file)) {
     const cached = parse(fs.readFileSync(file, 'utf8'), '需求索引')
-    if (cached.fingerprint === sourceFingerprint(root)) return cached
+    if (cached.schemaVersion === 2 && cached.fingerprint === sourceFingerprint(root)) return cached
   }
   return buildRequirementIndex(root)
 }
@@ -197,12 +208,42 @@ export function requirementDetail(root, code) {
   return { ...detail, overdue: isRequirementOverdue(detail) }
 }
 
-export function listRequirements(root) {
-  return listRequirementCodes(root).map((code) => requirementDetail(root, code))
+export function listRequirements(root, { includeDeleted = false } = {}) {
+  return listRequirementCodes(root).map((code) => requirementDetail(root, code)).filter(item => includeDeleted || !item.deletedAt)
 }
 
+function writeRequirement(root, item) {
+  const file = store.paths.requirementFile(root, item.code)
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`
+  try { fs.writeFileSync(tmp, stringify(item, 'requirement')); fs.renameSync(tmp, file) }
+  finally { fs.rmSync(tmp, { force: true }) }
+}
+
+export function requirementLifecycle(root, code, action, by) {
+  const item = readRequirement(root, code)
+  if (!['archive', 'unarchive', 'delete', 'restore'].includes(action)) throw err.bad('REQUIREMENT_ACTION_INVALID', '未知需求操作')
+  if (item.deletedAt && action !== 'restore') throw err.conflict('REQUIREMENT_DELETED', '请先恢复需求')
+  const field = ['delete', 'restore'].includes(action) ? 'deletedAt' : 'archivedAt'
+  const value = ['delete', 'archive'].includes(action) ? new Date().toISOString() : null
+  if (!!item[field] === !!value) return item
+  item[field] = value
+  item.updatedAt = new Date().toISOString()
+  item.history = [...(item.history || []), { at: item.updatedAt, action, by }]
+  writeRequirement(root, item)
+  return item
+}
+
+export function normalizeCoverage(items, previous = {}) {
+  return Object.fromEntries((items || []).map(raw => {
+    const code = assertRequirementCode(typeof raw === 'string' ? raw : raw.code)
+    const detail = typeof raw === 'string' ? previous[code] || {} : { ...previous[code], ...Object.fromEntries(Object.entries(raw).filter(([, value]) => value !== undefined)) }
+    return [code, { location: String(detail.location || '').slice(0, 500), scope: String(detail.scope || '').slice(0, 2000) }]
+  }))
+}
+
+
 function normalizeStoredRequirement(input = {}) {
-  return { ...input, external: input.external || null, externalTasks: normalizeExternalTasks(input.externalTasks) }
+  return { ...requirementDetailFields(input, { defaults: true }), ...input, external: input.external || null, externalTasks: normalizeExternalTasks(input.externalTasks) }
 }
 
 function normalizeExternalTasks(input) {

@@ -18,7 +18,7 @@ export function VersionHistoryDrawer({
   return (
     <Drawer
       open={open}
-      title="这一版的演进历史"
+      title="当前版本的修改历史"
       width={520}
       destroyOnHidden
       onClose={onClose}

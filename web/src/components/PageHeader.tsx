@@ -11,27 +11,23 @@ type PageHeaderProps = {
   actions?: ReactNode;
 };
 
-export function PageHeader({ title, description, eyebrow, backTo, actions }: PageHeaderProps) {
+export function PageHeader({ title, description, backTo, actions }: PageHeaderProps) {
   const navigate = useNavigate();
 
   return (
-    <header className="fl-page-head">
-      <div className="fl-page-heading">
-        {backTo ? (
-          <Button
-            className="fl-back-button"
-            type="text"
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(backTo)}
-          >
-            返回
-          </Button>
-        ) : null}
-        {eyebrow ? <span className="fl-page-eyebrow">{eyebrow}</span> : null}
-        <h1 className="fl-page-title">{title}</h1>
-        {description ? <p className="fl-page-desc">{description}</p> : null}
-      </div>
-      {actions ? <div className="fl-page-actions">{actions}</div> : null}
-    </header>
+    <>
+      <h1 className="fl-visually-hidden">{title}</h1>
+      {backTo || actions ? (
+        <header className="fl-page-toolbar">
+          {backTo ? (
+            <div className="fl-page-toolbar-context">
+              <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate(backTo)}>返回</Button>
+              {description ? <span className="fl-muted">{description}</span> : null}
+            </div>
+          ) : null}
+          {actions ? <div className="fl-page-actions">{actions}</div> : null}
+        </header>
+      ) : null}
+    </>
   );
 }

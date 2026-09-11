@@ -72,6 +72,10 @@ function parseResponseText(text) {
 
 function unwrapToolResult(value) {
   if (!value || typeof value !== 'object') return value
+  if (value.isError) {
+    const detail = (value.content || []).filter((item) => item?.type === 'text').map((item) => item.text).join('；')
+    throw err.bad('MCP_TOOL_ERROR', detail || 'MCP 工具返回失败')
+  }
   if (value.structuredContent !== undefined) return value.structuredContent
   if (value.content && Array.isArray(value.content)) {
     const json = value.content.find((item) => item && item.type === 'text' && looksJson(item.text))

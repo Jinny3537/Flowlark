@@ -1,8 +1,10 @@
+import { Link } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   App,
   Button,
+  Collapse,
   Descriptions,
   Empty,
   Input,
@@ -27,6 +29,8 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import DOMPurify from 'dompurify';
+import { useAppRuntime } from '@/runtime/AppRuntime';
+import { TeamRecords } from './TeamRecords';
 import { marked } from 'marked';
 import { api } from '@/services/api';
 import { fmtAbsolute, fmtSize, fmtTime, textOf } from '@/utils/format';
@@ -137,7 +141,7 @@ function specTemplate(versionNo: string, version: any) {
       .join('\n')
     : '- 暂无';
 
-  return `# ${versionNo} 技术规格书：${textOf(version?.title, versionNo)}
+  return `# ${versionNo} 技术规格说明书：${textOf(version?.title, versionNo)}
 
 ## 1. 背景与目标
 
@@ -237,11 +241,16 @@ export function WorkbenchDocuments({
     () => filterVersionFeedback(feedbacks, slug, versionNo) as any[],
     [feedbacks, slug, versionNo],
   );
-  const tagOptions = useMemo(() => allTags.map((item) => {
-    const tag = typeof item === 'string' ? item : item.tag;
-    const count = typeof item === 'object' && item ? item.count : undefined;
-    return { value: tag, label: count === undefined ? tag : `${tag} (${count})` };
-  }).filter((item) => item.value), [allTags]);
+  const { health: runtimeHealth } = useAppRuntime();
+  const tagOptions = useMemo(() => {
+    const known = allTags.map(item => {
+      const value = typeof item === 'string' ? item : item?.tag;
+      const count = typeof item === 'object' && item ? item.count : undefined;
+      return { value, label: count === undefined ? value : `${value} (${count})` };
+    }).filter(item => item.value);
+    const options = new Map(known.map(item => [item.value, item]));
+    return [...new Set([...(runtimeHealth?.defaultTags || []), ...options.keys()])].filter(Boolean).map(value => options.get(value) || { value, label: value });
+  }, [allTags, runtimeHealth?.defaultTags]);
   const previewLink = useMemo(() => {
     if (previewUrl) return previewUrl;
     if (typeof window === 'undefined') return '';
@@ -308,7 +317,7 @@ export function WorkbenchDocuments({
 
   const startSpecEdit = () => {
     if (!documentWritable) {
-      message.info(version?.display?.key === 'VOID' ? '已废弃版本不可编辑规格书' : '当前是只读模式，不能编辑规格书');
+      message.info(version?.display?.key === 'VOID' ? '已废弃版本不可编辑技术规格说明书' : '当前是只读模式，不能编辑技术规格说明书');
       return;
     }
     setSpecDraft(version?.spec || '');
@@ -349,7 +358,7 @@ export function WorkbenchDocuments({
       return;
     }
     modal.confirm({
-      title: '使用规格书模板？',
+      title: '使用技术规格说明书模板？',
       content: '当前草稿会被模板覆盖，此操作无法撤销。',
       okText: '覆盖草稿',
       cancelText: '取消',
@@ -359,7 +368,7 @@ export function WorkbenchDocuments({
 
   const saveSpec = async () => {
     if (!documentWritable) {
-      message.info(version?.display?.key === 'VOID' ? '已废弃版本不可编辑规格书' : '当前是只读模式，不能保存规格书');
+      message.info(version?.display?.key === 'VOID' ? '已废弃版本不可编辑技术规格说明书' : '当前是只读模式，不能保存技术规格说明书');
       return;
     }
     const expectedRoute = routeKey;
@@ -372,9 +381,9 @@ export function WorkbenchDocuments({
       await onSpecHistoryChanged();
       if (routeKeyRef.current !== expectedRoute) return;
       setSpecEditing(false);
-      message.success('规格书已保存');
+      message.success('技术规格说明书已保存');
     } catch (error) {
-      message.error(errorMessage(error, '规格书保存失败'));
+      message.error(errorMessage(error, '技术规格说明书保存失败'));
     } finally {
       if (routeKeyRef.current === expectedRoute) setSaving(false);
     }
@@ -382,7 +391,7 @@ export function WorkbenchDocuments({
 
   const importSpec = async (file: File) => {
     if (!documentWritable) {
-      message.info(version?.display?.key === 'VOID' ? '已废弃版本不可上传规格书' : '当前是只读模式，不能上传规格书');
+      message.info(version?.display?.key === 'VOID' ? '已废弃版本不可上传技术规格说明书' : '当前是只读模式，不能上传技术规格说明书');
       return false;
     }
     if (file.size > maxFileBytes) {
@@ -390,7 +399,7 @@ export function WorkbenchDocuments({
       return false;
     }
     if (!/\.(md|markdown|txt)$/i.test(file.name)) {
-      message.error('请上传 Markdown 或文本格式的规格书');
+      message.error('请上传 Markdown 或文本格式的技术规格说明书');
       return false;
     }
 
@@ -571,13 +580,13 @@ export function WorkbenchDocuments({
     <div style={panelStyle}>
       <div style={toolbarStyle}>
         <Typography.Text type="secondary">
-          {version?.specUpdatedAt ? `最后编辑 ${fmtTime(version.specUpdatedAt)}` : '尚未保存规格书'}
+          {version?.specUpdatedAt ? `最后编辑 ${fmtTime(version.specUpdatedAt)}` : '尚未保存技术规格说明书'}
         </Typography.Text>
         <div style={{ flex: 1 }} />
         {specCommits.length ? (
           <Select
             allowClear
-            aria-label="回看规格书历史"
+            aria-label="回看技术规格说明书历史"
             disabled={specEditing}
             loading={specHistoryLoading}
             placeholder="回看历史版本"
@@ -631,7 +640,7 @@ export function WorkbenchDocuments({
       <Alert
         type="info"
         showIcon
-        message="规格书是活文档，版本确认后仍可编辑；原型文件与变更日志则按版本状态锁定。"
+        message="技术规格说明书是活文档，版本确认后仍可编辑；原型文件与变更日志则按版本状态锁定。"
         style={{ marginBottom: 16 }}
       />
 
@@ -650,7 +659,7 @@ export function WorkbenchDocuments({
       ) : version?.spec ? (
         <div className="fl-spec" dangerouslySetInnerHTML={markdownHtml(version.spec)} />
       ) : (
-        <Empty description="本版本尚未编写规格书">
+        <Empty description="本版本尚未编写技术规格说明书">
           <Space wrap>
             <Button type="primary" disabled={!documentWritable} onClick={startSpecEdit}>开始编写</Button>
             {documentWritable ? (
@@ -659,7 +668,7 @@ export function WorkbenchDocuments({
                 beforeUpload={importSpec}
                 showUploadList={false}
               >
-                <Button icon={<UploadOutlined />} loading={importingSpec}>上传规格书</Button>
+                <Button icon={<UploadOutlined />} loading={importingSpec}>上传技术规格说明书</Button>
               </Upload>
             ) : null}
           </Space>
@@ -740,19 +749,18 @@ export function WorkbenchDocuments({
   const requirementsPanel = (
     <div style={panelStyle}>
       <div style={toolbarStyle}>
-        <Typography.Text type="secondary">本版本关联的业务需求</Typography.Text>
         <div style={{ flex: 1 }} />
         {editable ? (
           reqsEditing
-            ? <Button onClick={() => setReqsEditing(false)}>取消编辑</Button>
-            : <Button icon={<EditOutlined />} onClick={startRequirementEdit}>编辑草稿</Button>
+            ? <Button disabled={saving} onClick={() => setReqsEditing(false)}>取消编辑</Button>
+            : <Button icon={<EditOutlined />} onClick={startRequirementEdit}>管理关联需求</Button>
         ) : null}
       </div>
 
       {reqsEditing ? (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <RequirementEditor value={reqDraft} onChange={setReqDraft} />
-          <Button type="primary" block icon={<SaveOutlined />} loading={saving} onClick={saveRequirements}>
+          <RequirementEditor value={reqDraft} onChange={setReqDraft} disabled={saving} />
+          <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveRequirements}>
             保存关联需求
           </Button>
         </Space>
@@ -768,8 +776,9 @@ export function WorkbenchDocuments({
               <List.Item>
                 <div style={{ ...itemSurfaceStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
                   <Tag color="success" className="fl-mono">{textOf(item.code)}</Tag>
-                  <Typography.Text style={{ flex: 1, minWidth: 0 }}>{textOf(item.title, '未填写需求标题')}</Typography.Text>
-                  <Button icon={<ExportOutlined />} disabled={!url} onClick={() => openWindow(url)}>打开</Button>
+                  <div style={{ flex: 1, minWidth: 0 }}><Typography.Text>{textOf(item.title, '未填写需求标题')}</Typography.Text><p className="fl-muted">{item.location || '页面位置待补充'} · {item.scope || '承载范围待补充'}</p></div>
+                  <Link to={`/requirements/${encodeURIComponent(item.code || '')}`}>查看需求</Link>
+                  {url ? <Button icon={<ExportOutlined />} onClick={() => openWindow(url)}>外部原文</Button> : null}
                 </div>
               </List.Item>
             );
@@ -854,7 +863,7 @@ export function WorkbenchDocuments({
   );
 
   const feedbackPanel = (
-    <div style={panelStyle}>
+    <div>
       <div style={toolbarStyle}>
         <Typography.Text strong>标注反馈草稿</Typography.Text>
         <Tag>{versionFeedbacks.length} 条</Tag>
@@ -922,17 +931,32 @@ export function WorkbenchDocuments({
 
   return (
     <Tabs
-      activeKey={activeTab}
+      activeKey={activeTab === 'feedback' ? 'team' : activeTab}
       className="fl-workbench-tabs"
       style={{ display: 'flex', minWidth: 0, minHeight: 0, height: '100%', flexDirection: 'column' }}
       tabBarStyle={{ flex: '0 0 auto', margin: 0, padding: '0 var(--fl-s-4)' }}
       items={[
-        { key: 'spec', label: '规格书', children: specificationPanel },
+        { key: 'spec', label: '技术规格说明书', children: specificationPanel },
         { key: 'changes', label: `变更 ${version?.changeCount ?? version?.changes?.length ?? 0}`, children: changesPanel },
         { key: 'reqs', label: `需求 ${version?.requirementCount ?? version?.requirements?.length ?? 0}`, children: requirementsPanel },
+        {
+          key: 'team',
+          label: '协作反馈',
+          children: (
+            <div style={panelStyle}>
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <Collapse
+                  key={`${routeKey}:${activeTab === 'feedback'}`}
+                  defaultActiveKey={activeTab === 'feedback' || versionFeedbacks.length ? ['drafts'] : []}
+                  items={[{ key: 'drafts', label: `标注反馈草稿 ${versionFeedbacks.length}`, children: feedbackPanel }]}
+                />
+                <TeamRecords slug={slug} versionNo={versionNo} />
+              </Space>
+            </div>
+          ),
+        },
         { key: 'files', label: `附件 ${version?.attachments?.length ?? 0}`, children: filesPanel },
         { key: 'info', label: '版本信息', children: informationPanel },
-        { key: 'feedback', label: `反馈 ${versionFeedbacks.length}`, children: feedbackPanel },
       ]}
       onChange={onTabChange}
     />

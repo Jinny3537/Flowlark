@@ -3,11 +3,13 @@ import {
   BranchesOutlined,
   HistoryOutlined,
 } from '@ant-design/icons';
-import { Alert, App, Button, Segmented, Select, Spin, Tag } from 'antd';
+import { Alert, App, Button, Popover, Segmented, Select, Spin, Tag } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type HealthInfo } from '@/services/api';
+import { useTeamAccess } from '@/runtime/TeamAccess';
 import { fmtTime, textOf } from '@/utils/format';
+import { VersionOnlineControl } from './workbench/VersionOnlineControl';
 import { FeedbackDrawer } from './workbench/FeedbackDrawer';
 import { PrototypeEditorDrawer } from './workbench/PrototypeEditorDrawer';
 import { PrototypeStage } from './workbench/PrototypeStage';
@@ -33,7 +35,17 @@ function withRefresh(url: string, refresh: number) {
 export default function VersionWorkbench() {
   const { slug = '', versionNo = '' } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { session } = useTeamAccess();
+  const requestedTab = searchParams.get('tab');
+  const openPanel = (tab: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    next.delete('kind');
+    setSearchParams(next);
+    setDocsCollapsed(false);
+    setMobileMode('documents');
+  };
   const anchorQuery = searchParams.get('anchor');
   const { message } = App.useApp();
 
@@ -197,7 +209,6 @@ export default function VersionWorkbench() {
   useEffect(() => {
     setVersion(null);
     setSupplementaryError('');
-    setActiveTab('spec');
     setHistoryOpen(false);
     setBaselineOpen(false);
     setHtmlEditorOpen(false);
@@ -211,6 +222,13 @@ export default function VersionWorkbench() {
       requestIdRef.current += 1;
     };
   }, [anchorQuery, load]);
+
+  useEffect(() => {
+    const tab = ['spec', 'changes', 'team', 'reqs', 'files', 'info', 'feedback'].includes(requestedTab || '') ? requestedTab! : 'spec';
+    setActiveTab(tab);
+    if (requestedTab) { setDocsCollapsed(false); setMobileMode('documents'); }
+    else setMobileMode('preview');
+  }, [requestedTab, slug, versionNo]);
 
   useEffect(() => {
     localStorage.setItem('flowlark.docsCollapsed', docsCollapsed ? '1' : '0');
@@ -344,6 +362,8 @@ export default function VersionWorkbench() {
               <span>{textOf(project?.name, slug)}</span>
               <span aria-hidden>/</span>
               <strong className="fl-mono">{versionNo}</strong>
+              <span aria-hidden>/</span>
+              <span>原型</span>
             </div>
             <span className={styles.contextMeta}>
               {textOf(version?.title, '未命名版本')} · 更新于 {fmtTime(version?.updatedAt || version?.createdAt)}
@@ -351,6 +371,7 @@ export default function VersionWorkbench() {
           </div>
         </div>
         <Select
+          aria-label="切换原型版本"
           className={styles.versionSelect}
           value={versionNo}
           options={siblings.map((item) => ({
@@ -369,12 +390,14 @@ export default function VersionWorkbench() {
             onChanged={refreshVersion}
           />
         ) : null}
+        {version && <VersionOnlineControl key={`${slug}/${versionNo}`} slug={slug} version={version}
+          disabled={!canWrite || !session?.host || version.status === 'VOID'} onChanged={refreshVersion} />}
         <div className={styles.toolbarActions}>
-          <Button icon={<HistoryOutlined />} onClick={() => setHistoryOpen(true)}>历史</Button>
+          <Button icon={<HistoryOutlined />} onClick={() => setHistoryOpen(true)}>修改历史</Button>
           <Button icon={<BranchesOutlined />} onClick={goCompare}>并排对比</Button>
           {version?.isBaseline ? (
             <Button disabled>当前基线</Button>
-          ) : version && version.display?.key !== 'VOID' ? (
+          ) : canWrite && version && version.display?.key !== 'VOID' ? (
             <Button type="primary" disabled={!canWrite} onClick={() => setBaselineOpen(true)}>
               {version.display?.key === 'HISTORY' ? '回滚为基线' : '设为当前基线'}
             </Button>
@@ -382,15 +405,6 @@ export default function VersionWorkbench() {
         </div>
       </header>
 
-      {!canWrite && !loading ? (
-        <Alert
-          className={styles.readonlyAlert}
-          type="info"
-          showIcon
-          message="当前工作区只读"
-          description={health?.readonlyReason || '可以查看原型和文档，但不能保存修改。'}
-        />
-      ) : null}
       {error ? (
         <Alert
           className={styles.coreError}
@@ -403,12 +417,18 @@ export default function VersionWorkbench() {
       ) : null}
       {supplementaryError && !loading ? (
         <Alert
-          className={styles.coreError}
+          className={`${styles.coreError} ${styles.compactNotice}`}
           type="warning"
           showIcon
-          message="部分附加数据未加载"
-          description={supplementaryError}
-          action={<Button onClick={() => void reloadSupplementary()}>重试</Button>}
+          message={(
+            <div className={styles.noticeRow}>
+              <span>部分附加数据未加载</span>
+              <Popover trigger="click" content={<div className={styles.noticeDetails}>{supplementaryError}</div>}>
+                <Button size="small" type="link">详情</Button>
+              </Popover>
+              <Button size="small" type="link" onClick={() => void reloadSupplementary()}>重试</Button>
+            </div>
+          )}
           closable
           onClose={() => setSupplementaryError('')}
         />
@@ -478,7 +498,7 @@ export default function VersionWorkbench() {
             >
               <WorkbenchDocuments
                 activeTab={activeTab}
-                onTabChange={setActiveTab}
+                onTabChange={(tab) => openPanel(tab)}
                 slug={slug}
                 versionNo={versionNo}
                 version={version}

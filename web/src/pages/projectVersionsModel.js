@@ -169,6 +169,5 @@ export function planningBadges(planning = {}) {
   const badges = []
   if (planning.review?.pending) badges.push({ key: 'pending', label: `${planning.review.pending} 个待评审`, color: 'orange' })
   if (planning.review?.questions) badges.push({ key: 'questions', label: `${planning.review.questions} 个有疑问`, color: 'red' })
-  if (planning.watchCount) badges.push({ key: 'watch', label: `${planning.watchCount} 个待归档`, color: 'blue' })
   return badges
 }

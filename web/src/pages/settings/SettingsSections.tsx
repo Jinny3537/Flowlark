@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   CopyOutlined,
   ReloadOutlined,
@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import {
   Alert,
+  Collapse,
   Button,
   Checkbox,
   Divider,
@@ -22,6 +23,8 @@ import {
   Tooltip,
 } from 'antd';
 import type { ConfigItem, HealthInfo } from '@/services/api';
+import { configFieldVisible } from './settingsModel.js';
+import { errorText } from '@/services/requestModel.js';
 import { SECTION_DESCRIPTIONS, bytesText } from './settingsConfig';
 
 export type SettingsGroup = {
@@ -40,7 +43,6 @@ type WorkspaceSectionProps = {
   onRemove: (path: string) => void;
   onRegister: (values: WorkspaceValues) => Promise<void>;
   onClone: (values: WorkspaceValues) => Promise<void>;
-  onRebuildIndex: () => void;
 };
 
 export type WorkspaceValues = {
@@ -48,17 +50,6 @@ export type WorkspaceValues = {
   path: string;
   name?: string;
   mirror?: boolean;
-};
-
-type LanSectionProps = {
-  lan: any;
-  lanOn: boolean;
-  readonlyOn: boolean;
-  canWrite: boolean;
-  busy: string;
-  restartNeeded: boolean;
-  onCopy: (text: string) => void;
-  onSave: (key: string, value: unknown) => void;
 };
 
 type GitRemoteSectionProps = {
@@ -75,7 +66,7 @@ type ConfigGroupSectionProps = {
   group: SettingsGroup;
   canWrite: boolean;
   busy: string;
-  onSave: (key: string, value: unknown) => void;
+  onSave: (key: string, value: unknown) => Promise<{ needsRestart?: boolean }>;
   onConfirmSave: (item: ConfigItem, value: unknown) => void;
   onReset: (key: string) => void;
 };
@@ -90,7 +81,6 @@ export function WorkspaceSection({
   onRemove,
   onRegister,
   onClone,
-  onRebuildIndex,
 }: WorkspaceSectionProps) {
   const [form] = Form.useForm<WorkspaceValues>();
   const [mode, setMode] = useState<'existing' | 'clone'>('existing');
@@ -110,9 +100,6 @@ export function WorkspaceSection({
       <div className="fl-section-head">
         <div><h2>工作区</h2><p>{SECTION_DESCRIPTIONS.workspace}</p></div>
         <Space wrap>
-          <Tooltip title="重建本机跨工作区搜索索引">
-            <Button icon={<ReloadOutlined />} disabled={!canWrite || Boolean(busy)} loading={busy === 'workspaceIndex'} onClick={onRebuildIndex}>重建索引</Button>
-          </Tooltip>
           <Button icon={<ReloadOutlined />} onClick={onReload}>刷新</Button>
         </Space>
       </div>
@@ -123,7 +110,7 @@ export function WorkspaceSection({
         </div>
         <Button icon={<CopyOutlined />} disabled={!health?.repo} onClick={() => onCopy(health?.repo || '')}>复制路径</Button>
       </div>
-      <div className="fl-workspace-editor">
+      <Collapse items={[{ key: 'add', label: '添加工作区', children: <div className="fl-workspace-editor">
         <Tabs
           activeKey={mode}
           onChange={(key) => setMode(key as 'existing' | 'clone')}
@@ -157,7 +144,7 @@ export function WorkspaceSection({
             </Button>
           </div>
         </Form>
-      </div>
+      </div> }]} />
       <Divider />
       <List
         dataSource={workspaces.items || []}
@@ -175,47 +162,14 @@ export function WorkspaceSection({
   );
 }
 
-export function LanSection({ lan, lanOn, readonlyOn, canWrite, busy, restartNeeded, onCopy, onSave }: LanSectionProps) {
-  return (
-    <section className="fl-settings-section">
-      <div className="fl-section-head">
-        <div><h2>局域网分享</h2><p>{SECTION_DESCRIPTIONS.lan}</p></div>
-        <Switch checked={lanOn} disabled={!canWrite} loading={busy === 'server.lan'} checkedChildren="开" unCheckedChildren="关" onChange={(value) => onSave('server.lan', value)} />
-      </div>
-      {lanOn && lan?.addresses?.length ? (
-        <div className="fl-lan-list">
-          {lan.addresses.map((address: any) => (
-            <div className="fl-lan-address" key={address.address}>
-              <code>{`http://${address.address}:${lan.port}`}</code>
-              <span>{address.iface}</span>
-              <Button icon={<CopyOutlined />} onClick={() => onCopy(`http://${address.address}:${lan.port}`)} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <Alert type="info" showIcon message={lanOn ? '没有检测到局域网地址，可能没连网络' : '当前只监听 127.0.0.1，别人访问不到。'} />
-      )}
-      <Divider />
-      <div className="fl-config-row">
-        <div className="fl-config-copy">
-          <strong>局域网只读</strong>
-          <span>开启时局域网来的请求只能查看，写操作仅限运行 Flowlark 的这台机器。</span>
-        </div>
-        <Switch checked={readonlyOn} disabled={!canWrite} checkedChildren="开" unCheckedChildren="关" onChange={(value) => onSave('server.readonlyFromLan', value)} />
-      </div>
-      {restartNeeded ? <Alert type="warning" showIcon message="改动需要重启服务才生效" className="fl-settings-status" /> : null}
-    </section>
-  );
-}
-
 export function GitRemoteSection({ remote, remoteUrl, canWrite, busy, onRemoteUrlChange, onSave, onRemove }: GitRemoteSectionProps) {
   return (
     <section className="fl-settings-section">
       <div className="fl-section-head"><div><h2>Git 远端</h2><p>{SECTION_DESCRIPTIONS.gitRemote}</p></div></div>
       <Space.Compact className="fl-full-width">
         <Input value={remoteUrl} onChange={(e) => onRemoteUrlChange(e.target.value)} disabled={!canWrite} placeholder="git@github.com:team/prototypes.git" />
-        <Button type="primary" disabled={!canWrite || !remoteUrl.trim()} loading={busy === 'gitRemote'} onClick={onSave}>保存</Button>
-        <Button danger disabled={!canWrite || !remote} onClick={onRemove}>移除</Button>
+        <Button type="primary" disabled={!canWrite || Boolean(busy) || !remoteUrl.trim() || remoteUrl.trim() === remote?.url} loading={busy === 'gitRemote'} onClick={onSave}>保存</Button>
+        <Button danger disabled={!canWrite || Boolean(busy) || !remote} onClick={onRemove}>移除</Button>
       </Space.Compact>
       {remote ? <p className="fl-settings-help">当前：<code>{remote.url}</code></p> : null}
     </section>
@@ -223,88 +177,77 @@ export function GitRemoteSection({ remote, remoteUrl, canWrite, busy, onRemoteUr
 }
 
 export function ConfigGroupSection({ group, canWrite, busy, onSave, onConfirmSave, onReset }: ConfigGroupSectionProps) {
-  const renderControl = (item: ConfigItem) => {
-    const disabled = !canWrite || busy === item.key;
-    if (item.type === 'bool') {
-      return <Switch checked={Boolean(item.value)} disabled={disabled} checkedChildren="开" unCheckedChildren="关" onChange={(value) => onConfirmSave(item, value)} />;
-    }
-    if (item.enum) {
-      return (
-        <Select
-          value={String(item.value)}
-          disabled={disabled}
-          options={item.enum.map((value) => ({ value, label: value }))}
-          onChange={(value) => onSave(item.key, value)}
-        />
-      );
-    }
-    if (item.type === 'port' || item.type === 'int') {
-      return (
-        <InputNumber
-          value={Number(item.value)}
-          disabled={disabled}
-          min={item.min ?? 1}
-          max={item.max ?? (item.type === 'port' ? 65535 : undefined)}
-          onPressEnter={(event) => onSave(item.key, Number((event.target as HTMLInputElement).value))}
-          onBlur={(event) => onSave(item.key, Number(event.target.value))}
-        />
-      );
-    }
-    if (item.type === 'list') {
-      return (
-        <Select
-          mode="tags"
-          value={Array.isArray(item.value) ? item.value.map(String) : []}
-          disabled={disabled}
-          placeholder="回车添加"
-          onChange={(value) => onSave(item.key, value.join(','))}
-        />
-      );
-    }
-    return (
-      <Input
-        key={`${item.key}:${String(item.value)}`}
-        className={item.type === 'bytes' ? 'fl-mono' : undefined}
-        defaultValue={item.type === 'bytes' ? bytesText(item.value) : String(item.value ?? '')}
-        disabled={disabled}
-        placeholder={String(item.default || '')}
-        onPressEnter={(event) => onSave(item.key, (event.target as HTMLInputElement).value)}
-        onBlur={(event) => onSave(item.key, event.target.value)}
-      />
-    );
+  const [draft, setDraft] = useState<Record<string, unknown>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const lock = useRef(false);
+  useEffect(() => {
+    if (!Object.keys(draft).length) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [draft]);
+  const values = Object.fromEntries(group.items.map(item => [item.key, draft[item.key] ?? item.value]));
+  const visible = group.items.filter(item => configFieldVisible(item.key, values));
+  const changed = visible.filter(item => item.type !== 'bool' && JSON.stringify(values[item.key]) !== JSON.stringify(item.value));
+  const disabled = !canWrite || Boolean(busy) || saving;
+  const edit = (key: string, value: unknown) => { setDraft(current => ({ ...current, [key]: value })); setNotice(''); };
+  const submit = async () => {
+    if (lock.current || !changed.length) return;
+    lock.current = true; setSaving(true); setError(''); setNotice('');
+    let completed = 0;
+    let needsRestart = false;
+    try {
+      const issue = values['integrations.issueProvider'];
+      if (group.key === 'feedback' && issue !== 'markdown') {
+        const required = issue === 'gitlab' ? ['integrations.issueProject'] : ['integrations.issueOwner', 'integrations.issueRepo'];
+        if (required.some(key => !String(values[key] || '').trim())) throw new Error(issue === 'gitlab' ? '请填写 GitLab 项目标识' : '请填写组织/用户和仓库');
+      }
+      if (group.key === 'links') {
+        const template = String(values['ui.requirementUrlTemplate'] || '');
+        if (template && !template.includes('{code}')) throw new Error('需求链接模板必须包含 {code}');
+        if (template && !/^https?:\/\//i.test(template)) throw new Error('需求链接请使用 HTTP 或 HTTPS 地址');
+      }
+      // The API saves one key at a time. Keep failed and unattempted drafts for retry.
+      // Enable providers last, after their configuration has been saved.
+      const ordered = [...changed].sort((a, b) => Number(a.key.endsWith('Provider')) - Number(b.key.endsWith('Provider')));
+      for (const item of ordered) {
+        const result = await onSave(item.key, values[item.key]);
+        needsRestart ||= Boolean(result?.needsRestart);
+        completed++;
+        setDraft(current => { const next = { ...current }; delete next[item.key]; return next; });
+      }
+      setNotice(needsRestart ? '已保存，请重启服务使配置生效' : '已保存，配置已生效');
+    } catch (e) {
+      setError(`${completed ? `已保存 ${completed} 项${needsRestart ? '（需重启）' : ''}；其余输入已保留。` : ''}${errorText(e, '保存失败')}`);
+    } finally { lock.current = false; setSaving(false); }
   };
+  const enumLabels: Record<string, string> = { relative: '相对时间（3 小时前）', absolute: '完整时间（2026-09-08 14:30）', markdown: 'Markdown 导出', none: '不启用', github: 'GitHub', gitlab: 'GitLab', gitee: 'Gitee', wecom: '企业微信', dingtalk: '钉钉', slack: 'Slack', webhook: '群机器人 Webhook', cli: '企业微信 CLI' };
+  const renderControl = (item: ConfigItem) => {
+    const value = values[item.key];
+    if (item.type === 'bool') return <Switch aria-label={item.label} checked={Boolean(item.value)} disabled={disabled} checkedChildren="开" unCheckedChildren="关" onChange={next => onConfirmSave(item, next)} />;
+    if (item.enum) return <Select aria-label={item.label} value={String(value)} disabled={disabled} options={item.enum.map(value => ({ value, label: enumLabels[value] || value }))} onChange={value => edit(item.key, value)} />;
+    if (item.type === 'port' || item.type === 'int') return <InputNumber aria-label={item.label} value={Number(value)} disabled={disabled} min={item.min ?? 1} max={item.max} onChange={value => edit(item.key, value)} />;
+    if (item.type === 'list') return <Select aria-label={item.label} mode="tags" value={Array.isArray(value) ? value.map(String) : []} disabled={disabled} placeholder="回车添加" onChange={value => edit(item.key, value)} />;
+    return <Input aria-label={item.label} value={item.type === 'bytes' && typeof value === 'number' ? bytesText(value) : String(value ?? '')} disabled={disabled} placeholder={String(item.default || '')} onChange={event => edit(item.key, event.target.value)} />;
+  };
+  return <section className="fl-settings-section">
+    <div className="fl-section-head"><div><h2>{group.label}</h2><p>{SECTION_DESCRIPTIONS[group.key]}</p></div></div>
+    {error ? <Alert type="error" showIcon message={error} /> : null}
+    {notice ? <Alert type="success" showIcon message={notice} /> : null}
+    <div className="fl-config-list">{visible.map(item => <div className="fl-config-row" key={item.key}>
+      <div className="fl-config-copy"><strong>{item.label}{item.danger ? <Tag color="red">高风险</Tag> : null}{!item.isDefault ? <Tag>已修改</Tag> : null}</strong>{item.note ? <span>{item.note}</span> : null}{item.key === 'integrations.wecomChatId' ? <span>已有会话 ID 时会优先使用 CLI；如需使用 Webhook，请清空会话 ID 后保存。</span> : null}</div>
+      <div className="fl-config-control">{renderControl(item)}{!item.isDefault && canWrite ? <Tooltip title="恢复默认值"><Button aria-label={`恢复${item.label}默认值`} disabled={disabled || Object.keys(draft).length > 0} icon={<RollbackOutlined />} onClick={() => onReset(item.key)} /></Tooltip> : null}</div>
+    </div>)}</div>
+    {group.key === 'links' ? <LinkPreview template={String(values['ui.requirementUrlTemplate'] || '')} /> : null}
+    {group.items.some(item => item.type !== 'bool') ? <Space wrap className="fl-settings-form-actions"><Button type="primary" disabled={disabled || !changed.length} loading={saving} onClick={() => void submit()}>保存设置</Button><Button disabled={disabled || !Object.keys(draft).length} onClick={() => { setDraft({}); setError(''); setNotice(''); }}>取消修改</Button><span className="fl-muted">{changed.length ? `${changed.length} 项待保存` : '无待保存修改'}</span></Space> : null}
+    <details className="fl-settings-help"><summary>高级信息：配置键</summary>{group.items.map(item => <div key={item.key}>{item.label}：<code>{item.key}</code></div>)}</details>
+  </section>;
+}
 
-  return (
-    <section className="fl-settings-section">
-      <div className="fl-section-head">
-        <div>
-          <h2>{group.label}</h2>
-          <p>{SECTION_DESCRIPTIONS[group.key]}</p>
-        </div>
-      </div>
-      <div className="fl-config-list">
-        {group.items.map((item) => (
-          <div className="fl-config-row" key={item.key}>
-            <div className="fl-config-copy">
-              <strong>
-                {item.label}
-                {item.danger ? <Tag color="red">高风险</Tag> : null}
-                {!item.isDefault ? <Tag color="green">已修改</Tag> : null}
-              </strong>
-              {item.note ? <span>{item.note}</span> : null}
-              <code>{item.key}</code>
-            </div>
-            <div className="fl-config-control">
-              {renderControl(item)}
-              {!item.isDefault && canWrite ? (
-                <Tooltip title="恢复默认值">
-                  <Button icon={<RollbackOutlined />} onClick={() => onReset(item.key)} />
-                </Tooltip>
-              ) : null}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+function LinkPreview({ template }: { template: string }) {
+  const [code, setCode] = useState('REQ-001');
+  const url = template.replaceAll('{code}', encodeURIComponent(code));
+  return <div className="fl-settings-link-preview"><label>预览需求编号<Input aria-label="预览需求编号" value={code} onChange={event => setCode(event.target.value)} /></label><p>链接预览：<code>{url || '尚未配置模板'}</code></p></div>;
 }

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRightOutlined,
   CalendarOutlined,
+  CheckCircleOutlined,
+  DisconnectOutlined,
   FileTextOutlined,
   FolderOutlined,
   SendOutlined,
@@ -12,6 +14,8 @@ import { MetricCard } from '@/components/MetricCard';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { api, type HealthInfo } from '@/services/api';
+import { useTeamAccess, roleLabels } from '@/runtime/TeamAccess';
+import RoleWorkspace from './RoleWorkspace';
 import { fmtTime } from '@/utils/format';
 import {
   buildRecentWorkCandidates,
@@ -40,6 +44,9 @@ const emptyData: DashboardData = {
 
 export default function ActionCenter() {
   const navigate = useNavigate();
+  const { session } = useTeamAccess();
+  const remote = Boolean(session && !session.host);
+  const role = remote ? (session?.role || 'guest') : 'product';
   const [data, setData] = useState<DashboardData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,7 +65,7 @@ export default function ActionCenter() {
         api.listRequirements().catch(() => { failed.push('需求'); return []; }),
         api.listMilestones().catch(() => { failed.push('迭代'); return []; }),
         api.listSnapshots().catch(() => { failed.push('交付'); return []; }),
-        api.oplog(undefined, 100).catch(() => { failed.push('操作日志'); return []; }),
+        remote ? Promise.resolve([]) : api.oplog(undefined, 100).catch(() => { failed.push('操作日志'); return []; }),
         api.health().catch(() => { failed.push('工作区状态'); return null; }),
       ]);
       const candidates = buildRecentWorkCandidates(projects, logs, 8);
@@ -87,7 +94,7 @@ export default function ActionCenter() {
     } finally {
       if (requestId === loadRequestId.current) setLoading(false);
     }
-  }, []);
+  }, [remote]);
 
   useEffect(() => {
     void load();
@@ -109,9 +116,8 @@ export default function ActionCenter() {
   return (
     <main className="fl-page">
       <PageHeader
-        eyebrow="今日概览"
-        title="今天从这里继续"
-        description="从最近修改的项目和版本继续处理。"
+        eyebrow={`${roleLabels[role]}工作台`}
+        title={role === 'tester' ? '核对需求与验收依据' : role === 'developer' ? '快速定位需求' : role === 'guest' ? '浏览项目与原型' : '今天从这里继续'}
         actions={<Button onClick={() => void load()}>刷新数据</Button>}
       />
 
@@ -126,7 +132,7 @@ export default function ActionCenter() {
       ) : null}
 
       <State loading={loading} error={error} onRetry={load} empty={false}>
-        <section className="fl-dashboard-grid">
+        {remote ? <RoleWorkspace role={role} projects={data.projects} requirements={data.requirements} /> : <section className="fl-dashboard-grid">
           <div className="fl-dashboard-main">
             <section className="fl-dashboard-panel">
               <div className="fl-section-head">
@@ -181,7 +187,7 @@ export default function ActionCenter() {
             <section className="fl-dashboard-panel">
               <div className="fl-section-head"><div><h2>工作区状态</h2><p>本地服务与写入能力</p></div></div>
               <div className="fl-status-list">
-                <div className="fl-status-row"><span>服务</span><Tag color={data.health ? 'success' : 'default'}>{data.health ? '已连接' : '离线'}</Tag></div>
+                <div className="fl-status-row"><span>服务</span><Tag color={data.health ? 'success' : 'default'} icon={data.health ? <CheckCircleOutlined aria-hidden="true" /> : <DisconnectOutlined aria-hidden="true" />}>{data.health ? '已连接' : '离线'}</Tag></div>
                 <div className="fl-status-row"><span>工作区</span><strong>{data.health?.repoName || '未读取'}</strong></div>
                 <div className="fl-status-row"><span>权限</span><strong>{data.health?.canWrite === false ? '只读' : data.health ? '可写' : '-'}</strong></div>
                 <div className="fl-status-row"><span>版本</span><strong className="fl-mono">{data.health?.version ? `v${data.health.version}` : '-'}</strong></div>
@@ -189,6 +195,8 @@ export default function ActionCenter() {
             </section>
           </aside>
         </section>
+
+        }
 
         <section className="fl-metric-grid fl-metric-grid-secondary" aria-label="工作台指标">
           <MetricCard icon={<FolderOutlined />} label="活跃项目" value={data.projects.length} hint={`${pendingBaseline} 个待定基线`} to="/projects" />

@@ -19,9 +19,12 @@ export const ASSESS_WRITE_OPERATIONS = [
   'cancelSprint'
 ]
 
+export const ASSESS_CLOSURE_OPERATIONS = ['getVersion', 'closeVersion']
 export const ASSESS_OPERATIONS = [...ASSESS_READ_OPERATIONS, ...ASSESS_WRITE_OPERATIONS]
 
 const REQUIRED = {
+  getVersion: [['versionId']],
+  closeVersion: [['body'], ['body', 'revision'], ['body', 'versionId']],
   projectCapabilities: [['projectId']],
   listMembers: [['projectId']],
   listSprints: [['projectId']],
@@ -37,13 +40,13 @@ const REQUIRED = {
   cancelSprint: [['body'], ['body', 'revision'], ['body', 'sprintId']]
 }
 
-export function validateAssessContract(tools, mapping = {}, { write = false } = {}) {
+export function validateAssessContract(tools, mapping = {}, { write = false, closure = false } = {}) {
   const byName = new Map((tools || []).map((tool) => [String(tool?.name || ''), tool]))
-  const operations = Object.fromEntries(ASSESS_OPERATIONS
+  const operations = Object.fromEntries([...ASSESS_OPERATIONS, ...ASSESS_CLOSURE_OPERATIONS]
     .map((operation) => [operation, String(mapping[operation] || '').trim()])
     .filter(([, name]) => name))
   const problems = []
-  const requiredOperations = write ? ASSESS_OPERATIONS : ASSESS_READ_OPERATIONS
+  const requiredOperations = closure ? ['getSprint', 'listTasks', 'endSprint', ...ASSESS_CLOSURE_OPERATIONS] : write ? ASSESS_OPERATIONS : ASSESS_READ_OPERATIONS
 
   for (const operation of requiredOperations) {
     const name = operations[operation]

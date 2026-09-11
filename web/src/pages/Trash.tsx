@@ -1,7 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { App, Button, Checkbox, Input, List, Select, Table, Tag, Tooltip } from 'antd';
 import { type Key, useCallback, useEffect, useMemo, useState } from 'react';
-import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
@@ -147,12 +146,6 @@ export default function Trash() {
   );
 
   return (
-    <main className="fl-page">
-      <PageHeader
-        eyebrow="辅助入口"
-        title="回收站"
-        description="删除的版本完整保存在 .flowlark/trash/，可在版本号未被占用时恢复。"
-      />
       <section className="fl-surface fl-list-surface fl-queue-stack" aria-label="已删除版本列表">
         <div className="fl-queue-filters">
           <Select allowClear aria-label="按项目筛选回收站" placeholder="全部项目" value={filters.project || undefined} options={projectOptions} onChange={(value) => updateFilters({ project: value || '' })} />
@@ -211,6 +204,5 @@ export default function Trash() {
           </div>
         ) : null}
       </section>
-    </main>
   );
 }

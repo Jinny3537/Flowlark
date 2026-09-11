@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict'
+import { chromium } from '/Users/beluga/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs'
+import { newHub, cleanup } from '../test/helpers.js'
+import { startServer } from '../src/server/index.js'
+const { root, hub } = newHub()
+hub.createRequirement({ code: 'REQ-FIELDS', title: '需求字段验证', project: '海丰和泰', owner: '产品负责人', priority: 'P2', stage: '需求分析', analysisStatus: '待分析', versionName: '九月发布', businessValue: '减少重复录入', description: '支持完整同步', rawDescription: '业务原文', businessRule: '保留原始业务规则', acceptanceCriteria: '- [ ] 完整保留字段\n- [x] 可以查看详情', expectedOnlineDate: 'TBD', targetDeliveryDate: '待确认', functionPoints: '需求同步', impactScope: '需求模块' })
+hub.createRequirement({ code: 'REQ-OTHER', title: '其他阶段', stage: '开发中', priority: 'P0' })
+const server = await startServer(root, { port: 0, previewPort: 0 })
+const base = `http://127.0.0.1:${server.port}`
+const browser = await chromium.launch({ headless: true, executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' })
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+const errors = []
+page.on('pageerror', e => errors.push(e.message))
+try {
+  await page.goto(base + '/#/requirements')
+  await page.waitForLoadState('networkidle')
+  console.log('INITIAL', (await page.locator('body').innerText()).slice(0,2600))
+  await page.screenshot({ path: '/tmp/flowlark-requirements-list.png', fullPage: true })
+  await page.getByRole('button', { name: 'REQ-FIELDS', exact: true }).click()
+  await page.getByRole('heading', { name: '业务规则 / 逻辑细节', exact: true }).waitFor()
+  assert.equal(await page.locator('.fl-requirement-content input[type=checkbox]').count(), 2)
+  assert.equal(await page.locator('.fl-requirement-content input[type=checkbox]:checked').count(), 1)
+  await page.screenshot({ path: '/tmp/flowlark-requirements-detail.png', fullPage: true })
+  await page.getByRole('button', { name: /编\s*辑/ }).click()
+  await page.getByLabel('需求背景 / 目的', { exact: true }).fill('修改后的背景')
+  await page.getByText('需求属性与交付计划', { exact: true }).click()
+  await page.getByLabel('目标交付', { exact: true }).fill('TBD')
+  await page.getByRole('button', { name: /确\s*定/ }).click()
+  await page.locator('.fl-requirement-content').getByText('修改后的背景', { exact: true }).waitFor()
+  assert.equal(hub.getRequirement('REQ-FIELDS').targetDeliveryDate, 'TBD')
+  assert.equal(hub.getRequirement('REQ-FIELDS').businessRule, '保留原始业务规则')
+  await page.goto(base + '/#/requirements')
+  await page.waitForLoadState('networkidle')
+  await page.getByRole('combobox', { name: '需求池阶段筛选' }).click()
+  await page.getByText('开发中', { exact: true }).last().click()
+  assert.equal(await page.getByRole('button', { name: 'REQ-FIELDS', exact: true }).count(), 0)
+  assert.equal(await page.getByRole('button', { name: 'REQ-OTHER', exact: true }).count(), 1)
+  await page.getByRole('heading', { name: '需求', exact: true }).click()
+  await page.locator('.ant-select-dropdown:visible').waitFor({ state: 'hidden' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: '/tmp/flowlark-requirements-mobile.png', fullPage: true })
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
+  await page.goto(base + '/#/requirements/REQ-FIELDS')
+  await page.waitForLoadState('networkidle')
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
+  assert.deepEqual(errors, [])
+  console.log('PASS: 列表、阶段筛选、Markdown 清单、字段编辑保存、390px 布局，无页面错误')
+} finally {
+  await browser.close()
+  await server.close()
+  cleanup(root)
+}

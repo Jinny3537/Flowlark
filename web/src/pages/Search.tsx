@@ -1,5 +1,5 @@
-import { App, Button, Empty, Form, Input, List, Modal, Select, Space, Tag } from 'antd';
-import { SaveOutlined, SearchOutlined } from '@ant-design/icons';
+import { App, Button, Empty, Input, List, Select, Space, Tag } from 'antd';
+import { DownOutlined, UpOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
@@ -106,8 +106,6 @@ export default function Search() {
   const [projects, setProjects] = useState<any[]>([]);
   const [requirements, setRequirements] = useState<any[]>([]);
   const [milestones, setMilestones] = useState<any[]>([]);
-  const [views, setViews] = useState<any[]>([]);
-  const [selectedView, setSelectedView] = useState<string>();
   const [workspaceScope, setWorkspaceScope] = useState(initial.workspaceScope);
   const [query, setQuery] = useState(initial.query);
   const [filters, setFilters] = useState<SearchFilters>(initial.filters);
@@ -115,9 +113,7 @@ export default function Search() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hasSearched, setHasSearched] = useState(params.get('searched') === '1' || hasCriteria(initial));
-  const [saveOpen, setSaveOpen] = useState(false);
-  const [savingView, setSavingView] = useState(false);
-  const [viewForm] = Form.useForm();
+  const [moreOpen, setMoreOpen] = useState(false);
   const searchRequest = useRef(0);
   const paramsKey = params.toString();
 
@@ -127,16 +123,14 @@ export default function Search() {
 
   const loadOptions = useCallback(async () => {
     try {
-      const [nextProjects, nextRequirements, nextMilestones, nextViews] = await Promise.all([
+      const [nextProjects, nextRequirements, nextMilestones] = await Promise.all([
         api.listProjects(),
         api.listRequirements(),
         api.listMilestones(),
-        api.listViews(),
       ]);
       setProjects(nextProjects);
       setRequirements(nextRequirements);
       setMilestones(nextMilestones);
-      setViews(nextViews);
     } catch (nextError) {
       message.error(errorText(nextError, '无法读取搜索筛选项'));
     }
@@ -182,54 +176,6 @@ export default function Search() {
     submitConfig({ workspaceScope, query, filters });
   }, [filters, query, submitConfig, workspaceScope]);
 
-  const applyView = useCallback((id?: string) => {
-    setSelectedView(id);
-    const view = views.find((item) => item.id === id);
-    if (!view) return;
-    const savedFilters = view.filters || {};
-    const { workspaceScope: savedWorkspaceScope, ...structuredFilters } = savedFilters;
-    const next: SearchConfig = {
-      workspaceScope: savedWorkspaceScope === 'all' ? 'all' : 'current',
-      query: view.query || '',
-      filters: {
-        ...emptyFilters,
-        ...structuredFilters,
-        scope: view.scope || savedFilters.scope || 'all',
-      },
-    };
-    setWorkspaceScope(next.workspaceScope);
-    setQuery(next.query);
-    setFilters(next.filters);
-    submitConfig(next);
-  }, [submitConfig, views]);
-
-  const saveView = useCallback(async () => {
-    let values: { id: string; name: string };
-    try {
-      values = await viewForm.validateFields();
-    } catch {
-      return;
-    }
-    setSavingView(true);
-    try {
-      const scope = filters.scope || 'all';
-      await api.saveView(values.id.trim(), {
-        name: values.name.trim(),
-        scope,
-        query,
-        filters: { ...filters, workspaceScope },
-      });
-      message.success('团队视图已保存');
-      setSaveOpen(false);
-      viewForm.resetFields();
-      await loadOptions();
-    } catch (nextError) {
-      message.error(errorText(nextError, '保存视图失败'));
-    } finally {
-      setSavingView(false);
-    }
-  }, [filters, loadOptions, message, query, viewForm, workspaceScope]);
-
   const openResult = useCallback((item: any) => {
     if (item.workspace && health?.repo && item.workspace !== health.repo) {
       message.info(`结果位于工作区：${item.workspaceName || item.workspace}`);
@@ -250,6 +196,7 @@ export default function Search() {
     setWorkspaceScope(next.workspaceScope);
     setQuery(next.query);
     setFilters(next.filters);
+    setMoreOpen(next.workspaceScope === 'all' || Boolean(next.filters.requirement || next.filters.milestone || next.filters.field));
     if (currentParams.get('searched') === '1' || hasCriteria(next)) void performSearch(next);
     else {
       searchRequest.current += 1;
@@ -261,59 +208,33 @@ export default function Search() {
   }, [paramsKey, performSearch]);
 
   const structuredDisabled = workspaceScope === 'all';
+  const extraCount = structuredDisabled ? 1 : [filters.requirement, filters.milestone, filters.field].filter(Boolean).length;
+  const hasFilters = workspaceScope !== 'current' || Object.entries(filters).some(([key, value]) => value !== emptyFilters[key as keyof SearchFilters]);
 
   return (
     <main className="fl-page">
       <PageHeader
-        eyebrow="全局检索"
         title="搜索"
-        description="按项目、版本、需求、迭代或所有本机工作区检索。"
       />
 
       <section className="fl-surface fl-search-panel" aria-label="搜索条件">
-        <div className="fl-search-toolbar">
-          <Select
-            allowClear
-            className="fl-filter-select"
-            value={selectedView}
-            placeholder="已存视图"
-            aria-label="已存视图"
-            options={views.map((item) => ({ value: item.id, label: item.name }))}
-            onChange={applyView}
-          />
-          <Button
-            icon={<SaveOutlined />}
-            disabled={health?.canWrite === false}
-            onClick={() => setSaveOpen(true)}
-          >
-            保存视图
-          </Button>
-        </div>
-        <Select
-          className="fl-filter-select"
-          value={workspaceScope}
-          aria-label="搜索工作区范围"
-          options={[
-            { value: 'current', label: '当前工作区' },
-            { value: 'all', label: '跨工作区' },
-          ]}
-          onChange={setWorkspaceScope}
-        />
-        <Input
+        <Input.Search
           allowClear
           size="large"
-          prefix={<SearchOutlined />}
           value={query}
           aria-label="搜索关键词"
-          placeholder="关键词，可留空仅使用结构化筛选"
+          placeholder="搜索名称、编号或内容"
+          enterButton="搜索"
+          loading={loading}
           onChange={(event) => setQuery(event.target.value)}
-          onPressEnter={submit}
+          onSearch={(value) => submitConfig({ workspaceScope, query: value, filters })}
         />
         <div className="fl-search-filters">
           <Select value={filters.scope} options={objectOptions} disabled={structuredDisabled} aria-label="对象范围" onChange={(value) => setFilter('scope', value)} />
           <Select
             allowClear
             showSearch
+            optionFilterProp="label"
             value={filters.project || undefined}
             placeholder="全部项目"
             aria-label="项目筛选"
@@ -321,36 +242,64 @@ export default function Search() {
             options={projects.map((item) => ({ value: item.slug, label: `${item.name} · ${item.slug}` }))}
             onChange={(value) => setFilter('project', value || '')}
           />
-          <Select
-            allowClear
-            showSearch
-            value={filters.requirement || undefined}
-            placeholder="全部需求"
-            aria-label="需求筛选"
-            disabled={structuredDisabled}
-            options={requirements.map((item) => ({ value: item.code, label: `${item.code} · ${item.title}` }))}
-            onChange={(value) => setFilter('requirement', value || '')}
-          />
-          <Select
-            allowClear
-            showSearch
-            value={filters.milestone || undefined}
-            placeholder="全部迭代"
-            aria-label="迭代筛选"
-            disabled={structuredDisabled}
-            options={milestones.map((item) => ({ value: item.name, label: item.title ? `${item.name} · ${item.title}` : item.name }))}
-            onChange={(value) => setFilter('milestone', value || '')}
-          />
-          <Select value={filters.field} options={fieldOptions} disabled={structuredDisabled} aria-label="搜索字段" onChange={(value) => setFilter('field', value)} />
-          <Button type="primary" icon={<SearchOutlined />} loading={loading} onClick={submit}>搜索</Button>
+          <Button
+            type="text"
+            icon={moreOpen ? <UpOutlined /> : <DownOutlined />}
+            aria-expanded={moreOpen}
+            aria-controls="search-more-filters"
+            onClick={() => setMoreOpen((open) => !open)}
+          >
+            {moreOpen ? '收起筛选' : '更多筛选'}{extraCount ? ` (${extraCount})` : ''}
+          </Button>
+          {hasFilters ? <Button type="link" onClick={() => {
+            setWorkspaceScope('current');
+            setFilters({ ...emptyFilters });
+            submitConfig({ workspaceScope: 'current', query, filters: { ...emptyFilters } });
+          }}>清除筛选</Button> : null}
         </div>
-        {structuredDisabled ? <span className="fl-muted">跨工作区结果按关键词检索，并保留工作区来源。</span> : null}
+        <div id="search-more-filters" hidden={!moreOpen}>
+          <div className="fl-search-more-filters">
+            <Select
+              value={workspaceScope}
+              aria-label="搜索工作区范围"
+              options={[
+                { value: 'current', label: '当前工作区' },
+                { value: 'all', label: '跨工作区' },
+              ]}
+              onChange={setWorkspaceScope}
+            />
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={filters.requirement || undefined}
+              placeholder="全部需求"
+              aria-label="需求筛选"
+              disabled={structuredDisabled}
+              options={requirements.map((item) => ({ value: item.code, label: `${item.code} · ${item.title}` }))}
+              onChange={(value) => setFilter('requirement', value || '')}
+            />
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={filters.milestone || undefined}
+              placeholder="全部迭代"
+              aria-label="迭代筛选"
+              disabled={structuredDisabled}
+              options={milestones.map((item) => ({ value: item.name, label: item.title ? `${item.name} · ${item.title}` : item.name }))}
+              onChange={(value) => setFilter('milestone', value || '')}
+            />
+            <Select value={filters.field} options={fieldOptions} disabled={structuredDisabled} aria-label="搜索字段" onChange={(value) => setFilter('field', value)} />
+          </div>
+          {structuredDisabled ? <span className="fl-muted">跨工作区仅按关键词搜索，项目与其他筛选不生效。</span> : null}
+        </div>
       </section>
 
-      <State loading={loading} error={error} onRetry={submit} empty={hasSearched && !result.results?.length} emptyText="没有匹配结果">
+      <State loading={loading} error={error} onRetry={submit} empty={hasSearched && !result.results?.length} emptyText="没有匹配结果，试试更短的关键词或清除筛选">
         {!hasSearched ? (
           <div className="fl-state fl-state-empty">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="输入关键词或选择筛选条件开始搜索" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="输入关键词，查找工作区中的内容" />
           </div>
         ) : (
           <section className="fl-surface fl-list-surface" aria-label="搜索结果">
@@ -386,16 +335,6 @@ export default function Search() {
         )}
       </State>
 
-      <Modal title="保存团队视图" open={saveOpen} confirmLoading={savingView} onOk={saveView} onCancel={() => setSaveOpen(false)}>
-        <Form form={viewForm} layout="vertical">
-          <Form.Item name="id" label="视图标识" rules={[{ required: true, message: '请填写视图标识' }]}>
-            <Input className="fl-mono" placeholder="pending-review" />
-          </Form.Item>
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请填写视图名称' }]}>
-            <Input placeholder="待评审版本" />
-          </Form.Item>
-        </Form>
-      </Modal>
     </main>
   );
 }

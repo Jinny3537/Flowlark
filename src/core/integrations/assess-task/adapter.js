@@ -1,10 +1,10 @@
 import { err } from '../../errors.js'
 import { validateAssessContract } from './contract.js'
 
-export function createAssessTaskAdapter({ session, tools = [], mapping = {}, projectId = null, write = false } = {}) {
+export function createAssessTaskAdapter({ session, tools = [], mapping = {}, projectId = null, write = false, closure = false } = {}) {
   if (!session || typeof session.callTool !== 'function') throw err.bad('ASSESS_SESSION_REQUIRED', 'Assess Task MCP 会话不可用')
   const parsedProjectId = optionalId(projectId, 'ASSESS_PROJECT_ID_INVALID', '平台项目 ID 必须是数字')
-  const contract = validateAssessContract(tools, mapping, { write })
+  const contract = validateAssessContract(tools, mapping, { write, closure })
   if (contract.problems.length) {
     throw err.bad('ASSESS_CONTRACT_INVALID', contract.problems[0].message, contract.problems.map((item) => item.message).join('；'))
   }
@@ -16,6 +16,16 @@ export function createAssessTaskAdapter({ session, tools = [], mapping = {}, pro
   }
 
   return {
+    async getVersion(versionId) {
+      const item = objectFrom(await call('getVersion', { versionId: numericId(versionId) }))
+      return { id: numericId(item.id ?? item.versionId), projectId: numberOrNull(item.projectId),
+        revision: numberOrNull(item.revision), status: item.status ?? item.state ?? null }
+    },
+
+    async closeVersion(body) {
+      return objectFrom(await call('closeVersion', { body }))
+    },
+
     async probe() {
       const item = objectFrom(await call('currentUser'))
       return {
@@ -53,7 +63,9 @@ export function createAssessTaskAdapter({ session, tools = [], mapping = {}, pro
       const args = { projectId: selectedProject(), pageNum, pageSize }
       if (sprintId != null) args.sprintIds = [numericId(sprintId)]
       if (statuses.length) args.statuses = statuses
-      return itemsFrom(await call('listTasks', args)).map(normalizeTask)
+      const result = await call('listTasks', args)
+      if (closure && !hasItemArray(result)) throw err.bad('ASSESS_TASKS_INVALID', '平台任务列表响应无效，无法核实未完成任务')
+      return itemsFrom(result).map(normalizeTask)
     },
 
     async getTask(taskId) {
@@ -227,4 +239,10 @@ function numberOrNull(value) {
 function strings(value) {
   if (Array.isArray(value)) return value.map(String)
   return value == null || value === '' ? [] : [String(value)]
+}
+
+function hasItemArray(value) {
+  if (Array.isArray(value)) return true
+  if (!value || typeof value !== 'object') return false
+  return ['items', 'records', 'rows', 'results', 'list', 'data', 'result'].some((key) => hasItemArray(value[key]))
 }

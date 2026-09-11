@@ -57,7 +57,7 @@ function requireRepo(root) {
  * 用户常在同一个文件夹里放着正在改的原型源文件、临时导出的截图，
  * 把它们一并卷进提交是意料之外的行为。想提交别的，用 git 本身。
  */
-export const OWNED_PATHS = ['projects', 'flowlark.json', '.flowlark', '.gitattributes', '.gitignore']
+export const OWNED_PATHS = ['projects', 'requirements', 'milestones', 'snapshots', 'flowlark.json', '.flowlark', '.gitattributes', '.gitignore']
 
 const STATUS_CACHE_FILE = 'git-status.json'
 

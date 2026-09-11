@@ -17,7 +17,7 @@ const OPERATION_STATUS = {
   WATCH_RECORD_REMOVE: { label: '清理草稿记录', color: 'default' },
   BASELINE_SET: { label: '设为基线', color: 'green' },
   BASELINE_ROLLBACK: { label: '回滚基线', color: 'orange' },
-  SPEC_UPDATE: { label: '更新规格书', color: 'blue' },
+  SPEC_UPDATE: { label: '更新技术规格说明书', color: 'blue' },
   CHANGES_SET: { label: '更新变更日志', color: 'blue' },
   REQS_SET: { label: '更新关联需求', color: 'blue' }
 }

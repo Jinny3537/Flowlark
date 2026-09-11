@@ -99,5 +99,10 @@ describe('自动更新', () => {
     const result = pullSoftwareUpdate({ root: local })
     t.assert.strictEqual(result.updated, true)
     t.assert.strictEqual(result.after.currentVersion, '0.8.0')
+
+    // Losing the remote between checks must never report a successful no-op update.
+    git(local, ['remote', 'set-url', 'origin', path.join(remote, 'missing')])
+    t.assert.throws(() => pullSoftwareUpdate({ root: local }), (error) => error.code === 'SOFTWARE_FETCH_FAILED')
+    t.assert.strictEqual(JSON.parse(fs.readFileSync(path.join(local, 'package.json'))).version, '0.8.0')
   })
 })

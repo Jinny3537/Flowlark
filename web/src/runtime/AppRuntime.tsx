@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { setDateStyle } from '@/utils/format';
 import { api, type HealthInfo } from '@/services/api';
 
 type RuntimeValue = {
@@ -19,11 +20,13 @@ export function AppRuntimeProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const [nextHealth, nextGit, nextNotifications] = await Promise.all([
-      api.health().catch(() => null),
-      api.gitStatus({ fast: true, cache: true }).catch(() => null),
-      api.listNotifications().catch(() => []),
+    const nextHealth = await api.health().catch(() => null);
+    const remoteTeam = nextHealth?.team && !nextHealth.team.host;
+    const [nextGit, nextNotifications] = await Promise.all([
+      remoteTeam ? null : api.gitStatus({ fast: true, cache: true }).catch(() => null),
+      remoteTeam ? [] : api.listNotifications().catch(() => []),
     ]);
+    if (nextHealth) setDateStyle(nextHealth.dateStyle);
     setHealth(nextHealth);
     setGit(nextGit);
     setNotifications(nextNotifications);

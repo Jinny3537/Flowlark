@@ -1,6 +1,5 @@
 import {
   ArrowRightOutlined,
-  CloseOutlined,
   DeleteOutlined,
   DownloadOutlined,
   ExclamationCircleOutlined,
@@ -29,14 +28,16 @@ import {
   Select,
   Space,
   Tag,
+  Table,
   Tooltip,
   Upload,
 } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/services/api';
 import { fmtSize, fmtTime } from '@/utils/format';
 import { baselineBlocked, groupChanges } from './workbenchModel.js';
+import { changesToText, textToChanges, releaseNotesTemplate } from './releaseNotesModel.js';
 
 export type ChangeItem = {
   type?: string;
@@ -71,6 +72,15 @@ export function ChangeList({
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更记录" />;
   }
 
+  if (items.every((item) => !item.location && !item.requirement && (!item.type || item.type === 'MODIFY'))) {
+    return <div style={primitiveStyles.stack}>{items.map((item, index) => (
+      <article key={index}>
+        {item.fromVersionNo ? <Tag>{item.fromVersionNo}</Tag> : null}
+        <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.8 }}>{item.content}</div>
+      </article>
+    ))}</div>;
+  }
+
   return (
     <div style={primitiveStyles.stack}>
       {groups.map((group) => (
@@ -93,7 +103,7 @@ export function ChangeList({
                   {item.location ? <span style={primitiveStyles.location}>{item.location}</span> : null}
                   <div style={primitiveStyles.changeContent}>
                     <div style={primitiveStyles.contentLine}>
-                      <span>{item.content}</span>
+                      <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.content}</span>
                       {item.requirement ? (
                         <Button
                           type="link"
@@ -132,77 +142,22 @@ type ChangeEditorProps = {
   onChange: (value: ChangeItem[]) => void;
 };
 
-const changeTypeOptions = [
-  { value: 'ADD', label: '新增' },
-  { value: 'MODIFY', label: '修改' },
-  { value: 'REMOVE', label: '删除' },
-];
-
 export function ChangeEditor({ value, onChange }: ChangeEditorProps) {
-  const updateRow = (index: number, patch: Partial<ChangeItem>) => {
-    onChange(value.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
-  };
-
-  const removeRow = (index: number) => {
-    onChange(value.filter((_, rowIndex) => rowIndex !== index));
-  };
-
-  const addRow = () => {
-    onChange([
-      ...value,
-      { type: 'MODIFY', location: '', content: '', requirement: '' },
-    ]);
-  };
-
+  const text = changesToText(value);
   return (
     <div style={primitiveStyles.editor}>
-      {value.map((row, index) => (
-        <div key={index} style={primitiveStyles.editorRow}>
-          <Select
-            value={row.type}
-            options={changeTypeOptions}
-            aria-label={`第 ${index + 1} 条变更类型`}
-            style={primitiveStyles.changeType}
-            onChange={(type) => updateRow(index, { type })}
-          />
-          <Input
-            value={row.location}
-            placeholder="位置（选填）"
-            maxLength={50}
-            aria-label={`第 ${index + 1} 条变更位置`}
-            style={primitiveStyles.locationInput}
-            onChange={(event) => updateRow(index, { location: event.target.value })}
-          />
-          <Input
-            value={row.content}
-            placeholder="改了什么，一句话说清"
-            maxLength={200}
-            aria-label={`第 ${index + 1} 条变更内容`}
-            style={primitiveStyles.flexInput}
-            onChange={(event) => updateRow(index, { content: event.target.value })}
-          />
-          <Input
-            value={row.requirement}
-            placeholder="需求号"
-            maxLength={40}
-            aria-label={`第 ${index + 1} 条关联需求号`}
-            style={primitiveStyles.requirementCodeInput}
-            onChange={(event) => updateRow(index, { requirement: event.target.value })}
-          />
-          <Tooltip title="删除这条变更">
-            <Button
-              type="text"
-              danger
-              icon={<CloseOutlined />}
-              aria-label="删除这条变更"
-              style={primitiveStyles.iconButton}
-              onClick={() => removeRow(index)}
-            />
-          </Tooltip>
-        </div>
-      ))}
-      <Button block type="dashed" icon={<PlusOutlined />} onClick={addRow}>
-        添加一条变更
+      <span>发布说明</span>
+      <Input.TextArea
+        value={text}
+        aria-label="变更日志发布说明"
+        placeholder={releaseNotesTemplate}
+        autoSize={{ minRows: 14, maxRows: 32 }}
+        style={{ lineHeight: 1.8 }}
+        onChange={(event) => onChange(textToChanges(event.target.value))}
+      />
+      <div style={primitiveStyles.secondaryText}>可粘贴完整发布说明，保留换行、段落及列表；按新增、优化、修复和注意事项填写。</div>
+      <Button disabled={Boolean(text.trim())} onClick={() => onChange(textToChanges(releaseNotesTemplate))}>
+        填入标准格式模板
       </Button>
     </div>
   );
@@ -212,68 +167,171 @@ export type RequirementLink = {
   code?: string;
   title?: string;
   url?: string;
+  location?: string;
+  scope?: string;
 };
 
 type RequirementEditorProps = {
   value: RequirementLink[];
   onChange: (value: RequirementLink[]) => void;
+  disabled?: boolean;
 };
 
-export function RequirementEditor({ value, onChange }: RequirementEditorProps) {
-  const updateRow = (index: number, patch: Partial<RequirementLink>) => {
-    onChange(value.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+export function RequirementEditor({ value, onChange, disabled = false }: RequirementEditorProps) {
+  const [requirements, setRequirements] = useState<(RequirementLink & { project?: string; status?: string })[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [projectFilter, setProjectFilter] = useState<string>();
+  const [pendingCodes, setPendingCodes] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manual, setManual] = useState({ code: '', title: '', url: '' });
+  const [manualError, setManualError] = useState('');
+  const selected = value.filter(row => row.code?.trim());
+  const selectedCodes = new Set(selected.map(row => row.code!.trim()));
+  const projectOptions = [...new Set(requirements.map(item => item.project || ''))].sort()
+    .map(project => ({ value: project, label: project || '未分项目' }));
+  const matchingRequirements = requirements.filter(item =>
+    (projectFilter === undefined || (item.project || '') === projectFilter)
+    && `${item.code || ''} ${item.title || ''}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const addPending = () => {
+    const additions = requirements.filter(item => pendingCodes.includes(item.code || '') && !selectedCodes.has(item.code || ''))
+      .map(({ code, title, url }) => ({ code, title, url }));
+    onChange([...selected, ...additions]);
+    setPickerOpen(false);
+    setPendingCodes([]);
   };
 
-  const removeRow = (index: number) => {
-    onChange(value.filter((_, rowIndex) => rowIndex !== index));
+  const addRequirement = (item: RequirementLink) => {
+    if (!selected.some(row => row.code?.trim() === item.code)) onChange([...selected, item]);
+    setSearch('');
   };
 
-  const addRow = () => {
-    onChange([...value, { code: '', title: '', url: '' }]);
+  const addManual = () => {
+    const code = manual.code.trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(code)) {
+      setManualError('请填写有效编号：支持字母、数字、点、下划线和短横线，最多 64 位');
+      return;
+    }
+    if (selected.some(row => row.code?.trim() === code)) {
+      setManualError('该需求已在已选列表中，无需重复添加');
+      return;
+    }
+    const existing = requirements.find(item => item.code === code);
+    if (!existing && !manual.title.trim()) {
+      setManualError('请填写需求标题');
+      return;
+    }
+    addRequirement(existing || { code, title: manual.title.trim(), url: manual.url.trim() });
+    setManualOpen(false);
+    setManual({ code: '', title: '', url: '' });
+    setManualError('');
   };
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(false);
+    api.listRequirements().then((items) => {
+      if (active) setRequirements(items);
+    }).catch(() => {
+      if (active) setLoadError(true);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [retry]);
 
   return (
     <div style={primitiveStyles.editor}>
-      {value.map((row, index) => (
-        <div key={index} style={primitiveStyles.editorRow}>
-          <Input
-            value={row.code}
-            placeholder="REQ-2026-0311"
-            maxLength={40}
-            aria-label={`第 ${index + 1} 条需求编号`}
-            style={primitiveStyles.requirementIdInput}
-            onChange={(event) => updateRow(index, { code: event.target.value })}
-          />
-          <Input
-            value={row.title}
-            placeholder="需求标题（选填）"
-            maxLength={120}
-            aria-label={`第 ${index + 1} 条需求标题`}
-            style={primitiveStyles.flexInput}
-            onChange={(event) => updateRow(index, { title: event.target.value })}
-          />
-          <Input
-            value={row.url}
-            placeholder="https://需求池地址"
-            aria-label={`第 ${index + 1} 条需求地址`}
-            style={primitiveStyles.requirementUrlInput}
-            onChange={(event) => updateRow(index, { url: event.target.value })}
-          />
-          <Tooltip title="删除这条关联需求">
-            <Button
-              type="text"
-              danger
-              icon={<CloseOutlined />}
-              aria-label="删除这条关联需求"
-              style={primitiveStyles.iconButton}
-              onClick={() => removeRow(index)}
+      <Button icon={<PlusOutlined />} disabled={disabled} onClick={() => {
+        setPendingCodes([]); setSearch(''); setProjectFilter(undefined); setPage(1); setPickerOpen(true);
+      }}>选择已有需求</Button>
+      <Modal
+        title="选择关联需求"
+        open={pickerOpen}
+        width={960}
+        style={{ top: 24 }}
+        okText={`添加所选需求（${pendingCodes.length}）`}
+        okButtonProps={{ disabled: disabled || !pendingCodes.length || loading || loadError }}
+        onOk={addPending}
+        onCancel={() => setPickerOpen(false)}
+      >
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <div className="fl-muted">可跨项目批量选择，切换项目和分页会保留勾选；添加后需保存关联需求。</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            <Select
+              aria-label="筛选需求所属项目"
+              placeholder="全部项目"
+              allowClear showSearch optionFilterProp="label"
+              getPopupContainer={trigger => trigger.parentElement!}
+              style={{ flex: '1 1 200px', minWidth: 0 }}
+              options={projectOptions}
+              value={projectFilter}
+              onChange={project => { setProjectFilter(project); setPage(1); }}
             />
-          </Tooltip>
+            <Input.Search
+              aria-label="搜索需求编号或标题"
+              placeholder="搜索需求编号或标题"
+              allowClear value={search}
+              style={{ flex: '2 1 240px', minWidth: 0 }}
+              onChange={event => { setSearch(event.target.value); setPage(1); }}
+            />
+          </div>
+          {loadError ? <Alert type="error" showIcon message="读取需求失败" action={<Button size="small" onClick={() => setRetry(current => current + 1)}>重试</Button>} /> : null}
+          <div aria-live="polite" className="fl-muted">
+            匹配 {matchingRequirements.length} 条 · 已关联 {selected.length} 条 · 待添加 {pendingCodes.length} 条
+            {pendingCodes.length ? <Button type="link" size="small" onClick={() => setPendingCodes([])}>清空勾选</Button> : null}
+          </div>
+          <Table
+            size="small"
+            rowKey="code"
+            loading={loading}
+            dataSource={matchingRequirements}
+            scroll={{ x: 650, y: 'min(320px, 40vh)' }}
+            pagination={{ current: page, pageSize: 10, showSizeChanger: false, onChange: setPage }}
+            locale={{ emptyText: '没有匹配的需求，请调整项目筛选或搜索条件' }}
+            rowSelection={{
+              selectedRowKeys: pendingCodes,
+              preserveSelectedRowKeys: true,
+              onChange: keys => setPendingCodes(keys.map(String)),
+              getCheckboxProps: item => ({ disabled: disabled || selectedCodes.has(item.code || ''), 'aria-label': `选择需求 ${item.code}` }),
+            }}
+            columns={[
+              { title: '需求编号', dataIndex: 'code', width: 190 },
+              { title: '需求标题', dataIndex: 'title', render: title => title || '未填写标题' },
+              { title: '所属项目', dataIndex: 'project', width: 140, render: project => project || '未分项目' },
+              { title: '关联状态', width: 100, render: (_, item) => selectedCodes.has(item.code || '') ? <Tag>已关联</Tag> : <span className="fl-muted">未关联</span> },
+            ]}
+          />
+        </Space>
+      </Modal>
+      {loadError ? <Alert type="error" showIcon message="读取需求失败" action={<Button size="small" onClick={() => setRetry(current => current + 1)}>重试</Button>} /> : null}
+      <div className="fl-muted" aria-live="polite">已选 {selected.length} 条 · 保存后生效，移除仅解除本版本关联</div>
+      {selected.length ? selected.map((row, index) => (
+        <div key={`${row.code}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--fl-line)', padding: '12px 0' }}>
+          <div style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+            <div className="fl-mono fl-muted">{row.code} · {requirements.find(item => item.code === row.code)?.project || '未分项目'}</div>
+            <strong>{row.title || row.code}</strong>
+            <label style={{ display: 'block', marginTop: 8 }}>对应页面 / 功能位置<Input disabled={disabled} value={row.location || ''} maxLength={500} onChange={event => onChange(selected.map((item, i) => i === index ? { ...item, location: event.target.value } : item))} /></label>
+            <label style={{ display: 'block', marginTop: 8 }}>本版承载范围<Input.TextArea disabled={disabled} value={row.scope || ''} maxLength={2000} autoSize={{ minRows: 1, maxRows: 4 }} onChange={event => onChange(selected.map((item, i) => i === index ? { ...item, scope: event.target.value } : item))} /></label>
+          </div>
+          <Button type="text" disabled={disabled} aria-label={`移除需求 ${row.code}`} onClick={() => onChange(selected.filter((_, rowIndex) => rowIndex !== index))}>移除</Button>
         </div>
-      ))}
-      <Button block type="dashed" icon={<PlusOutlined />} onClick={addRow}>
-        添加关联需求
-      </Button>
+      )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未选择需求，请点击上方按钮批量添加" />}
+      <Button type="link" disabled={disabled} style={{ alignSelf: 'flex-start', paddingInline: 0 }} onClick={() => { setManualOpen(true); setManualError(''); }}>找不到需求？手动录入</Button>
+      <Modal title="手动录入需求" open={manualOpen} okText="添加到已选列表" onOk={addManual} onCancel={() => setManualOpen(false)}>
+        <p className="fl-muted">已有编号将关联原需求；新编号会在保存版本关联时创建到需求模块。</p>
+        <div style={primitiveStyles.editor}>
+          <label>需求编号（必填）<Input aria-label="手动录入需求编号" value={manual.code} maxLength={64} onChange={event => setManual({ ...manual, code: event.target.value })} /></label>
+          <label>需求标题（新需求必填）<Input aria-label="手动录入需求标题" value={manual.title} maxLength={120} onChange={event => setManual({ ...manual, title: event.target.value })} /></label>
+          <label>外部资料链接（选填）<Input aria-label="手动录入需求链接" value={manual.url} onChange={event => setManual({ ...manual, url: event.target.value })} /></label>
+          {manualError ? <Alert type="error" showIcon message={manualError} /> : null}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -435,7 +493,7 @@ export function BaselineModal({
 
           <ul style={primitiveStyles.baselineNotes}>
             <li>切换后打开本项目默认落在 <strong>{target.versionNo}</strong>。</li>
-            <li>该版本的原型文件与变更日志将被<strong>锁定</strong>，规格书仍可编辑。</li>
+            <li>该版本的原型文件与变更日志将被<strong>锁定</strong>，技术规格说明书仍可编辑。</li>
             {current ? <li>可在项目时间线或功能台里一键退回 {current}。</li> : null}
           </ul>
         </div>
@@ -710,30 +768,6 @@ const primitiveStyles: Record<string, CSSProperties> = {
   editor: {
     display: 'grid',
     gap: 'var(--fl-s-2)',
-  },
-  editorRow: {
-    display: 'flex',
-    minWidth: 0,
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 'var(--fl-s-2)',
-  },
-  changeType: {
-    width: 100,
-    flex: '0 0 100px',
-  },
-  locationInput: {
-    width: 160,
-    flex: '1 1 140px',
-  },
-  flexInput: {
-    minWidth: 0,
-    flex: '2 1 220px',
-  },
-  requirementCodeInput: {
-    width: 120,
-    flex: '1 1 112px',
-    fontFamily: 'var(--pw-font-family-mono)',
   },
   requirementIdInput: {
     width: 160,

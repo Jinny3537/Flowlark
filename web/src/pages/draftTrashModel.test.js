@@ -1,29 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  draftCounts, filterDraftItems, filterTrashItems, draftSelection,
+  filterTrashItems,
   restoreReasonLabel, patchQueueParams, runQueueBatch,
 } from './draftTrashModel.js'
 
-const drafts = [
-  { id: 'a', project: 'orders', title: '失败原型', filename: 'a.html', status: 'failed', collectedAt: '2026-08-28T10:00:00Z' },
-  { id: 'b', project: 'orders', title: '处理中', filename: 'b.html', status: 'pending', collectedAt: '2026-08-28T11:00:00Z' },
-  { id: 'c', project: 'users', title: '已完成', filename: 'c.html', status: 'archived', collectedAt: '2026-08-27T10:00:00Z' },
-]
-
-test('counts and sorts attention drafts with failures first', () => {
-  assert.deepEqual(draftCounts(drafts), { attention: 2, failed: 1, archived: 1 })
-  assert.deepEqual(filterDraftItems(drafts, { view: 'attention' }).map((item) => item.id), ['a', 'b'])
-})
-
-test('filters both queues by project, query and date', () => {
-  assert.deepEqual(filterDraftItems(drafts, { view: 'all', project: 'orders', query: '原型' }).map((item) => item.id), ['a'])
+test('filters trash by project, query and date', () => {
   const trash = [{ id: 't', project: 'orders', versionNo: 'v2', deletedAt: '2026-08-28T09:00:00Z' }]
   assert.equal(filterTrashItems(trash, { query: 'v2', dateFrom: '2026-08-28' }).length, 1)
 })
 
-test('splits mixed draft selection into eligible actions', () => {
-  assert.deepEqual(draftSelection(drafts, ['a', 'b', 'c']), { failed: ['a'], archived: ['c'] })
+test('explains blocked trash restoration', () => {
   assert.equal(restoreReasonLabel('VERSION_EXISTS'), '版本号已占用')
 })
 

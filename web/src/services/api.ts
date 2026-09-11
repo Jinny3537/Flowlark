@@ -6,6 +6,7 @@ type RequestOptions = {
 };
 
 export type HealthInfo = {
+  team?: { enabled: boolean; host: boolean; role: string | null; id: string | null } | null;
   repo?: string;
   repoName?: string;
   version?: string;
@@ -90,6 +91,13 @@ const put = <T,>(p: string, b?: unknown) => request<T>('PUT', p, b);
 const del = <T,>(p: string) => request<T>('DELETE', p);
 
 export const api = {
+  teamSession: () => get<any>('/api/team/session'),
+  setTeamMode: (enabled: boolean) => put<any>('/api/team/config', { enabled }),
+  chooseTeamRole: (role: string) => post<any>('/api/team/role', { role }),
+  teamVisitors: () => get<any[]>('/api/team/visitors'),
+  setVisitorRole: (id: string, role: string) => put<any>(`/api/team/visitors/${enc(id)}`, { role }),
+  teamRecords: (slug: string, no: string) => get<any[]>(`/api/team/records/${enc(slug)}/${enc(no)}`),
+  addTeamRecord: (slug: string, no: string, body: unknown) => post<any>(`/api/team/records/${enc(slug)}/${enc(no)}`, body),
   health: () => get<HealthInfo>('/api/health'),
   listProjects: () => get<any[]>('/api/projects'),
   getProject: (slug: string) => get<any>(`/api/projects/${enc(slug)}`),
@@ -110,6 +118,8 @@ export const api = {
   setSpec: (slug: string, no: string, markdown: string) => put(`/api/versions/${enc(slug)}/${enc(no)}/spec`, { markdown }),
   setChanges: (slug: string, no: string, items: unknown[]) => put(`/api/versions/${enc(slug)}/${enc(no)}/changes`, { items }),
   setRequirements: (slug: string, no: string, items: unknown[]) => put(`/api/versions/${enc(slug)}/${enc(no)}/requirements`, { items }),
+  bindVersionRelease: (slug: string, no: string, versionId: number) => put(`/api/versions/${enc(slug)}/${enc(no)}/release-binding`, { versionId }),
+  markVersionOnline: (slug: string, no: string) => post(`/api/versions/${enc(slug)}/${enc(no)}/online`, {}),
   setReviewStatus: (slug: string, no: string, status: string) => put(`/api/versions/${enc(slug)}/${enc(no)}/review`, { status }),
   voidVersion: (slug: string, no: string) => post(`/api/versions/${enc(slug)}/${enc(no)}/void`),
   reopenVersion: (slug: string, no: string) => post(`/api/versions/${enc(slug)}/${enc(no)}/reopen`),
@@ -146,11 +156,13 @@ export const api = {
   markRead: (slug: string, versionNo: string) => put(`/api/read/${enc(slug)}`, { versionNo }),
   clearRead: (slug: string) => del(`/api/read/${enc(slug)}`),
   sinceRead: (slug: string) => get(`/api/projects/${enc(slug)}/since-read`),
-  listRequirements: () => get<any[]>('/api/requirements'),
+  listRequirements: (includeDeleted = false) => get<any[]>(`/api/requirements${includeDeleted ? '?includeDeleted=true' : ''}`),
   getRequirement: (code: string) => get<any>(`/api/requirements/${enc(code)}`),
   createRequirement: (body: unknown) => post<any>('/api/requirements', body),
   updateRequirement: (code: string, body: unknown) => put<any>(`/api/requirements/${enc(code)}`, body),
-  syncRequirements: (provider = 'mcp', config = {}) => post('/api/requirements/sync', { provider, config }),
+  syncRequirements: (provider = 'mcp', config = {}, options = {}) => post<any>('/api/requirements/sync', { provider, config, ...options }),
+  requirementImpact: (code: string) => get<any>(`/api/requirements/${enc(code)}/impact`),
+  requirementLifecycle: (code: string, action: string) => post<any>(`/api/requirements/${enc(code)}/lifecycle`, { action }),
   linkRequirement: (code: string, body: unknown) => post(`/api/requirements/${enc(code)}/links`, body),
   unlinkRequirement: (code: string, slug: string, no: string) =>
     del(`/api/requirements/${enc(code)}/links/${enc(slug)}/${enc(no)}`),
@@ -180,7 +192,7 @@ export const api = {
   exportMilestone: (name: string, outputDir?: string) => post(`/api/export/milestone/${enc(name)}`, { outputDir }),
   listSnapshots: () => get<any[]>('/api/snapshots'),
   getSnapshot: (name: string) => get<any>(`/api/snapshots/${enc(name)}`),
-  inspectSnapshot: (body: unknown) => post('/api/snapshots/inspect', body),
+  inspectSnapshot: (body: unknown) => post<any>('/api/snapshots/inspect', body),
   createSnapshot: (body: unknown) => post<any>('/api/snapshots', body),
   suggestImpact: (changes: unknown[]) => post('/api/impact', { changes }),
   listNotifications: () => get<any[]>('/api/notifications'),
@@ -230,9 +242,6 @@ export const api = {
   deleteRequirementToken: (provider: string) => del(`/api/integrations/requirements/${enc(provider)}/token`),
   inspectHtml: (html: string) => post('/api/import/html', { html }),
   importUrl: (url: string) => post('/api/import/url', { url }),
-  watchInbox: () => get<any[]>('/api/watch/inbox'),
-  retryWatchItem: (id: string) => post(`/api/watch/inbox/${enc(id)}/retry`, {}),
-  clearWatchItem: (id: string) => del<any>(`/api/watch/inbox/${enc(id)}`),
   trash: (project?: string) => get<any[]>(`/api/trash${project ? `?project=${enc(project)}` : ''}`),
   restoreTrashItem: (id: string) => post<any>(`/api/trash/${enc(id)}/restore`, {}),
   gitStatus: ({ fast = false, cache = false } = {}) => {
