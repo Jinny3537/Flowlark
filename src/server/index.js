@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { handleTeamRequest } from './team.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -230,7 +231,9 @@ export async function startServer(root, {
         })
       }
 
-      // 局域网只读闸门。放在路由之前，避免任何一条新路由忘了加校验。
+      if (await handleTeamRequest(hub, req, res, url, { mirror })) return
+
+      // 团队接口按操作鉴权；其他请求继续保留原有局域网只读闸门。
       if (net.shouldBlockWrite({
         lan: lanEnabled,
         readonlyFromLan,
@@ -299,7 +302,7 @@ export async function startServer(root, {
       const a = previewServer.address()
       return a ? a.port : pvPort
     },
-    runtime: { lan: lanEnabled, readonlyFromLan, mirror }
+    runtime: { lan: lanEnabled, readonlyFromLan, mirror, port: () => mainServer.address()?.port || mainPort }
   })
 
   await Promise.all([

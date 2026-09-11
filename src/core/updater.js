@@ -136,6 +136,7 @@ export function softwareStatus({ root = softwareRoot(), fetchRemote = false } = 
 export function pullSoftwareUpdate({ root = softwareRoot() } = {}) {
   const before = softwareStatus({ root, fetchRemote: true })
   if (!before.tracked) throw err.bad('SOFTWARE_NOT_GIT_REPO', before.error)
+  if (before.error) throw err.bad('SOFTWARE_FETCH_FAILED', before.error)
   if (!before.upstream) {
     throw err.bad('SOFTWARE_UPSTREAM_MISSING', '当前软件分支没有配置上游远端', '设置 upstream 后再更新，例如 git branch --set-upstream-to=origin/main')
   }

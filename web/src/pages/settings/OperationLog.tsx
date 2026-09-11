@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Table, Tag } from 'antd';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Input, Select, Space, Table, Tag } from 'antd';
 import { State } from '@/components/State';
 import { operationMeta } from '@/domain/status.js';
 import { api } from '@/services/api';
@@ -18,6 +18,10 @@ export function OperationLog({ embedded = false }: { embedded?: boolean }) {
   const [logs, setLogs] = useState<OperationLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [action, setAction] = useState<string>();
+  const [date, setDate] = useState('');
+  const filtered = useMemo(() => logs.filter(item => (!query || `${item.project || ''} ${item.by || ''} ${item.detail || ''}`.toLowerCase().includes(query.toLowerCase())) && (!action || item.action === action) && (!date || item.at?.slice(0, 10) === date)), [logs, query, action, date]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,10 +44,17 @@ export function OperationLog({ embedded = false }: { embedded?: boolean }) {
       <p className="fl-operation-log-copy">
         记录保存在 <code>.flowlark/oplog.ndjson</code>，以追加方式随 Git 一起提交。
       </p>
+      <p>仅展示最近 300 条记录；以下筛选作用于这批记录，不代表完整历史。</p>
+      <Space wrap className="fl-settings-form-actions">
+        <Input aria-label="搜索操作日志" placeholder="项目、操作人或详情" value={query} onChange={event => setQuery(event.target.value)} allowClear />
+        <Select aria-label="筛选日志动作" placeholder="全部动作" allowClear style={{ minWidth: 160 }} value={action} onChange={setAction} options={[...new Set(logs.map(item => item.action).filter(Boolean))].map(value => ({ value, label: operationMeta(value).label }))} />
+        <Input aria-label="日志日期（UTC）" type="date" value={date} onChange={event => setDate(event.target.value)} title="按日志 UTC 日期筛选" />
+        <Button loading={loading} onClick={() => void load()}>刷新日志</Button>
+      </Space>
       <State error={error} onRetry={load} empty={false}>
         <Table<OperationLogEntry>
           rowKey={(record, index) => `${record.at || 'unknown'}:${record.action || 'unknown'}:${index}`}
-          dataSource={logs}
+          dataSource={filtered}
           loading={loading}
           pagination={{ pageSize: 20, showSizeChanger: false }}
           scroll={{ x: 760 }}

@@ -25,7 +25,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     // 让局域网用户点了按钮再收到 403，是很差的体验。
     const requestCanWrite = net.allowWrite({ lan: lanActive, readonlyFromLan: readonly, isLocal: net.isLocalRequest(req) })
     const gitPermission = hub.writePermission()
-    const canWrite = !runtime.mirror && requestCanWrite && gitPermission.canWrite
+    const canWrite = !runtime.mirror && requestCanWrite && gitPermission.canWrite && (!req.team || req.team.host)
     sendJson(res, 200, {
       ok: true,
       app: 'flowlark',
@@ -36,6 +36,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
       previewPort: resolvePreviewPort(),
       maxFileBytes: s.server.maxFileBytes,
       canWrite,
+      team: req.team || null,
       readonly: !canWrite,
       readonlyReason: runtime.mirror ? 'mirror' : !requestCanWrite ? 'lan' : !gitPermission.canWrite ? 'git' : null,
       mirror: !!runtime.mirror,
@@ -59,15 +60,21 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   })
 
   // ---- 需求 ----
-  r.get('/api/requirements', async (req, res) => sendJson(res, 200, hub.listRequirements()))
+  r.get('/api/requirements', async (req, res) => sendJson(res, 200, hub.listRequirements({ includeDeleted: new URL(req.url, 'http://localhost').searchParams.get('includeDeleted') === 'true' })))
   r.post('/api/requirements/sync', async (req, res) => {
     const body = await readJson(req, maxBody)
-    sendJson(res, 200, await hub.syncExternalRequirements(body.provider || null, body.config || body))
+    sendJson(res, 200, await hub.syncExternalRequirements(body.provider || null, body.config || body, { preview: body.preview === true, expected: body.expected && typeof body.expected === 'object' && !Array.isArray(body.expected) ? body.expected : undefined, codes: Array.isArray(body.codes) ? body.codes : undefined }))
   })
   r.post('/api/requirements', async (req, res) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 201, hub.createRequirement(body))
   })
+  r.get('/api/requirements/:code/impact', async (req, res, p) => sendJson(res, 200, hub.requirementImpact(p.code)))
+  r.post('/api/requirements/:code/lifecycle', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.requirementLifecycle(p.code, body.action))
+  })
+  r.delete('/api/requirements/:code', async (req, res, p) => sendJson(res, 200, hub.requirementLifecycle(p.code, 'delete')))
   r.get('/api/requirements/:code', async (req, res, p) => sendJson(res, 200, hub.getRequirement(p.code)))
   r.put('/api/requirements/:code', async (req, res, p) => {
     const body = await readJson(req, maxBody)
@@ -75,7 +82,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   })
   r.post('/api/requirements/:code/links', async (req, res, p) => {
     const body = await readJson(req, maxBody)
-    sendJson(res, 200, hub.linkRequirement(p.code, body.project, body.versionNo))
+    sendJson(res, 200, hub.linkRequirement(p.code, body.project, body.versionNo, body))
   })
   r.delete('/api/requirements/:code/links/:slug/:no', async (req, res, p) =>
     sendJson(res, 200, hub.unlinkRequirement(p.code, p.slug, p.no)))
@@ -188,6 +195,17 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 201, { ...result, notificationResults })
   })
   r.get('/api/snapshots/:name', async (req, res, p) => sendJson(res, 200, hub.getSnapshot(p.name)))
+  r.get('/api/snapshots/:name/download', async (req, res, p) => {
+    const bytes = hub.downloadSnapshot(p.name)
+    res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(p.name)}.zip`, 'Content-Length': bytes.length })
+    res.end(bytes)
+  })
+  r.get('/api/snapshots/:name/file', async (req, res, p, url) => {
+    const relative = url.searchParams.get('path') || ''
+    const bytes = hub.getSnapshotFile(p.name, relative)
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(relative.split('/').pop())}`, 'Content-Length': bytes.length })
+    res.end(bytes)
+  })
   r.post('/api/snapshots/inspect', async (req, res) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.inspectSnapshot(body))
@@ -291,6 +309,15 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   r.put('/api/versions/:slug/:no', async (req, res, p) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, hub.updateVersion(p.slug, p.no, body))
+  })
+
+  r.put('/api/versions/:slug/:no/release-binding', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.bindVersionRelease(p.slug, p.no, body))
+  })
+
+  r.post('/api/versions/:slug/:no/online', async (req, res, p) => {
+    sendJson(res, 200, await hub.markVersionOnline(p.slug, p.no))
   })
 
   r.put('/api/versions/:slug/:no/html', async (req, res, p) => {
@@ -692,8 +719,8 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
       enabled: runtime.lan !== undefined ? runtime.lan : s.server.lan,
       configured: s.server.lan,
       readonlyFromLan: s.server.readonlyFromLan,
-      port: s.server.port,
-      previewPort: s.server.previewPort,
+      port: typeof runtime.port === 'function' ? runtime.port() : s.server.port,
+      previewPort: resolvePreviewPort(),
       addresses: net.lanAddresses(),
       // 当前这个请求自己是不是本机来的 —— 前端据此决定要不要隐藏写操作
       requestIsLocal: net.isLocalRequest(req)

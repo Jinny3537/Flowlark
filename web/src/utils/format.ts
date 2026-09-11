@@ -1,9 +1,14 @@
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import 'dayjs/locale/zh-cn';
+dayjs.extend(relativeTime);
+let dateStyle = 'relative';
+export function setDateStyle(value?: string) { dateStyle = value === 'absolute' ? 'absolute' : 'relative'; }
 
 export function fmtTime(value?: string | number | Date | null) {
   if (!value) return '-';
   const d = dayjs(value);
-  return d.isValid() ? d.format('YYYY-MM-DD HH:mm') : String(value);
+  return d.isValid() ? (dateStyle === 'absolute' ? d.format('YYYY-MM-DD HH:mm') : d.locale('zh-cn').fromNow()) : String(value);
 }
 
 export function textOf(value: unknown, fallback = '-') {
@@ -12,7 +17,9 @@ export function textOf(value: unknown, fallback = '-') {
 }
 
 export function fmtAbsolute(value?: string | number | Date | null) {
-  return fmtTime(value);
+  if (!value) return '-';
+  const d = dayjs(value);
+  return d.isValid() ? d.format('YYYY-MM-DD HH:mm') : String(value);
 }
 
 export function fmtSize(bytes?: number | null) {

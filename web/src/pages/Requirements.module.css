@@ -1,0 +1,35 @@
+.page { padding-top: var(--fl-page-top-gap); }
+.workspace { background: var(--pw-color-surface-solid); border: 1px solid var(--fl-line); border-radius: var(--fl-r-3); padding: 0 16px 16px; min-width: 0; }
+.header { min-width: 0; margin-bottom: var(--fl-page-section-gap); border-bottom: 1px solid var(--fl-line); }
+.statusNav { min-width: 0; }
+.actions { justify-self: end; }
+.header .statusTabs :global(.ant-tabs-nav)::before { border-bottom: 0; }
+.header .statusTabs :global(.ant-tabs-tab) { padding-block: 14px; }
+.header .statusTabs :global(.ant-tabs-tab + .ant-tabs-tab) { margin-left: 24px; }
+.content { gap: 12px; }
+.statusTabs :global(.ant-tabs-nav) { margin-bottom: 0; }
+.statusTabs :global(.ant-tabs-tab) { padding-block: 10px; }
+.searchArea { min-width: 0; display: grid; gap: 12px; }
+.toolbar { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(140px, 180px) max-content auto; gap: 12px; align-items: center; }
+.advanced { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: 16px; border: 1px solid var(--fl-line); border-radius: var(--fl-r-3); }
+.advanced label { display: grid; gap: 8px; min-width: 0; color: var(--fl-text-2); }
+.filterSummary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.filterTag { max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin: 0; }
+@media (max-width: 1200px) {
+  .toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .toolbar > :first-child { grid-column: 1; }
+  .toolbar > :nth-child(2) { grid-column: 2; }
+  .actions { grid-column: 2; }
+  .advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .workspace { padding-inline: 12px; }
+  .toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .toolbar > :first-child { grid-column: 1 / -1; }
+  .toolbar > :nth-child(2) { grid-column: 1; }
+  .actions { grid-column: 1 / -1; justify-self: stretch; }
+  .actions :global(.ant-space) { display: flex; }
+}
+@media (max-width: 480px) {
+  .advanced { grid-template-columns: minmax(0, 1fr); }
+}

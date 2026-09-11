@@ -2,11 +2,12 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App as AntApp, ConfigProvider, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import './styles/global.css';
 
 import { AppShell } from './components/AppShell';
 import { AppRuntimeProvider } from './runtime/AppRuntime';
+import { TeamAccess, useTeamAccess } from './runtime/TeamAccess';
 import ActionCenter from './pages/ActionCenter';
 import Compare from './pages/Compare';
 import Deliveries from './pages/Deliveries';
@@ -21,16 +22,22 @@ import RequirementDetail from './pages/RequirementDetail';
 import Requirements from './pages/Requirements';
 import Settings from './pages/Settings';
 import Search from './pages/Search';
-import Trash from './pages/Trash';
 import VersionWorkbench from './pages/VersionWorkbench';
-import WatchInbox from './pages/WatchInbox';
+
+function LegacyTrashRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/settings/trash${search}`} replace />;
+}
 
 function AppRoutes() {
+  const { session } = useTeamAccess();
+  const remoteTeam = Boolean(session && !session.host);
   return (
     <AppShell>
       <Routes>
         <Route path="/" element={<Navigate to="/actions" replace />} />
         <Route path="/actions" element={<ActionCenter />} />
+        <Route path="/team" element={<Navigate to={remoteTeam ? '/projects' : '/settings/team'} replace />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:slug" element={<ProjectVersions />} />
         <Route path="/projects/:slug/compare" element={<Compare />} />
@@ -42,10 +49,10 @@ function AppRoutes() {
         <Route path="/milestones/:name" element={<MilestoneDetail />} />
         <Route path="/deliveries" element={<Deliveries />} />
         <Route path="/deliveries/:name" element={<DeliveryDetail />} />
-        <Route path="/watch" element={<WatchInbox />} />
-        <Route path="/trash" element={<Trash />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/settings/:section" element={<Settings />} />
+        <Route path="/watch" element={<Navigate to="/projects" replace />} />
+        <Route path="/trash" element={<LegacyTrashRedirect />} />
+        <Route path="/settings" element={remoteTeam ? <Navigate to="/projects" replace /> : <Settings />} />
+        <Route path="/settings/:section" element={remoteTeam ? <Navigate to="/projects" replace /> : <Settings />} />
         <Route path="/oplog" element={<Navigate to="/settings/oplog" replace />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
@@ -101,7 +108,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <AntApp>
         <HashRouter>
           <AppRuntimeProvider>
-            <RootRoutes />
+            <TeamAccess><RootRoutes /></TeamAccess>
           </AppRuntimeProvider>
         </HashRouter>
       </AntApp>

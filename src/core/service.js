@@ -1,3 +1,6 @@
+import crypto from 'node:crypto'
+import { requirementWorkflow } from './requirement-workflow.js'
+import { requirementDetailFields } from './requirement-fields.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { err } from './errors.js'
@@ -20,6 +23,7 @@ import * as watchbox from './watch-inbox.js'
 import * as reqx from './requirements.js'
 import * as projectx from './projects.js'
 import * as projectPreferences from './project-preferences.js'
+import { bindOnlineVersion, markVersionOnline } from './version-online.js'
 import * as versionPlanning from './version-planning.js'
 import * as migrate from './migrate.js'
 import * as milestones from './milestones.js'
@@ -314,6 +318,7 @@ export class Hub {
       externalRefs: detectExternalRefs(content),
       changes: this.#normalizeChanges(changes),
       requirements: this.#normalizeRequirements(requirements),
+      requirementCoverage: reqx.normalizeCoverage(requirements),
       attachments: [],
       createdAt: now,
       createdBy: currentUser(),
@@ -339,6 +344,29 @@ export class Hub {
       canWrite: input.canWrite !== false && permission.canWrite,
       gitKnown: input.gitKnown !== false && permission.mode !== 'unknown'
     })
+  }
+
+  bindVersionRelease(slug, versionNo, input = {}) {
+    this.#assertWritable('关联任务平台版本')
+    const config = this.assessConfig || mcpConfig.resolveCapability(this.root, 'milestones')
+    const versionId = Number(input.versionId)
+    const projectId = Number(config.project)
+    if (!Number.isSafeInteger(versionId) || versionId <= 0 || !Number.isSafeInteger(projectId) || projectId <= 0 || !config.server?.id) {
+      throw err.bad('ONLINE_BINDING_INVALID', '请配置任务平台项目并填写有效的版本 ID')
+    }
+    bindOnlineVersion(this.root, slug, versionNo, { server: config.server.id, projectId, versionId })
+    this.#log(slug, versionNo, 'VERSION_RELEASE_BIND', `关联任务平台版本 ${versionId}`)
+    return this.getVersion(slug, versionNo)
+  }
+
+  async markVersionOnline(slug, versionNo) {
+    this.#assertWritable('标记版本已上线')
+    const result = await markVersionOnline({
+      root: this.root, slug, versionNo, actor: currentUser(),
+      withAdapter: (fn) => this.#withAssessAdapter(true, fn, { closure: true })
+    })
+    this.#log(slug, versionNo, 'VERSION_ONLINE_SYNC', `版本已上线，同步状态：${result.onlineSync.status}`)
+    return this.getVersion(slug, versionNo)
   }
 
   updateVersion(slug, versionNo, { title, note }) {
@@ -414,7 +442,14 @@ export class Hub {
     const baselineNo = store.readBaseline(this.root, slug)
     const v = store.readVersion(this.root, slug, versionNo)
     rules.assertEditable(v, baselineNo, '关联需求', { enabled: this.settings.rules.lockBaseline })
+    const nextCodes = (items || []).map(raw => typeof raw === 'string' ? raw : raw.code)
+    for (const raw of v.requirements || []) {
+      const code = typeof raw === 'string' ? raw : raw.code
+      if (!nextCodes.includes(code) && this.getRequirement(code).milestones.some(m => ['frozen', 'active', 'delivered', 'archived'].includes(m.status) && m.items.some(entry => entry.project === slug && entry.version === versionNo))) throw err.conflict('REQUIREMENT_LINK_IN_USE', '已采用版本的关联不能移除，请先处理迭代范围')
+    }
+    const coverage = reqx.normalizeCoverage(items, v.requirementCoverage)
     v.requirements = this.#normalizeRequirements(items)
+    v.requirementCoverage = coverage
     v.updatedAt = new Date().toISOString()
     store.writeVersion(this.root, slug, v)
     this.#log(slug, versionNo, 'REQS_SET', `更新 ${versionNo} 的关联需求，共 ${v.requirements.length} 条`)
@@ -441,12 +476,29 @@ export class Hub {
 
   // ==================== 需求 ====================
 
-  listRequirements() {
-    return reqx.listRequirements(this.root)
+  listRequirements(options = {}) {
+    return reqx.listRequirements(this.root, options)
   }
 
   getRequirement(code) {
-    return reqx.requirementDetail(this.root, code)
+    return requirementWorkflow(this.root, code)
+  }
+
+  requirementImpact(code) {
+    const item = this.getRequirement(code)
+    const blockers = item.milestones.filter(m => ['frozen', 'active'].includes(m.status))
+    return { code, versions: item.versions, milestones: item.milestones, externalTasks: item.externalTasks,
+      blockers, canDelete: !blockers.length, external: !!item.external }
+  }
+
+  requirementLifecycle(code, action) {
+    this.#assertWritable('管理需求')
+    if (action === 'delete' && !this.requirementImpact(code).canDelete) {
+      throw err.conflict('REQUIREMENT_IN_ACTIVE_MILESTONE', '需求仍在已冻结或进行中的迭代中，请先通过迭代范围变更处理；也可归档需求')
+    }
+    reqx.requirementLifecycle(this.root, code, action, currentUser())
+    this.#log(null, null, 'REQUIREMENT_LIFECYCLE', `${action} ${code}`)
+    return this.getRequirement(code)
   }
 
   createRequirement(input) {
@@ -458,21 +510,23 @@ export class Hub {
 
   updateRequirement(code, patch) {
     this.#assertWritable('编辑需求')
+    if (reqx.readRequirement(this.root, code).deletedAt) throw err.conflict('REQUIREMENT_DELETED', '请先恢复需求')
     const item = reqx.updateRequirement(this.root, code, patch)
     this.#log(null, null, 'REQUIREMENT_UPDATE', `编辑需求 ${item.code}`)
     return reqx.requirementDetail(this.root, item.code)
   }
 
-  linkRequirement(code, slug, versionNo) {
+  linkRequirement(code, slug, versionNo, coverage = {}) {
     this.#assertWritable('关联需求')
     const item = reqx.readRequirement(this.root, code)
     const version = store.readVersion(this.root, slug, versionNo)
     const existing = (version.requirements || []).map((raw) => typeof raw === 'string' ? raw : raw.code)
-    return this.setRequirements(slug, versionNo, [...existing, item.code])
+    return this.setRequirements(slug, versionNo, [...existing.filter(code => code !== item.code), { code: item.code, location: coverage.location, scope: coverage.scope }])
   }
 
   unlinkRequirement(code, slug, versionNo) {
     this.#assertWritable('取消关联需求')
+    if (this.getRequirement(code).milestones.some(m => ['frozen', 'active', 'delivered', 'archived'].includes(m.status) && m.items.some(entry => entry.project === slug && entry.version === versionNo))) throw err.conflict('REQUIREMENT_LINK_IN_USE', '此关联已作为迭代依据，请通过迭代范围变更处理')
     const version = store.readVersion(this.root, slug, versionNo)
     const links = (version.requirements || []).map((raw) => typeof raw === 'string' ? raw : raw.code).filter((item) => item !== code)
     return this.setRequirements(slug, versionNo, links)
@@ -750,6 +804,8 @@ export class Hub {
 
   listSnapshots() { return snapshots.listSnapshots(this.root) }
   getSnapshot(name) { return snapshots.readSnapshot(this.root, name) }
+  downloadSnapshot(name) { return snapshots.downloadSnapshot(this.root, name) }
+  getSnapshotFile(name, relative) { return snapshots.readSnapshotFile(this.root, name, relative) }
   inspectSnapshot(input) { return snapshots.inspectSnapshotInput(this.root, input) }
   createSnapshot(input) {
     this.#assertWritable('创建交付快照')
@@ -1640,12 +1696,15 @@ export class Hub {
     if (!gitx.isRepo(this.root)) return out
     if (key === 'git.remote' && value) {
       out.push(gitx.setRemote(this.root, value))
-    } else if (key === 'git.userName' && value) {
-      gitx.git(this.root, ['config', 'user.name', value])
-      out.push(`已写入 git config user.name`)
-    } else if (key === 'git.userEmail' && value) {
-      gitx.git(this.root, ['config', 'user.email', value])
-      out.push(`已写入 git config user.email`)
+    } else if (key === 'git.userName' || key === 'git.userEmail') {
+      const gitKey = key === 'git.userName' ? 'user.name' : 'user.email'
+      const result = value
+        ? gitx.git(this.root, ['config', '--local', gitKey, value])
+        : gitx.git(this.root, ['config', '--local', '--unset-all', gitKey])
+      if (!result.ok && !(value === '' && result.code === 5)) {
+        throw err.bad('GIT_CONFIG_FAILED', result.err || '无法更新 Git 提交身份')
+      }
+      out.push(value ? `已写入 git config ${gitKey}` : `已移除仓库身份覆盖，${gitKey} 使用继承配置`)
     }
     return out
   }
@@ -1917,7 +1976,10 @@ export class Hub {
   async importExternalRequirement(provider, key, overrides = {}) {
     this.#assertWritable('导入外部需求')
     const remote = await reqIntegration.fetchRequirement(provider, this.requirementConfig(provider, overrides), key)
-    const input = this.#externalRequirementInput(provider, remote)
+    const previous = reqx.requirementExists(this.root, remote.code) ? reqx.readRequirement(this.root, remote.code) : null
+    if (previous?.deletedAt) throw err.conflict('REQUIREMENT_DELETED', '该需求已在回收站，请先恢复后再导入')
+    if (previous && (!previous.external || previous.external.provider !== provider)) throw err.conflict('REQUIREMENT_SYNC_CONFLICT', '已有同编号需求，不能覆盖其他来源')
+    const input = this.#externalRequirementInput(provider, remote, previous?.external)
     const item = reqx.requirementExists(this.root, remote.code)
       ? reqx.updateRequirement(this.root, remote.code, input)
       : reqx.createRequirement(this.root, input)
@@ -1925,26 +1987,57 @@ export class Hub {
     return reqx.requirementDetail(this.root, item.code)
   }
 
-  async syncExternalRequirements(provider = null, overrides = {}) {
+  async syncExternalRequirements(provider = null, overrides = {}, options = {}) {
     this.#assertWritable('同步需求池')
     const selected = provider || this.settings.integrations.requirementProvider || 'mcp'
     if (!selected || selected === 'none') {
       throw err.bad('REQUIREMENT_PROVIDER_MISSING', '请先配置需求池接入方式')
     }
+    const config = this.requirementConfig(selected, overrides)
     const items = reqx.listRequirements(this.root)
       .filter((item) => item.external && item.external.provider === selected)
-    const result = { provider: selected, total: items.length, updated: 0, failed: [] }
-    for (const item of items) {
+    const excluded = new Set(reqx.listRequirements(this.root, { includeDeleted: true }).filter(item => item.deletedAt).map(item => item.code))
+    const candidates = new Map(items.map((item) => [item.code, item]))
+    const warnings = []
+    if (config.capability?.options?.protocol === 'hubpool') {
+      const remoteItems = await reqIntegration.searchRequirements(selected, { ...config, limit: 500 }, '')
+      for (const item of remoteItems) {
+        if (!excluded.has(item.code) && !candidates.has(item.code)) candidates.set(item.code, { code: item.code })
+      }
+      if (remoteItems.length >= 500) warnings.push('HubPooL 单次最多返回 500 条需求，可能还有需求未同步')
+    }
+    if (options.codes) for (const code of candidates.keys()) if (!options.codes.includes(code)) candidates.delete(code)
+    const result = { provider: selected, total: candidates.size, updated: 0, imported: 0, failed: [], warnings, preview: !!options.preview, changes: [] }
+    for (const item of candidates.values()) {
       try {
-        const key = item.external.key || item.code
-        const remote = await reqIntegration.fetchRequirement(selected, this.requirementConfig(selected, overrides), key)
-        reqx.updateRequirement(this.root, item.code, this.#externalRequirementInput(selected, remote, item.external))
+        const key = item.external?.key || item.code
+        const remote = await reqIntegration.fetchRequirement(selected, config, key)
+        const exists = reqx.requirementExists(this.root, item.code)
+        const previous = exists ? reqx.readRequirement(this.root, item.code) : null
+        if (exists && (!previous.external || previous.external.provider !== selected)) {
+          throw err.bad('REQUIREMENT_SYNC_CONFLICT', '本地已有同编号需求且未绑定此来源，请先核对后手动导入')
+        }
+        if (previous?.deletedAt) throw err.conflict('REQUIREMENT_DELETED', '需求已删除，本次跳过')
+        if (remote.code !== item.code) throw err.conflict('REQUIREMENT_SYNC_ID_CHANGED', '来源返回了不同的需求编号')
+        const input = this.#externalRequirementInput(selected, remote, previous?.external)
+        const fields = Object.keys(input).filter(field => field !== 'external' && JSON.stringify(previous?.[field] ?? '') !== JSON.stringify(input[field] ?? ''))
+          .map(field => ({ field, before: previous?.[field] ?? '', after: input[field] ?? '' }))
+        if (previous?.external?.status !== input.external.status) fields.push({ field: 'external.status', before: previous?.external?.status || '', after: input.external.status || '' })
+        const token = crypto.createHash('sha256').update(JSON.stringify({ previous, fields })).digest('hex')
+        if (!options.preview && options.expected && options.expected[item.code] !== token) throw err.conflict('REQUIREMENT_PREVIEW_STALE', '预览后数据已变化，请重新预览后同步')
+        result.changes.push({ code: item.code, title: input.title, fields, imported: !exists, token })
+        if (options.preview) continue
+        if (exists) reqx.updateRequirement(this.root, item.code, input)
+        else {
+          reqx.createRequirement(this.root, input)
+          result.imported++
+        }
         result.updated++
       } catch (e) {
         result.failed.push({ code: item.code, message: e.message })
       }
     }
-    this.#log(null, null, 'REQUIREMENT_SYNC', `同步需求池 ${result.updated}/${result.total} 条`)
+    if (!options.preview) this.#log(null, null, 'REQUIREMENT_SYNC', `同步需求池 ${result.updated}/${result.total} 条`)
     return { ...result, items: reqx.listRequirements(this.root) }
   }
 
@@ -2023,7 +2116,7 @@ export class Hub {
 
   // ==================== 内部 ====================
 
-  async #withAssessAdapter(write, fn) {
+  async #withAssessAdapter(write, fn, { closure = false } = {}) {
     if (this.assessAdapter) {
       const config = this.assessConfig || { server: { id: 'assess-task-test' }, project: '', capability: { options: {} } }
       return fn(this.assessAdapter, config)
@@ -2053,7 +2146,8 @@ export class Hub {
         tools,
         mapping: config.tools,
         projectId: config.project,
-        write
+        write,
+        closure
       })
       return await fn(adapter, config)
     } finally {
@@ -2116,7 +2210,7 @@ export class Hub {
   }
 
   #decorate(v, baselineNo) {
-    const links = reqx.resolveRequirementLinks(this.root, v.requirements)
+    const links = reqx.resolveRequirementLinks(this.root, v.requirements).map(item => ({ ...item, ...(v.requirementCoverage?.[item.code] || {}) }))
     return {
       ...v,
       requirements: links,
@@ -2132,9 +2226,6 @@ export class Hub {
     for (const raw of items || []) {
       const content = String(raw.content || '').trim()
       if (!content) continue // 空行静默跳过，不打断录入
-      if (content.length > 200) {
-        throw err.bad('CHANGE_TOO_LONG', '单条变更说明不超过 200 字')
-      }
       out.push({
         type: rules.normalizeChangeType(raw.type),
         location: String(raw.location || '').trim(),
@@ -2162,6 +2253,7 @@ export class Hub {
 
   #externalRequirementInput(provider, remote, previousExternal = {}) {
     return {
+      ...requirementDetailFields(remote),
       code: remote.code,
       title: remote.title,
       description: remote.description,

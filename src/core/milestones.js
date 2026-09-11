@@ -3,7 +3,7 @@ import path from 'node:path'
 import { err } from './errors.js'
 import { parse, stringify } from './json.js'
 import * as store from './store.js'
-import { requirementExists } from './requirements.js'
+import { requirementExists, readRequirement } from './requirements.js'
 import { MILESTONE_STATUSES, normalizeMilestoneStatus } from './milestone-lifecycle.js'
 
 export const MILESTONE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
@@ -28,6 +28,7 @@ export function normalizeMilestoneItems(root, items) {
       version: String(raw.version || '').trim()
     }
     if (!item.requirement || !requirementExists(root, item.requirement)) throw err.bad('MILESTONE_REQUIREMENT_MISSING', `需求「${item.requirement}」不存在`)
+    if (readRequirement(root, item.requirement).deletedAt) throw err.bad('MILESTONE_REQUIREMENT_DELETED', `需求「${item.requirement}」已删除，请先恢复`)
     store.readProject(root, item.project)
     store.readVersion(root, item.project, item.version)
     const key = `${item.requirement}:${item.project}:${item.version}`

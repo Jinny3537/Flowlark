@@ -1,5 +1,11 @@
+import RequirementWorkflow, { RequirementActions } from './RequirementWorkflow';
+import RequirementPrototypeButton from './RequirementPrototypeButton';
+import RequirementFields, { requirementSections } from './RequirementFields';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+import { safeRequirementUrl } from './requirementsModel.js';
 import { useNavigate, useParams } from 'react-router-dom';
-import { App, Button, DatePicker, Descriptions, Form, Input, List, Modal, Space, Tag } from 'antd';
+import { Alert, App, Button, Descriptions, Form, List, Modal, Space, Tabs, Tag } from 'antd';
 import { EditOutlined, ExportOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
@@ -13,9 +19,9 @@ import { requirementPayload } from './requirementsModel.js';
 
 const statusLabels: Record<string, string> = {
   not_started: '未开始',
-  designing: '设计中',
+  designing: '已归档 / 待定稿',
   finalized: '已定稿',
-  delivered: '已交付',
+  delivered: '原型已确认',
 };
 
 export default function RequirementDetail() {
@@ -47,6 +53,7 @@ export default function RequirementDetail() {
 
   const startEdit = useCallback(() => {
     form.setFieldsValue({
+      ...item,
       title: item?.title || '',
       description: item?.description || '',
       owner: item?.owner || '',
@@ -64,7 +71,8 @@ export default function RequirementDetail() {
     }
     setSaving(true);
     try {
-      setItem(await api.updateRequirement(code, requirementPayload(values)));
+      await api.updateRequirement(code, requirementPayload(values));
+      await load();
       message.success('需求已更新');
       setEditOpen(false);
     } catch (nextError) {
@@ -90,41 +98,74 @@ export default function RequirementDetail() {
     void load();
   }, [load]);
 
+  const renderSections = (keys: string[]) => requirementSections.filter(([key]) => keys.includes(key)).map(([key, label, placeholder]) => (
+    <section className="fl-detail-section" key={key}>
+      <h2>{label}</h2>
+      {item?.[key] ? <div className="fl-requirement-content" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(String(item[key]), { async: false, gfm: true, breaks: true }) as string) }} /> : <p className="fl-muted">{placeholder}</p>}
+    </section>
+  ));
+
   return (
-    <main className="fl-page">
+    <main className="fl-page fl-requirement-detail">
       <PageHeader
         eyebrow="需求详情"
         title={item?.title || code}
-        description={item?.description || '查看需求属性与关联原型版本。'}
+        description={`需求 ID：${code}`}
         backTo="/requirements"
         actions={item ? (
           <Space wrap>
-            <Button icon={<EditOutlined />} disabled={!writable} onClick={startEdit}>编辑</Button>
+            <RequirementPrototypeButton code={code} />
+            <RequirementActions item={item} writable={writable} onChanged={load} />
+            <Button icon={<EditOutlined />} disabled={!writable || !!item.deletedAt} onClick={startEdit}>编辑</Button>
             <Button icon={<ExportOutlined />} loading={exporting} disabled={!writable} onClick={exportPackage}>导出需求包</Button>
           </Space>
         ) : null}
       />
-      <State loading={loading} error={error} onRetry={load} empty={!item} emptyText="没有找到需求">
+      <State loading={loading && item?.code !== code} error={error} onRetry={load} empty={!item} emptyText="没有找到需求">
         <div className="fl-detail-stack">
           <section className="fl-detail-summary">
-            <Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
-              <Descriptions.Item label="编号"><span className="fl-mono">{code}</span></Descriptions.Item>
-              <Descriptions.Item label="状态"><Tag>{statusLabels[item?.derivedStatus] || textOf(item?.derivedStatus, '未开始')}</Tag></Descriptions.Item>
+<Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
+              <Descriptions.Item label="需求标题">{textOf(item?.title)}</Descriptions.Item>
+              <Descriptions.Item label="本地原型进度"><Tag>{statusLabels[item?.derivedStatus] || textOf(item?.derivedStatus, '未开始')}</Tag></Descriptions.Item>
               <Descriptions.Item label="负责人">{textOf(item?.owner)}</Descriptions.Item>
               <Descriptions.Item label="项目">{textOf(item?.project, '未分项目')}</Descriptions.Item>
               <Descriptions.Item label="模块">{textOf(item?.module, '未分模块')}</Descriptions.Item>
-              <Descriptions.Item label="来源">{item?.external ? '需求池' : '本地'}</Descriptions.Item>
-              <Descriptions.Item label="类型">{textOf(item?.type)}</Descriptions.Item>
               <Descriptions.Item label="优先级">{textOf(item?.priority)}</Descriptions.Item>
-              <Descriptions.Item label="截止日期">
+              <Descriptions.Item label="需求池阶段">{textOf(item?.stage, '待明确')}</Descriptions.Item>
+</Descriptions>
+          </section>
+          <Tabs key={code} defaultActiveKey="workflow" items={[
+            { key: 'workflow', label: '协作与开发依据', children: item ? <RequirementWorkflow item={item} writable={writable} onChanged={load} /> : null },
+            { key: 'local', label: '本地分析与历史', children: <div className="fl-detail-stack"><section className="fl-detail-section"><h2>本地分析（同步保留）</h2><p style={{ whiteSpace: 'pre-wrap' }}>{item?.localNotes || '尚未补充分析、待确认问题与决策理由'}</p></section><List dataSource={[...(item?.history || [])].reverse()} locale={{ emptyText: '暂无变更记录，旧数据不会补造历史' }} renderItem={(event: any) => <List.Item><div><strong>{fmtTime(event.at)} · {event.action === 'update' ? '字段更新' : event.action}</strong>{event.by ? <p>{event.by}</p> : null}{event.changes?.map((change: any) => <p key={change.field} style={{ overflowWrap: 'anywhere' }}>{change.field}：{typeof change.before === 'object' ? JSON.stringify(change.before) : String(change.before ?? '')} → {typeof change.after === 'object' ? JSON.stringify(change.after) : String(change.after ?? '')}</p>)}</div></List.Item>} /></div> },
+            { key: 'content', label: '需求内容', children: <div className="fl-detail-stack">{renderSections(['businessValue', 'description'])}</div> },
+            { key: 'rules', label: '规则与验收', children: <div className="fl-detail-stack"><section className="fl-detail-summary"><Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
+              <Descriptions.Item label="类型">{textOf(item?.type)}</Descriptions.Item>
+              <Descriptions.Item label="功能点">{textOf(item?.functionPoints, '待确认')}</Descriptions.Item>
+              <Descriptions.Item label="影响范围">{textOf(item?.impactScope, '待评估')}</Descriptions.Item>
+</Descriptions></section>{renderSections(['businessRule', 'acceptanceCriteria'])}</div> },
+            { key: 'delivery', label: '交付计划', children: <section className="fl-detail-summary"><Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
+              <Descriptions.Item label="本地截止日期">
                 <Space size="small" wrap>
                   <span>{textOf(item?.dueDate)}</span>
                   {item?.overdue ? <Tag color="error">已逾期</Tag> : null}
                 </Space>
               </Descriptions.Item>
-              <Descriptions.Item label="关联版本">{item?.versions?.length || 0}</Descriptions.Item>
-            </Descriptions>
-          </section>
+              <Descriptions.Item label="发布计划">{textOf(item?.versionName, item?.versionId || '未分配')}</Descriptions.Item>
+              <Descriptions.Item label="期望上线">{textOf(item?.expectedOnlineDate, 'TBD')}</Descriptions.Item>
+              <Descriptions.Item label="目标交付">{textOf(item?.targetDeliveryDate, 'TBD')}</Descriptions.Item>
+</Descriptions></section> },
+            { key: 'source', label: '来源与资料', children: <div className="fl-detail-stack"><section className="fl-detail-summary"><Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
+              <Descriptions.Item label="接入来源">{item?.external ? '需求池' : '本地'}</Descriptions.Item>
+              <Descriptions.Item label="需求池状态">{textOf(item?.external?.status)}</Descriptions.Item>
+              <Descriptions.Item label="分析状态">{textOf(item?.analysisStatus)}</Descriptions.Item>
+              <Descriptions.Item label="需求来源">{textOf(item?.source)}</Descriptions.Item>
+              <Descriptions.Item label="提出日期">{textOf(item?.proposedDate)}</Descriptions.Item>
+              <Descriptions.Item label="需求池最近更新">{item?.sourceUpdatedAt ? fmtTime(item.sourceUpdatedAt) : '—'}</Descriptions.Item>
+              <Descriptions.Item label="最近同步">{item?.external?.syncedAt ? fmtTime(item.external.syncedAt) : '—'}</Descriptions.Item>
+              <Descriptions.Item label="原型 / 资料">{safeRequirementUrl(item?.protoUrl) ? <a href={safeRequirementUrl(item.protoUrl)} target="_blank" rel="noreferrer">打开原型 / 资料</a> : textOf(item?.protoUrl, '暂无')}</Descriptions.Item>
+              <Descriptions.Item label="需求原文">{safeRequirementUrl(item?.url) ? <a href={safeRequirementUrl(item.url)} target="_blank" rel="noreferrer">打开需求原文</a> : '暂无链接'}</Descriptions.Item>
+</Descriptions></section>{renderSections(['rawDescription'])}</div> },
+            { key: 'versions', label: `关联版本（${item?.versions?.length || 0}）`, children: (
           <section className="fl-detail-section">
             <h2>跨项目版本演进</h2>
             <List
@@ -150,19 +191,14 @@ export default function RequirementDetail() {
                 );
               }}
             />
-          </section>
+          </section> ) },
+          ]} />
         </div>
       </State>
 
-      <Modal title="编辑需求" open={editOpen} confirmLoading={saving} onOk={save} onCancel={() => setEditOpen(false)}>
-        <Form form={form} layout="vertical">
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请填写标题' }]}><Input /></Form.Item>
-          <Form.Item name="description" label="描述"><Input.TextArea rows={5} /></Form.Item>
-          <Form.Item name="owner" label="负责人"><Input /></Form.Item>
-          <Form.Item name="dueDate" label="截止日期">
-            <DatePicker className="fl-full-width" format="YYYY-MM-DD" placeholder="选择截止日期" />
-          </Form.Item>
-        </Form>
+      <Modal width={800} title="编辑需求" open={editOpen} confirmLoading={saving} onOk={save} onCancel={() => setEditOpen(false)}>
+        {item?.external ? <Alert type="info" showIcon message="源字段的本地副本会在同步时更新。请将分析与待确认问题写入“本地分析”，该字段同步时保留；修改源需求请前往需求池。" style={{ marginBottom: 16 }} /> : null}
+        <Form form={form} layout="vertical"><RequirementFields /></Form>
       </Modal>
     </main>
   );

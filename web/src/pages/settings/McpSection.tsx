@@ -259,12 +259,14 @@ function CapabilityEditor({
           </Form.Item>
           <Form.Item name="description" label={`${noun}能力说明`}><Input /></Form.Item>
         </div>
+        <details><summary>高级设置：工具映射与能力选项</summary>
         <Form.Item name="toolsText" label="工具映射 JSON" rules={[{ validator: validateTools }]}>
           <Input.TextArea rows={5} className="fl-mono" spellCheck={false} />
         </Form.Item>
-        <Form.Item name="optionsText" label="能力选项 JSON" extra={name === 'milestones' ? '配置 ownerId、taskType、priorities、members 和 timezoneOffset。' : undefined}>
+        <Form.Item name="optionsText" label="能力选项 JSON" extra={name === 'milestones' ? '迭代配置：ownerId、taskType、priorities、members、timezoneOffset。上线联动另需 getVersion、closeVersion 工具映射，以及 releaseClosure 中的 sprintEndedStatuses、versionClosedStatuses、taskCompletedStatuses（填写平台真实状态值）。' : undefined}>
           <Input.TextArea rows={4} className="fl-mono" spellCheck={false} />
         </Form.Item>
+        </details>
         <Space wrap>
           <Button type="primary" loading={saving === name} disabled={!canWrite || Boolean(saving)} onClick={() => void onSave(name, form, `${noun} MCP 映射已保存`)}>
             保存{noun}能力
@@ -361,6 +363,11 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
       return;
     }
     const id = values.id.trim();
+    const affected = Object.entries(info?.config?.capabilities || {}).filter(([, capability]) => capability.server === id && capability.enabled !== false).map(([key, capability]) => capability.label || key);
+    if (!values.enabled && affected.length) {
+      const confirmed = await modal.confirm({ title: '停用此连接？', content: `以下能力将无法使用：${affected.join('、')}。能力映射会保留。`, okText: '停用连接' });
+      if (!confirmed) return;
+    }
     setSaving('server');
     try {
       const next: McpInfo = await api.saveMcpServer(id, serverPayload(values));
@@ -398,7 +405,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
   const removeServer = (id: string) => {
     modal.confirm({
       title: '删除 MCP 服务？',
-      content: `删除 ${id} 后，绑定该服务的能力会自动停用。`,
+      content: `删除 ${id} 后，绑定该服务的能力会自动停用：${Object.entries(info?.config?.capabilities || {}).filter(([, capability]) => capability.server === id).map(([key, capability]) => capability.label || key).join('、') || '无绑定能力'}。`,
       okText: '删除',
       okButtonProps: { danger: true },
       onOk: async () => {
@@ -553,7 +560,7 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
     <section className="fl-settings-section">
       <div className="fl-section-head">
         <div>
-          <h2>MCP 中心</h2>
+          <h2>外部需求、迭代与扩展</h2>
           <p>集中管理外部 MCP 服务、保存在本机的密钥和业务能力映射。</p>
         </div>
         <Space wrap>
@@ -642,9 +649,10 @@ export function McpSection({ canWrite }: { canWrite: boolean }) {
                   )}
                   <Form.Item name="enabled" label="服务状态" valuePropName="checked"><Checkbox>启用服务</Checkbox></Form.Item>
                   {serverType !== 'stdio' ? (
+                    <details><summary>高级设置：请求头 JSON</summary>
                     <Form.Item name="headersText" label="请求头 JSON" rules={[{ validator: validateHeaders }]}>
                       <Input.TextArea rows={5} className="fl-mono" spellCheck={false} />
-                    </Form.Item>
+                    </Form.Item></details>
                   ) : null}
                   <Space wrap>
                     <Button type="primary" loading={saving === 'server'} disabled={!canWrite || Boolean(saving)} onClick={() => void saveServer()}>保存服务</Button>

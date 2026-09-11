@@ -1,9 +1,10 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Alert, App, Badge, Button, Checkbox, Divider, Dropdown, Empty, Form, Input, Modal, Select, Space, Switch, Tag } from 'antd';
 import { ArrowRightOutlined, EditOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
+import { useTeamAccess } from '@/runtime/TeamAccess';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { ApiError, errorText } from '@/services/requestModel.js';
@@ -15,6 +16,8 @@ import { projectContinueRoute, sortProjectsByRecent } from './recentWorkModel.js
 
 export default function Projects() {
   const navigate = useNavigate();
+  const { session } = useTeamAccess();
+  const browseFirst = Boolean(session && !session.host);
   const { message } = App.useApp();
   const { health } = useAppRuntime();
   const writable = health?.canWrite !== false;
@@ -108,12 +111,10 @@ export default function Projects() {
       <PageHeader
         eyebrow="原型项目"
         title="选择项目，进入原型管理"
-        description="查看最新原型版本，并进入项目版本工作区。"
-        actions={<Button type="primary" icon={<PlusOutlined />} disabled={!writable} onClick={startCreate}>新建项目</Button>}
       />
       <State loading={loading} error={error} onRetry={load} empty={!items.length} emptyText="还没有项目">
         <div className="fl-section-stack">
-          <div className="fl-project-filters">
+          <div className="fl-project-filters fl-project-filters--actions">
             <Input.Search
               allowClear
               aria-label="搜索项目"
@@ -131,6 +132,7 @@ export default function Projects() {
               ]}
               onChange={setArchiveFilter}
             />
+            {writable ? <Button type="primary" icon={<PlusOutlined />} disabled={!writable} onClick={startCreate}>新建项目</Button> : undefined}
           </div>
           {filtered.length ? (
             <section className="fl-project-entry-grid" aria-label="原型项目列表">
@@ -141,7 +143,9 @@ export default function Projects() {
                     <div className="fl-project-entry-main">
                       <span className="fl-project-entry-head">
                         <span className="fl-project-entry-identity">
-                          <strong className="fl-project-entry-title">{item.name}</strong>
+                          <strong className="fl-project-entry-title">
+                            <Link className="fl-project-card-link" to={`/projects/${encodeURIComponent(item.slug)}`} aria-label={`查看 ${item.name} 的全部版本`}>{item.name}</Link>
+                          </strong>
                           <span className="fl-project-entry-code fl-mono">{textOf(item.code, item.slug)}</span>
                         </span>
                         <Badge status={item.archived ? 'default' : 'success'} text={item.archived ? '已归档' : '进行中'} />
@@ -149,7 +153,7 @@ export default function Projects() {
                       {latest ? (
                         <span className="fl-project-version-panel">
                           <span className="fl-project-version-head">
-                            <strong className="fl-mono">{latest.versionNo}</strong>
+                            <span>最新版本</span><strong className="fl-mono">{latest.versionNo}</strong>
                             <Tag color={latest.display?.color}>{latest.display?.short || latest.display?.label}</Tag>
                           </span>
                           <span className="fl-project-version-title">{textOf(latest.title, '未命名版本')}</span>
@@ -162,18 +166,14 @@ export default function Projects() {
                         </span>
                       )}
                       <span className="fl-project-baseline-note">
-                        {item.versionCount || 0} 个版本 · 当前基线{' '}
-                        <strong className="fl-mono">{textOf(item.baselineVersionNo, '未设置')}</strong>
-                        {latest && item.baselineVersionNo === latest.versionNo
-                          ? ' · 最新版本即基线'
-                          : latest ? ' · 最新版本尚未设为基线' : ''}
+                        {item.versionCount || 0} 个版本
                       </span>
                     </div>
                     <div className="fl-project-entry-actions">
-                      <Button type="primary" onClick={() => navigate(projectContinueRoute(item))}>
-                        {latest ? '继续处理' : '进入项目'} <ArrowRightOutlined />
+                      <Button type="primary" onClick={() => navigate(browseFirst ? `/projects/${encodeURIComponent(item.slug)}` : projectContinueRoute(item))}>
+                        {browseFirst ? '查看版本' : latest ? '继续处理' : '进入项目'} <ArrowRightOutlined />
                       </Button>
-                      <Button onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}>全部版本</Button>
+                      {!browseFirst ? <Button onClick={() => navigate(`/projects/${encodeURIComponent(item.slug)}`)}>全部版本</Button> : null}
                     </div>
                     <Dropdown
                       trigger={['click']}

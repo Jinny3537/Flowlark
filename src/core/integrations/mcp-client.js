@@ -37,7 +37,7 @@ async function connectStdio(config) {
   })
 
   const client = new Client(
-    { name: 'flowlark', version: '0.7.0' },
+    { name: 'flowlark', version: '0.8.0' },
     { versionNegotiation: { mode: 'legacy' }, inputRequired: { autoFulfill: false } }
   )
 

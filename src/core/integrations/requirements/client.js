@@ -1,9 +1,11 @@
+import { requirementDetailFields } from '../../requirement-fields.js'
 import { err } from '../../errors.js'
 
 export function normalizeRequirement(provider, item) {
   const code = String(item.code || item.key || item.id || item.number || '').trim()
   if (!code) throw err.bad('REQUIREMENT_REMOTE_INVALID', '外部需求缺少编号')
   return {
+    ...requirementDetailFields(item),
     provider,
     code,
     title: String(item.title || item.name || item.summary || code),

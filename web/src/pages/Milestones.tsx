@@ -88,7 +88,6 @@ export default function Milestones() {
       <PageHeader
         eyebrow="交付周期"
         title="迭代"
-        description="按交付周期组织需求、版本范围和定稿风险。"
         actions={(
           <Space wrap>
             <Button icon={<SyncOutlined />} loading={syncing} disabled={!writable} onClick={syncAll}>同步全部</Button>

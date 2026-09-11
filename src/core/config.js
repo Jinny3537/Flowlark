@@ -177,7 +177,7 @@ export const SCHEMA = [
   },
   {
     key: 'ui.dateStyle', type: 'string', default: 'relative', enum: ['relative', 'absolute'],
-    label: '时间显示', note: 'relative=3 小时前，absolute=2026-08-20 14:30'
+    label: '时间显示', note: '日常列表与详情可使用相对或完整时间；操作日志始终显示完整时间'
   }
 ]
 

@@ -6,6 +6,7 @@ import { FormalReleaseDialog } from '@/components/FormalReleaseDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
 import { useAppRuntime } from '@/runtime/AppRuntime';
+import { useTeamAccess } from '@/runtime/TeamAccess';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { fmtTime, textOf } from '@/utils/format';
@@ -23,6 +24,8 @@ export default function MilestoneDetail() {
   const { name = '' } = useParams();
   const { message } = App.useApp();
   const { health } = useAppRuntime();
+  const { session } = useTeamAccess();
+  const remoteTeam = Boolean(session && !session.host);
   const writable = health?.canWrite !== false;
   const [item, setItem] = useState<any>(null);
   const [requirements, setRequirements] = useState<any[]>([]);
@@ -66,10 +69,10 @@ export default function MilestoneDetail() {
         api.getMilestone(name),
         api.listRequirements(),
         api.listProjects(),
-        api.milestonePreflight(name),
-        api.milestoneSyncJournal(name),
-        api.milestoneExecutionSummary(name).catch(() => null),
-        api.listReleaseMails(),
+        remoteTeam ? null : api.milestonePreflight(name),
+        remoteTeam ? null : api.milestoneSyncJournal(name),
+        remoteTeam ? null : api.milestoneExecutionSummary(name).catch(() => null),
+        remoteTeam ? [] : api.listReleaseMails(),
       ]);
       setItem(nextItem);
       setRequirements(nextRequirements);
@@ -83,7 +86,7 @@ export default function MilestoneDetail() {
     } finally {
       setLoading(false);
     }
-  }, [name]);
+  }, [name, remoteTeam]);
 
   const loadVersions = useCallback(async (project: string) => {
     const request = ++versionsRequest.current;
@@ -217,6 +220,7 @@ export default function MilestoneDetail() {
         <div className="fl-detail-stack">
           <section className="fl-detail-summary">
             <Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
+              <Descriptions.Item label="迭代名称">{textOf(item?.title)}</Descriptions.Item>
               <Descriptions.Item label="标识"><span className="fl-mono">{name}</span></Descriptions.Item>
               <Descriptions.Item label="状态"><Tag color={item?.ready ? 'success' : 'warning'}>{item?.ready ? '可交付' : `${item?.warnings?.length || 0} 项风险`}</Tag></Descriptions.Item>
               <Descriptions.Item label="开始">{textOf(item?.startAt)}</Descriptions.Item>

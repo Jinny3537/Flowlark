@@ -3,12 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AppstoreOutlined,
   CalendarOutlined,
-  DeleteOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
   FileTextOutlined,
   FolderOutlined,
-  InboxOutlined,
   MenuOutlined,
   PlusOutlined,
   SearchOutlined,
@@ -16,6 +14,8 @@ import {
   SettingOutlined,
   BellOutlined,
   BranchesOutlined,
+  DownOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import { App, Badge, Button, Drawer, Dropdown, Grid, Layout, List, Menu, Popover, Space, Tag, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
@@ -23,6 +23,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { useAppRuntime } from '@/runtime/AppRuntime';
+import { roleLabels, useTeamAccess } from '@/runtime/TeamAccess';
 import { parseSiderCollapsed } from './appShellModel.js';
 import { GitDrawer } from './GitDrawer';
 import { NewVersionDialog } from './NewVersionDialog';
@@ -37,8 +38,6 @@ const navigation: MenuProps['items'] = [
   { key: 'milestones', icon: <CalendarOutlined />, label: '迭代' },
   { key: 'deliveries', icon: <SendOutlined />, label: '交付' },
   { type: 'divider' },
-  { key: 'watch', icon: <InboxOutlined />, label: '草稿箱' },
-  { key: 'trash', icon: <DeleteOutlined />, label: '回收站' },
   { key: 'settings', icon: <SettingOutlined />, label: '设置' },
 ];
 
@@ -48,8 +47,6 @@ const pageNames: Record<string, string> = {
   requirements: '需求',
   milestones: '迭代',
   deliveries: '交付',
-  watch: '草稿箱',
-  trash: '回收站',
   settings: '设置',
 };
 
@@ -62,6 +59,8 @@ export function AppShell({ children }: AppShellProps) {
   const location = useLocation();
   const { message } = App.useApp();
   const { health, git, notifications, reload } = useAppRuntime();
+  const { session } = useTeamAccess();
+  const remoteTeam = Boolean(session && !session.host);
   const screens = Grid.useBreakpoint();
   const mobile = !screens.md;
   const [siderCollapsed, setSiderCollapsed] = useState(() => {
@@ -135,10 +134,10 @@ export function AppShell({ children }: AppShellProps) {
       mode="inline"
       inlineCollapsed={!mobile && siderCollapsed}
       selectedKeys={[selected]}
-      items={navigation}
+      items={remoteTeam ? navigation?.filter((item) => item && 'key' in item && item.key !== 'settings') : navigation}
       onClick={({ key }) => navigate(`/${key}`)}
     />
-  ), [mobile, navigate, selected, siderCollapsed]);
+  ), [mobile, navigate, selected, siderCollapsed, remoteTeam]);
 
   const quickItems: MenuProps['items'] = [
     { key: 'version', icon: <FileTextOutlined />, label: '导入原型' },
@@ -226,6 +225,23 @@ export function AppShell({ children }: AppShellProps) {
     </div>
   );
 
+  const runtimeStatus = (
+    <div className="fl-runtime-summary">
+      <span className="fl-runtime-connection">
+        <span className={`fl-status-dot ${health ? 'is-online' : ''}`} aria-hidden="true" />
+        {health ? '已连接' : '离线'}
+      </span>
+      {session?.enabled ? (
+        <span className="fl-runtime-role" aria-label={`当前角色：${roleLabels[session.role || '']}`}>
+          {roleLabels[session.role || '']}{session.host ? <span className="fl-runtime-host">主机</span> : null}
+        </span>
+      ) : health?.canWrite === false ? <span className="fl-runtime-role" aria-label="当前角色：游客">游客</span> : null}
+      {health?.lan ? <span className="fl-runtime-network"><GlobalOutlined />局域网已开放</span> : null}
+      {health?.version ? <code className="fl-runtime-version">v{health.version}</code> : null}
+      {updateAvailable?.version ? <Tag color="cyan">可更新至 {updateAvailable.version}</Tag> : null}
+    </div>
+  );
+
   return (
     <Layout className="fl-app-shell">
       <a className="fl-skip-link" href="#main-content">跳到主要内容</a>
@@ -292,18 +308,19 @@ export function AppShell({ children }: AppShellProps) {
             <Tooltip title="全局搜索">
               <Button
                 className="fl-header-search"
+                aria-label="全局搜索"
                 icon={<SearchOutlined />}
                 onClick={() => navigate('/search')}
               >
                 {!mobile ? '搜索' : null}
               </Button>
             </Tooltip>
-            <Dropdown menu={{ items: quickItems, onClick: handleQuickCreate }} trigger={['click']}>
-              <Button type="primary" icon={<PlusOutlined />} disabled={!canWrite}>
+            {!remoteTeam ? <Dropdown menu={{ items: quickItems, onClick: handleQuickCreate }} trigger={['click']}>
+              <Button className="fl-header-create" type="primary" aria-label="快速创建" icon={<PlusOutlined />} disabled={!canWrite}>
                 {!mobile ? '快速创建' : null}
               </Button>
-            </Dropdown>
-            <Popover content={notificationContent} title="待办与通知" trigger="click" placement="bottomRight">
+            </Dropdown> : null}
+            {!remoteTeam ? <Popover content={notificationContent} title="待办与通知" trigger="click" placement="bottomRight">
               <Badge count={pendingNotifications.length} size="small">
                 <Button
                   className="fl-header-icon"
@@ -312,8 +329,8 @@ export function AppShell({ children }: AppShellProps) {
                   aria-label="待办与通知"
                 />
               </Badge>
-            </Popover>
-            <Tooltip title={gitTooltip}>
+            </Popover> : null}
+            {!remoteTeam ? <Tooltip title={gitTooltip}>
               <Badge count={gitBadge} size="small">
                 <Button
                   className="fl-header-icon"
@@ -323,21 +340,18 @@ export function AppShell({ children }: AppShellProps) {
                   onClick={() => setGitOpen(true)}
                 />
               </Badge>
-            </Tooltip>
+            </Tooltip> : null}
           </div>
-          <div className="fl-header-status fl-runtime-tags" aria-label="运行状态">
-            <span className={`fl-status-dot ${health ? 'is-online' : ''}`} aria-hidden="true" />
-            <span>{health ? '已连接' : '离线'}</span>
-            {health?.canWrite === false ? (
-              <Tooltip title={health.readonlyReason === 'git'
-                ? '当前 Git 身份没有远端写权限，写操作已被禁用。'
-                : '当前视图只读，写操作仅限运行 Flowlark 的机器。'}>
-                <Tag color="warning">{health.readonlyReason === 'git' ? 'Git 只读' : '只读'}</Tag>
-              </Tooltip>
-            ) : null}
-            {health?.lan ? <Tag color="cyan">局域网已开放</Tag> : null}
-            {health?.version ? <code>v{health.version}</code> : null}
-            {updateAvailable?.version ? <Tag color="cyan">可更新至 {updateAvailable.version}</Tag> : null}
+          <div className="fl-header-status" aria-label="运行状态">
+            {screens.xl ? runtimeStatus : (
+              <Popover content={runtimeStatus} title="运行状态" trigger="click" placement="bottomRight">
+                <Button className="fl-runtime-trigger" type="text" aria-label="查看运行状态">
+                  <span className={`fl-status-dot ${health ? 'is-online' : ''}`} aria-hidden="true" />
+                  {!mobile ? (health ? '已连接' : '离线') : null}
+                  <DownOutlined />
+                </Button>
+              </Popover>
+            )}
           </div>
         </Header>
 

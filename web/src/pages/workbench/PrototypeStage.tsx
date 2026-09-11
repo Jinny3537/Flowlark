@@ -11,13 +11,13 @@ import {
   LinkOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Checkbox, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Checkbox, Popover, Tag, Tooltip, Typography } from 'antd';
 import {
   useMemo,
   useRef,
-  useState,
   type CSSProperties,
 } from 'react';
+import styles from './VersionWorkbench.module.css';
 import { AnnotationOverlay, type Anchor } from './AnnotationOverlay';
 
 export type PrototypeStageProps = {
@@ -94,16 +94,6 @@ const layout: Record<string, CSSProperties> = {
     flex: '0 0 auto',
     margin: 'var(--fl-s-2) var(--fl-s-3) 0',
   },
-  alertBody: {
-    display: 'grid',
-    gap: 'var(--fl-s-2)',
-  },
-  alertActions: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 'var(--fl-s-2)',
-  },
   refs: {
     maxHeight: 132,
     margin: 0,
@@ -166,7 +156,6 @@ export function PrototypeStage({
 }: PrototypeStageProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [refsOpen, setRefsOpen] = useState(false);
   const externalRefs = useMemo(
     () => (Array.isArray(version?.externalRefs) ? version.externalRefs.map(String) : []),
     [version?.externalRefs],
@@ -272,37 +261,42 @@ export function PrototypeStage({
           style={layout.alert}
           type={version?.hasOffline ? 'info' : 'warning'}
           showIcon
-          message={`本原型依赖 ${externalRefs.length} 个外部资源`}
-          description={(
-            <div style={layout.alertBody}>
-              <span>
-                {version?.hasOffline
-                  ? '离线版已就绪，可切换离线预览。'
-                  : '网络不可用或资源被代理拦截时，原型样式可能不完整。'}
-              </span>
-              <div style={layout.alertActions}>
-                {!version?.hasOffline ? (
-                  <Button
-                    size="small"
-                    type="link"
-                    icon={<CloudDownloadOutlined />}
-                    loading={buildingOffline}
-                    onClick={onBuildOffline}
-                  >
-                    生成离线版
-                  </Button>
-                ) : null}
-                <Button size="small" type="link" onClick={() => setRefsOpen((value) => !value)}>
-                  {refsOpen ? '收起清单' : '查看清单'}
+          className={styles.compactNotice}
+          message={(
+            <div className={styles.noticeRow}>
+              <span>{externalRefs.length} 个外部资源{version?.hasOffline ? ' · 离线版已就绪' : ''}</span>
+              {!version?.hasOffline ? (
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<CloudDownloadOutlined />}
+                  loading={buildingOffline}
+                  onClick={onBuildOffline}
+                >
+                  生成离线版
                 </Button>
-              </div>
-              {refsOpen ? (
-                <ul style={layout.refs}>
-                  {externalRefs.map((item, index) => (
-                    <li key={`${item}-${index}`} style={layout.ref}>{item}</li>
-                  ))}
-                </ul>
               ) : null}
+              <Popover
+                trigger="click"
+                placement="bottomLeft"
+                title="外部资源"
+                content={(
+                  <div className={styles.noticeDetails}>
+                    <p>
+                      {version?.hasOffline
+                        ? '离线版已就绪，可切换离线预览。'
+                        : '网络不可用或资源被代理拦截时，原型样式可能不完整。'}
+                    </p>
+                    <ul style={layout.refs}>
+                      {externalRefs.map((item, index) => (
+                        <li key={`${item}-${index}`} style={layout.ref}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              >
+                <Button size="small" type="link">查看清单</Button>
+              </Popover>
             </div>
           )}
         />

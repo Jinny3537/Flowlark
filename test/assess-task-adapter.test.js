@@ -138,3 +138,24 @@ test('rejects a non-numeric configured project id', () => {
     (error) => error.code === 'ASSESS_PROJECT_ID_INVALID'
   )
 })
+
+test('closure tools are optional for existing sync and required for online closure', async () => {
+  const missing = validateAssessContract(contractTools(), mapping, { closure: true })
+  assert.ok(missing.problems.some((p) => p.operation === 'closeVersion'))
+  const closureMapping = { ...mapping, getVersion: 'platform.getVersion', closeVersion: 'platform.closeVersion' }
+  const tools = [...contractTools(),
+    { name: closureMapping.getVersion, inputSchema: { type: 'object', required: ['versionId'], properties: { versionId: { type: 'integer' } } } },
+    { name: closureMapping.closeVersion, inputSchema: { type: 'object', required: ['body'], properties: {
+      body: { type: 'object', required: ['versionId', 'revision'], properties: { versionId: {}, revision: {} } }
+    } } }
+  ]
+  assert.equal(validateAssessContract(tools, closureMapping, { closure: true }).problems.length, 0)
+  const calls = []
+  const adapter = createAssessTaskAdapter({ tools, mapping: closureMapping, projectId: 1, closure: true, session: {
+    async callTool(name, args) { calls.push({ name, args }); return { data: { versionId: 20, projectId: 1, revision: 2, state: 'closed' } } }
+  } })
+  assert.deepEqual(await adapter.getVersion(20), { id: 20, projectId: 1, revision: 2, status: 'closed' })
+  await adapter.closeVersion({ versionId: 20, revision: 2 })
+  assert.deepEqual(calls[1], { name: closureMapping.closeVersion, args: { body: { versionId: 20, revision: 2 } } })
+  await assert.rejects(adapter.listTasks({ sprintId: 10 }), { code: 'ASSESS_TASKS_INVALID' })
+})
