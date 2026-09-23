@@ -7,6 +7,7 @@ import crypto from 'node:crypto'
 import { err } from './errors.js'
 import { INTERNAL_DIR } from './repo.js'
 
+export const VISITOR_MAX_AGE = 31536000
 export const TEAM_ROLES = ['guest', 'developer', 'tester']
 const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
 const statePath = (root) => path.join(root, INTERNAL_DIR, 'cache', 'team.json')
@@ -44,18 +45,44 @@ export function setTeamEnabled(root, enabled) {
   write(root, state)
 }
 
-export function visitor(root, token) {
+export function visitor(root, token, now = Date.now()) {
   if (!/^[a-f0-9]{64}$/.test(token || '')) return null
-  return read(root).visitors.find((item) => item.tokenHash === digest(token)) || null
+  const item = read(root).visitors.find((item) => item.tokenHash === digest(token))
+  if (!item) return null
+  const expires = item.expiresAt ? Date.parse(item.expiresAt) : Date.parse(item.createdAt) + VISITOR_MAX_AGE * 1000
+  return Number.isFinite(expires) && expires > now ? item : null
 }
 
 export function createVisitor(root, ip) {
   const token = crypto.randomBytes(32).toString('hex')
   const state = read(root)
-  const item = { id: crypto.randomUUID(), tokenHash: digest(token), role: null, ip: String(ip || ''), createdAt: new Date().toISOString() }
+  const item = { id: crypto.randomUUID(), tokenHash: digest(token), role: null, ip: String(ip || ''), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + VISITOR_MAX_AGE * 1000).toISOString() }
   state.visitors.push(item)
   write(root, state)
   return { token, item }
+}
+
+export function loginVisitor(root, identity, ip) {
+  const state = read(root)
+  let item = state.visitors.find(entry => entry.identity?.key === identity.key)
+  const token = crypto.randomBytes(32).toString('hex')
+  if (!item) {
+    item = { id: crypto.randomUUID(), role: null, ip: String(ip || ''), createdAt: new Date().toISOString() }
+    state.visitors.push(item)
+  }
+  item.tokenHash = digest(token)
+  item.identity = identity
+  item.ip = String(ip || '')
+  item.lastLoginAt = new Date().toISOString()
+  item.expiresAt = new Date(Date.now() + VISITOR_MAX_AGE * 1000).toISOString()
+  write(root, state)
+  return { token, item }
+}
+
+export function revokeVisitor(root, token) {
+  const state = read(root)
+  const item = state.visitors.find(entry => entry.tokenHash === digest(token))
+  if (item) { item.tokenHash = digest(crypto.randomBytes(32)); write(root, state) }
 }
 
 export function assignRole(root, id, role, { first = false } = {}) {
@@ -71,7 +98,7 @@ export function assignRole(root, id, role, { first = false } = {}) {
 }
 
 export function listVisitors(root) {
-  return read(root).visitors.map(({ tokenHash, ...item }) => item)
+  return read(root).visitors.map(({ tokenHash, identity, ...item }) => ({ ...item, user: identity ? { provider: identity.provider, name: identity.name } : null }))
 }
 
 export function recordKinds(role) {

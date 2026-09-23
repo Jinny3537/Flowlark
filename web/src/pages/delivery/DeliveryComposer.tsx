@@ -1,12 +1,28 @@
 import { Alert, Button, Form, Input, List, Modal, Select, Space, Steps, Tag } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useAppRuntime } from '@/runtime/AppRuntime';
+import { contextualRoute, deliveryDraftKey } from '../workflowModel.js';
 import { Link } from 'react-router-dom';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 
 export const purposeLabels: Record<string, string> = { review: '评审材料', development: '研发交接', acceptance: '验收归档' };
-export default function DeliveryComposer({ open, onClose, onCreated, milestones, snapshots, writable }: any) {
+export default function DeliveryComposer({ open, onClose, onCreated, milestones, snapshots, writable, initialMilestone = "", draftOrigin = "", returnContext = "" }: any) {
   const [form] = Form.useForm();
+  const { health } = useAppRuntime();
+  const draftKey = deliveryDraftKey(health?.repo || window.location.origin, draftOrigin);
+  const initialized = useRef('');
+  const [draftWarning, setDraftWarning] = useState('');
+  const persist = (_: any, values: any) => {
+    try { sessionStorage.setItem(draftKey, JSON.stringify(values)); }
+    catch { setDraftWarning('当前浏览器无法暂存输入，请在离开前自行保存交接说明。'); }
+  };
+  const discard = () => { try { sessionStorage.removeItem(draftKey); } catch {} form.resetFields(); initialized.current = ''; onClose(); };
+  const pause = () => { persist(null, form.getFieldsValue(true)); initialized.current = ''; onClose(); };
+  const resumeParams = new URLSearchParams(returnContext);
+  resumeParams.set('prepare', Form.useWatch('milestone', form) || initialMilestone);
+  resumeParams.set('draft', draftOrigin);
+  const resumeRoute = `/deliveries?${resumeParams}`;
   const milestone = Form.useWatch('milestone', form);
   const [step, setStep] = useState(0);
   const [check, setCheck] = useState<any>(null);
@@ -15,8 +31,15 @@ export default function DeliveryComposer({ open, onClose, onCreated, milestones,
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
-    if (open) { setStep(0); setError(''); setRefresh(n => n + 1); }
-  }, [open]);
+    if (!open) { initialized.current = ''; return; }
+    if (!health?.repo || initialized.current === draftKey) return;
+    initialized.current = draftKey;
+    let draft: any = null;
+    try { draft = JSON.parse(sessionStorage.getItem(draftKey) || 'null'); } catch { setDraftWarning('暂存资料无法读取，请重新填写。'); }
+    form.resetFields();
+    form.setFieldsValue({ purpose: 'development', milestone: initialMilestone || undefined, ...(draft && typeof draft === 'object' && !Array.isArray(draft) ? draft : {}) });
+    setStep(0); setError(''); setRefresh(n => n + 1);
+  }, [open, draftKey, health?.repo, form, initialMilestone]);
   useEffect(() => {
     let active = true;
     setCheck(null);
@@ -30,21 +53,26 @@ export default function DeliveryComposer({ open, onClose, onCreated, milestones,
   async function next() {
     try { await form.validateFields(['name', 'title', 'milestone', 'purpose']); setStep(1); } catch { /* Field messages */ }
   }
+  const submitting = useRef(false);
   async function create() {
+    if (submitting.current || !writable) return;
+    submitting.current = true;
     try {
       const values = await form.validateFields();
       setSaving(true); setError('');
       const result = await api.createSnapshot(values);
-      form.resetFields(); onCreated(result);
+      try { sessionStorage.removeItem(draftKey); } catch {}
+      initialized.current = ''; form.resetFields(); onCreated(result);
     } catch (cause: any) { if (!cause?.errorFields) setError(errorText(cause, '创建交付包失败')); }
-    finally { setSaving(false); }
+    finally { submitting.current = false; setSaving(false); }
   }
-  return <Modal title="准备交付包" open={open} width={820} onCancel={saving ? undefined : onClose} closable={!saving} maskClosable={!saving}
-    footer={<Space><Button disabled={saving} onClick={onClose}>取消</Button>{step > 0 && <Button disabled={saving} onClick={() => setStep(step - 1)}>上一步</Button>}
+  return <Modal title="准备交付包" open={open} width={820} style={{ top: 20 }} styles={{ body: { maxHeight: 'calc(100dvh - 230px)', overflowY: 'auto' } }} onCancel={saving ? undefined : pause} closable={!saving} maskClosable={!saving}
+    footer={<Space wrap><Button disabled={saving} onClick={discard}>放弃草稿</Button><Button disabled={saving} onClick={pause}>暂存并关闭</Button>{step > 0 && <Button disabled={saving} onClick={() => setStep(step - 1)}>上一步</Button>}
       {step === 0 ? <Button type="primary" onClick={next}>检查交付材料</Button> : step === 1 ? <Button type="primary" disabled={!check?.ready || checking} onClick={() => setStep(2)}>填写交接说明</Button> : <Button type="primary" loading={saving} disabled={!writable || !check?.ready} onClick={create}>冻结并创建交付包</Button>}</Space>}>
     <Steps size="small" current={step} items={[{ title: '确定范围' }, { title: '检查材料' }, { title: '冻结交接' }]} className="delivery-steps" />
+    {draftWarning && <Alert type="warning" message={draftWarning} />}
     {error && <Alert type="error" showIcon title={error} />}
-    <Form form={form} layout="vertical" initialValues={{ purpose: 'development' }}>
+    <Form form={form} layout="vertical" onValuesChange={persist} initialValues={{ purpose: 'development' }}>
       <div hidden={step !== 0}>
         <Form.Item name="title" label="交付标题" rules={[{ required: true, whitespace: true, message: '请填写便于团队识别的标题' }]}><Input placeholder="例如：订单中心 · 第一期研发交接" /></Form.Item>
         <div className="delivery-form-grid">
@@ -52,7 +80,7 @@ export default function DeliveryComposer({ open, onClose, onCreated, milestones,
           <Form.Item name="purpose" label="交付用途" rules={[{ required: true }]}><Select options={Object.entries(purposeLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
         </div>
         <Form.Item name="milestone" label="来源迭代" rules={[{ required: true, message: '请选择来源迭代' }]} extra="按迭代中明确选定的需求和原型版本冻结，不自动改为最新版本。"><Select showSearch optionFilterProp="label" placeholder="选择本次交付范围" options={milestones.map((item: any) => ({ value: item.name, label: `${item.title || item.name} · ${item.name}` }))} /></Form.Item>
-        {!milestones.length && <Alert type="info" showIcon title="先建立交付范围" description={<Link to="/milestones" onClick={onClose}>前往迭代，关联需求与原型版本</Link>} />}
+        {!milestones.length && <Alert type="info" showIcon title="先建立交付范围" description={<Link to="/milestones" onClick={pause}>前往迭代，关联需求与原型版本</Link>} />}
         <Form.Item name="supersedes" label="接续哪次交付（可选）" extra="需求变更时创建新交付包，保留上次材料以便追溯。"><Select allowClear placeholder="首次交付可不选" options={snapshots.map((item: any) => ({ value: item.name, label: item.title || item.name }))} /></Form.Item>
       </div>
       <div hidden={step !== 1}>
@@ -61,7 +89,7 @@ export default function DeliveryComposer({ open, onClose, onCreated, milestones,
         {[...(check?.blockers || []), ...(check?.warnings || [])].map((item: any, i) => <p key={i} className="delivery-check-message">{item.message}</p>)}
         <List loading={checking} dataSource={check?.items || []} locale={{ emptyText: '选择来源迭代后检查材料' }} renderItem={(item: any) => <List.Item key={`${item.requirement}/${item.project}/${item.version}`}>
           <List.Item.Meta title={`${item.requirement || '未关联需求'} ${item.requirementTitle || ''}`} description={`${item.project} / ${item.version} · ${item.title || ''}`} />
-          <Space wrap><Tag color={item.hasSpec ? 'success' : 'warning'}>{item.hasSpec ? '有技术规格说明书' : '缺技术规格说明书'}</Tag><Tag>{item.attachmentCount || 0} 附件</Tag><Link target="_blank" to={`/projects/${encodeURIComponent(item.project)}/versions/${encodeURIComponent(item.version)}`}>补充材料</Link></Space>
+          <Space wrap><Tag color={item.hasSpec ? 'success' : 'warning'}>{item.hasSpec ? '有技术规格说明书' : '缺技术规格说明书'}</Tag><Tag>{item.attachmentCount || 0} 附件</Tag><Link to={contextualRoute(`/projects/${encodeURIComponent(item.project)}/versions/${encodeURIComponent(item.version)}?tab=files`, resumeRoute, "交付准备")} onClick={() => persist(null, form.getFieldsValue(true))}>补充材料</Link></Space>
         </List.Item>} />
       </div>
       <div hidden={step !== 2}>

@@ -52,10 +52,12 @@ try {
   await page.getByRole('button', { name: '安排到迭代', exact: true }).click();
   const planning = page.getByRole('dialog');
   await planning.getByRole('combobox', { name: '目标迭代', exact: true }).click();
-  await page.getByTitle('后续候选迭代', { exact: true }).click();
+  await page.locator('.ant-select-dropdown:visible').getByText('后续候选迭代', { exact: true }).click();
   await planning.getByRole('combobox', { name: '候选归档版本', exact: true }).click();
   await page.getByTitle('orders / v1.6', { exact: true }).click();
-  await planning.getByRole('button', { name: /确.*定/ }).click();
+  await planning.getByRole('button', { name: '核对范围', exact: true }).click();
+  await planning.getByRole('button', { name: '确认并加入', exact: true }).click();
+  await planning.getByRole('button', { name: '留在当前页', exact: true }).click();
   await page.getByRole('link', { name: '后续候选迭代', exact: true }).waitFor();
   assert.equal(hub.getMilestone('next-08').items[0].version, 'v1.6');
   assert.equal(hub.getRequirement('REQ-08').adopted[0].version, 'v1.4');
@@ -65,10 +67,9 @@ try {
   await page.getByRole('dialog').getByRole('button',{name:'移入回收站'}).click();
   await page.getByText('没有匹配的需求').waitFor();
   assert.ok(hub.getRequirement('REQ-DELETE').deletedAt);
-  await page.getByRole('combobox',{name:'需求范围'}).click();
-  await page.getByTitle('需求回收站',{exact:true}).click();
+  await page.goto(base + '/#/requirements/REQ-DELETE');
   await page.getByRole('button',{name:'恢复需求',exact:true}).click();
-  await page.getByText('没有匹配的需求').waitFor();
+  await page.getByRole('button',{name:'删除需求',exact:true}).waitFor();
   assert.equal(hub.getRequirement('REQ-DELETE').deletedAt,null);
   await page.goto(base + '/#/requirements/REQ-08'); await page.waitForLoadState('networkidle');
   await page.getByRole('button',{name:'查看并回复',exact:true}).click();
@@ -85,9 +86,11 @@ try {
   for (const role of ['developer', 'tester']) {
     const context = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.20' }, viewport: { width: 1280, height: 900 } });
     const remote = await context.newPage(); remote.setDefaultTimeout(15000); remote.on('pageerror', e => errors.push(e.message));
+    // Fixture identity keeps this regression focused on requirement collaboration, not login UI.
+    const visitor = team.createVisitor(root, '192.0.2.20');
+    team.assignRole(root, visitor.item.id, role, { first: true });
+    await context.addCookies([{ name: 'flowlark_visitor', value: visitor.token, domain: '127.0.0.1', path: '/api' }]);
     await remote.goto(base + '/#/requirements/REQ-08');
-    await remote.getByRole('radio', { name: role === 'developer' ? /研发/ : /测试/ }).check();
-    await remote.getByRole('button', { name: '确认角色并进入' }).click();
     await remote.getByRole('heading', { name: '本次开发依据', exact: true }).waitFor();
     assert.equal(await remote.getByRole('button', { name: '删除需求', exact: true }).isDisabled(), true);
     await remote.getByRole('combobox', { name: '选择协作版本', exact: true }).click();

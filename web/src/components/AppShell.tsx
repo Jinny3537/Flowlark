@@ -59,7 +59,7 @@ export function AppShell({ children }: AppShellProps) {
   const location = useLocation();
   const { message } = App.useApp();
   const { health, git, notifications, reload } = useAppRuntime();
-  const { session } = useTeamAccess();
+  const { session, refresh } = useTeamAccess();
   const remoteTeam = Boolean(session && !session.host);
   const screens = Grid.useBreakpoint();
   const mobile = !screens.md;
@@ -231,10 +231,15 @@ export function AppShell({ children }: AppShellProps) {
         <span className={`fl-status-dot ${health ? 'is-online' : ''}`} aria-hidden="true" />
         {health ? '已连接' : '离线'}
       </span>
-      {session?.enabled ? (
+      {(session?.enabled || session?.user) ? (
+        <>
         <span className="fl-runtime-role" aria-label={`当前角色：${roleLabels[session.role || '']}`}>
-          {roleLabels[session.role || '']}{session.host ? <span className="fl-runtime-host">主机</span> : null}
+          {session.user ? `${session.user.name} · ` : ''}{roleLabels[session.role || '']}{session.host ? <span className="fl-runtime-host">主机</span> : null}
         </span>
+        {(session.enabled || session.user) && !session.host ? <Button size="small" onClick={async () => {
+          try { await api.logoutTeam(); await refresh(true); } catch (e) { message.error(errorText(e)); }
+        }}>{session.user ? '退出登录' : '切换访问方式'}</Button> : null}
+        </>
       ) : health?.canWrite === false ? <span className="fl-runtime-role" aria-label="当前角色：游客">游客</span> : null}
       {health?.lan ? <span className="fl-runtime-network"><GlobalOutlined />局域网已开放</span> : null}
       {health?.version ? <code className="fl-runtime-version">v{health.version}</code> : null}

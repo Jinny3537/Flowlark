@@ -75,7 +75,7 @@ export function TeamSection({ lan, lanOn, canWrite, networkBusy, onSaveLan, onCo
       </section>
       {session?.host && session.enabled ? <section className="fl-settings-section">
         <div className="fl-section-head">
-          <div><h2>访问者角色</h2><p>管理已访问此主机的浏览器及其协作角色。</p></div>
+          <div><h2>访问者角色</h2><p>管理微信账号、游客浏览器及其协作角色。</p></div>
           <Button aria-label="刷新访客" icon={<ReloadOutlined />} loading={loading} disabled={busy} onClick={() => void load()}>刷新访客</Button>
         </div>
         <Table
@@ -86,7 +86,7 @@ export function TeamSection({ lan, lanOn, canWrite, networkBusy, onSaveLan, onCo
           dataSource={visitors}
           locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无远程访客，分享工作台地址即可开始协作" /> }}
           columns={[
-            { title: '访问者', key: 'visitor', render: (_, item) => <Tooltip title={item.id}><span className="fl-mono">{item.id.slice(0, 8)}</span></Tooltip> },
+            { title: '访问者', key: 'visitor', render: (_, item) => <Space direction="vertical" size={0}>{item.user ? <span>{item.user.name} <Tag color="green">微信</Tag></span> : <span>游客访问</span>}<Tooltip title={item.id}><span className="fl-mono">{item.id.slice(0, 8)}</span></Tooltip></Space> },
             { title: '访问 IP', dataIndex: 'ip', responsive: ['sm'], render: (ip) => <span className="fl-mono">{ip || '未知 IP'}</span> },
             { title: '协作角色', key: 'role', width: 148, render: (_, item) => (
               <Select aria-label={`调整访客 ${item.id.slice(0, 8)} 的角色`} value={item.role || undefined} placeholder="分配角色" disabled={busy} className="fl-full-width"
@@ -95,7 +95,7 @@ export function TeamSection({ lan, lanOn, canWrite, networkBusy, onSaveLan, onCo
             ) },
           ]}
         />
-        <p className="fl-settings-help">每个浏览器独立记忆角色，IP 仅辅助识别；清除浏览器数据后将作为新访客访问。</p>
+        <p className="fl-settings-help">游客按浏览器记忆角色；微信账号再次登录保留角色。昵称与 IP 仅辅助识别，同名账号请核对访客标识。</p>
       </section> : null}
     </div>
   </>;

@@ -46,7 +46,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
       defaultTags: s.ui.defaultTags,
       dateStyle: s.ui.dateStyle,
       updateManifestUrl: s.integrations.updateManifestUrl,
-      rules: { requireChangelog: s.rules.requireChangelog, lockBaseline: s.rules.lockBaseline }
+      rules: { requireChangelog: false, lockBaseline: false }
     })
   })
 
@@ -120,6 +120,11 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   // ---- 迭代 ----
   r.get('/api/milestones', async (req, res) => sendJson(res, 200, hub.listMilestones()))
+  r.get('/api/workflow-links', async (req, res, p, url) => sendJson(res, 200, hub.workflowLinks(Object.fromEntries(url.searchParams))))
+  r.post('/api/milestones/:name/assign', async (req, res, p) => {
+    const body = await readJson(req, maxBody)
+    sendJson(res, 200, hub.assignMilestone(p.name, body))
+  })
   r.post('/api/milestones/sync', async (req, res) => {
     const body = await readJson(req, maxBody)
     sendJson(res, 200, await hub.syncExternalMilestones(body.provider || null, body.config || body))

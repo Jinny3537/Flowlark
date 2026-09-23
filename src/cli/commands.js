@@ -138,7 +138,7 @@ export async function add(pos, values) {
     ['文件', `${v.file}（${fmtSize(v.fileSize)}）`],
     ['状态', statusTag(v.display)],
     ['标签', v.tags.length ? v.tags.map((t) => c.magenta(t)).join(' ') : '—'],
-    ['变更', v.changeCount ? `${v.changeCount} 条` : c.yellow('0 条（设为基线前需要至少 1 条）')],
+    ['变更', v.changeCount ? `${v.changeCount} 条` : c.yellow('0 条')],
     ['需求', v.requirementCount ? `${v.requirementCount} 条` : '—']
   ]))
 
@@ -306,7 +306,7 @@ export async function baseline(pos, values) {
   const v = h.setBaseline(slug, versionNo)
   ok(`当前基线：${c.bold(v.versionNo)} — ${v.title}`)
   if (before) console.log(c.dim(`  原基线 ${before} 已降为历史版本`))
-  console.log(c.dim('  该版本的原型文件与变更日志已锁定，规格书仍可编辑'))
+  console.log(c.dim('  仅更新基线状态，原型、变更日志和规格书仍可编辑'))
 }
 
 export async function rollback(pos, values) {

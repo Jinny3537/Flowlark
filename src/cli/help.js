@@ -124,8 +124,8 @@ export const COMMAND_HELP = {
 
 规则
   · 同一项目同时只有一个基线（由 BASELINE 文件结构性保证），切换是原子操作
-  · 设为基线前变更日志不能为空（首个版本、以及回滚到老基线时豁免）
-  · 基线的原型文件与变更日志随即锁定，规格书仍可编辑
+  · 设定基线不校验变更日志、评审结论或原型文件
+  · 基线只改变状态，原型、变更日志与规格书仍可编辑
 `,
 
   rollback: `${c.bold('flowlark rollback')} <项目>
@@ -136,7 +136,7 @@ export const COMMAND_HELP = {
 
   change: `${c.bold('flowlark change')} <项目> <版本号> -m "类型:位置:说明[:需求号]"
 
-给版本追加一条变更日志。只有「编辑中」的版本能改。
+给版本追加一条变更日志。除已废弃版本外均可修改。
 
 示例
   flowlark change order-center v1.2 -m "修改:订单详情-头部:金额字号放大到 24px"

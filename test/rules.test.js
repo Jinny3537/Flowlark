@@ -120,7 +120,7 @@ describe('R3 回滚', () => {
   })
 })
 
-describe('R4 基线锁定与规格书豁免', () => {
+describe('基线内容可编辑', () => {
   function baselined() {
     const ctx = fresh()
     ctx.hub.addVersion(ctx.slug, { versionNo: 'v1.0', title: '首版', html: html() })
@@ -128,19 +128,19 @@ describe('R4 基线锁定与规格书豁免', () => {
     return ctx
   }
 
-  test('基线版本不可改标题', (t) => {
+  test('基线版本仍可改标题', (t) => {
     const { hub, slug } = baselined()
-    throwsCode(t, 'VERSION_LOCKED', () => hub.updateVersion(slug, 'v1.0', { title: '改名' }))
+    t.assert.doesNotThrow(() => hub.updateVersion(slug, 'v1.0', { title: '改名' }))
   })
 
-  test('基线版本不可改变更日志', (t) => {
+  test('基线版本仍可改变更日志', (t) => {
     const { hub, slug } = baselined()
-    throwsCode(t, 'VERSION_LOCKED', () => hub.setChanges(slug, 'v1.0', CHANGES))
+    t.assert.doesNotThrow(() => hub.setChanges(slug, 'v1.0', CHANGES))
   })
 
-  test('基线版本不可替换原型文件', (t) => {
+  test('基线版本仍可替换原型文件', (t) => {
     const { hub, slug } = baselined()
-    throwsCode(t, 'VERSION_LOCKED', () => hub.replaceHtml(slug, 'v1.0', { html: html('新的') }))
+    t.assert.doesNotThrow(() => hub.replaceHtml(slug, 'v1.0', { html: html('新的') }))
   })
 
   test('规格书仍可编辑 —— 开发期补说明是常态，锁死会逼人发假版本', (t) => {
@@ -168,7 +168,16 @@ describe('R5 版本号', () => {
   })
 })
 
-describe('R6 变更日志必填', () => {
+describe('设定基线仅变更状态', () => {
+  test('原型文件缺失或已废弃也可直接设置基线', (t) => {
+    const { root, hub, slug } = fresh()
+    hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
+    hub.voidVersion(slug, 'v1.0')
+    fs.unlinkSync(store.paths.versionHtml(root, slug, 'v1.0'))
+    const version = hub.setBaseline(slug, 'v1.0')
+    t.assert.equal(version.isBaseline, true)
+    t.assert.equal(version.status, 'READY')
+  })
   test('项目首版豁免', (t) => {
     const { hub, slug } = fresh()
     hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
@@ -176,12 +185,12 @@ describe('R6 变更日志必填', () => {
     t.assert.strictEqual(v.isBaseline, true)
   })
 
-  test('非首版且从未当过基线时被拦截', (t) => {
+  test('非首版也可直接设为基线', (t) => {
     const { hub, slug } = fresh()
     hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
     hub.setBaseline(slug, 'v1.0')
     hub.addVersion(slug, { versionNo: 'v1.1', title: '二版', html: html() })
-    throwsCode(t, 'CHANGELOG_REQUIRED', () => hub.setBaseline(slug, 'v1.1'))
+    t.assert.strictEqual(hub.setBaseline(slug, 'v1.1').isBaseline, true)
   })
 
   test('补上变更日志后放行', (t) => {
@@ -286,12 +295,15 @@ describe('R7 逻辑删除', () => {
 })
 
 describe('基线保护', () => {
-  test('当前基线不可删除、不可废弃', (t) => {
+  test('当前基线可废弃和删除，并清除基线指针', (t) => {
     const { hub, slug } = fresh()
     hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
     hub.setBaseline(slug, 'v1.0')
-    throwsCode(t, 'BASELINE_PROTECTED', () => hub.removeVersion(slug, 'v1.0'))
-    throwsCode(t, 'BASELINE_PROTECTED', () => hub.voidVersion(slug, 'v1.0'))
+    t.assert.strictEqual(hub.voidVersion(slug, 'v1.0').isBaseline, false)
+    t.assert.equal(hub.getProject(slug).baselineVersionNo, null)
+    hub.setBaseline(slug, 'v1.0')
+    hub.removeVersion(slug, 'v1.0')
+    t.assert.equal(hub.getProject(slug).baselineVersionNo, null)
   })
 })
 

@@ -36,6 +36,8 @@ function editablePreviewHtml(buf) {
   let savedRange = null
   let selectedTarget = null
   let stateFrame = 0
+  let originalEditable = null
+  let originalSpellcheck = null
 
   const post = (payload) => window.parent.postMessage(payload, '*')
   const formatState = () => {
@@ -74,34 +76,21 @@ function editablePreviewHtml(buf) {
     selection.removeAllRanges()
     selection.addRange(savedRange)
   }
-  const restoreNode = (node, parent, next) => {
-    if (!node || !parent) return
-    parent.insertBefore(node, next && next.parentNode === parent ? next : null)
-  }
   const serialize = () => {
-    const bridge = document.getElementById('flowlark-edit-bridge')
-    const style = document.getElementById('flowlark-edit-style')
-    const bridgeParent = bridge && bridge.parentNode
-    const bridgeNext = bridge && bridge.nextSibling
-    const styleParent = style && style.parentNode
-    const styleNext = style && style.nextSibling
-    const targets = Array.from(document.querySelectorAll('[data-flowlark-edit-target]'))
-    if (bridge) bridge.remove()
-    if (style) style.remove()
-    targets.forEach((node) => node.removeAttribute('data-flowlark-edit-target'))
-    const previousEditable = document.body && document.body.getAttribute('contenteditable')
-    const previousSpellcheck = document.body && document.body.getAttribute('spellcheck')
-    if (document.body) document.body.removeAttribute('contenteditable')
-    if (document.body) document.body.removeAttribute('spellcheck')
+    // Export a detached clone: removing/reinserting live scripts can execute them again.
+    const clone = document.documentElement.cloneNode(true)
+    clone.querySelectorAll('#flowlark-edit-bridge,#flowlark-edit-style').forEach(node => node.remove())
+    clone.querySelectorAll('[data-flowlark-edit-target]').forEach(node => node.removeAttribute('data-flowlark-edit-target'))
+    const body = clone.querySelector('body')
+    if (body) {
+      if (originalEditable == null) body.removeAttribute('contenteditable')
+      else body.setAttribute('contenteditable', originalEditable)
+      if (originalSpellcheck == null) body.removeAttribute('spellcheck')
+      else body.setAttribute('spellcheck', originalSpellcheck)
+    }
     const dt = document.doctype
     const doctype = dt ? '<!DOCTYPE ' + dt.name + (dt.publicId ? ' PUBLIC "' + dt.publicId + '"' : '') + (dt.systemId ? ' "' + dt.systemId + '"' : '') + '>' : '<!DOCTYPE html>'
-    const html = doctype + '\\n' + document.documentElement.outerHTML
-    if (document.body && previousEditable != null) document.body.setAttribute('contenteditable', previousEditable)
-    if (document.body && previousSpellcheck != null) document.body.setAttribute('spellcheck', previousSpellcheck)
-    targets.forEach((node) => node.setAttribute('data-flowlark-edit-target', ''))
-    restoreNode(style, styleParent, styleNext)
-    restoreNode(bridge, bridgeParent, bridgeNext)
-    return html
+    return doctype + '\\n' + clone.outerHTML
   }
   const addEditorStyle = () => {
     if (document.getElementById('flowlark-edit-style')) return
@@ -126,6 +115,8 @@ function editablePreviewHtml(buf) {
   const enable = () => {
     try {
       addEditorStyle()
+      originalEditable = document.body && document.body.getAttribute('contenteditable')
+      originalSpellcheck = document.body && document.body.getAttribute('spellcheck')
       document.designMode = 'on'
       if (document.body) {
         document.body.setAttribute('contenteditable', 'true')
@@ -137,7 +128,15 @@ function editablePreviewHtml(buf) {
       })
       document.addEventListener('input', markDirty)
       document.addEventListener('pointerover', markTarget)
-      document.addEventListener('click', markTarget)
+      document.addEventListener('click', (event) => {
+        markTarget(event)
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }, true)
+      document.addEventListener('submit', (event) => {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }, true)
       post({ type: 'flowlark:edit-ready', state: formatState() })
     } catch {}
   }
@@ -156,6 +155,7 @@ function editablePreviewHtml(buf) {
     }
     let ok = false
     try {
+      window.focus()
       restoreSelection()
       ok = document.execCommand(command, false, data.value == null ? null : String(data.value))
       rememberSelection()
@@ -173,8 +173,8 @@ function editablePreviewHtml(buf) {
 })()
 </script>`
   const html = buf.toString('utf8')
-  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, `${bridge}</body>`)
-  if (/<\/html\s*>/i.test(html)) return html.replace(/<\/html\s*>/i, `${bridge}</html>`)
+  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, () => `${bridge}</body>`)
+  if (/<\/html\s*>/i.test(html)) return html.replace(/<\/html\s*>/i, () => `${bridge}</html>`)
   return `${html}\n${bridge}`
 }
 

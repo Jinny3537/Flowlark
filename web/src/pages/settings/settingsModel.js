@@ -3,7 +3,7 @@ export const SETTINGS_NAV = [
   { key: 'workspace', label: '工作区与同步', tabs: [['workspace', '工作区'], ['gitRemote', 'Git 远端'], ['git', '提交身份']] },
   { key: 'team', label: '团队与访问', tabs: [['team', '访问与角色']] },
   { key: 'integrations', label: '集成与通知', tabs: [['mcp', '需求、迭代与扩展'], ['feedback', '反馈平台'], ['notifications', '通知渠道'], ['links', '需求链接']] },
-  { key: 'rules', label: '版本规则', tabs: [['rules', '基线规则']] },
+  { key: 'rules', label: '版本规则', tabs: [['rules', '发版规则']] },
   { key: 'maintenance', label: '维护与诊断', tabs: [['softwareUpdate', '软件更新'], ['trash', '回收站'], ['oplog', '操作日志'], ['server', '上传与索引']] },
 ];
 

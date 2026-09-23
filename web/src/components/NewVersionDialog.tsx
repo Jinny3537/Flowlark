@@ -700,7 +700,7 @@ export function NewVersionDialog({
             <Descriptions.Item label="版本标题">{publishResult.title}</Descriptions.Item>
             <Descriptions.Item label="当前基线">{publishResult.baselineVersionNo || '未设置'}</Descriptions.Item>
             <Descriptions.Item label="发布内容">
-              {publishResult.changeCount} 条变更 · {publishResult.requirementCount} 条需求
+              {publishResult.changeCount} 条变更日志 · {publishResult.requirementCount} 条需求
             </Descriptions.Item>
             <Descriptions.Item label="外部依赖">{publishResult.externalRefCount} 个</Descriptions.Item>
             <Descriptions.Item label="Git 状态" span={2}>
@@ -716,7 +716,7 @@ export function NewVersionDialog({
         className="fl-new-version-intro"
         type="info"
         showIcon
-        message="请导入在外部工具中修改完成的原型，并关联需求、填写变更。归档不会自动切换本次开发依据。"
+        message="请导入在外部工具中修改完成的原型，并关联需求、填写变更日志。归档不会自动切换本次开发依据。"
       />
 
       <Form form={form} layout="vertical">
@@ -790,7 +790,7 @@ export function NewVersionDialog({
                     />
                     <Input.TextArea
                       autoSize={{ minRows: 4, maxRows: 16 }}
-                      aria-label={`${item.name} 变更说明`}
+                      aria-label={`${item.name} 变更日志`}
                       value={item.changeText}
                       placeholder="粘贴完整发布说明，包含新增、优化、修复和注意事项"
                       disabled={item.status === 'creating' || item.status === 'created'}
