@@ -79,6 +79,29 @@ function fakeSession() {
   }
 }
 
+test('released paginated member records use userId and realName and read every page', async () => {
+  const calls = []
+  const tools = contractTools().map((tool) => tool.name === mapping.listMembers
+    ? { ...tool, inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, pageNum: { type: 'integer' }, pageSize: { type: 'integer' } } } }
+    : tool)
+  const adapter = createAssessTaskAdapter({ tools, mapping, projectId: 123, session: {
+    async callTool(name, args) {
+      if (name === mapping.currentUser) return { account: 'tester', realName: '测试用户' }
+      calls.push(args)
+      return { total: 2, list: args.pageNum === 1
+        ? [{ id: 579, userId: 18, realName: '成员甲' }]
+        : [{ id: 580, userId: 19, realName: '成员乙' }] }
+    }
+  } })
+  assert.equal((await adapter.probe()).name, '测试用户')
+  assert.deepEqual(await adapter.listMembers(), [
+    { id: 18, account: '', name: '成员甲' },
+    { id: 19, account: '', name: '成员乙' }
+  ])
+  assert.deepEqual(calls.map((args) => args.pageNum), [1, 2])
+  assert.ok(calls.every((args) => args.projectId === 123 && args.pageSize === 500))
+})
+
 test('validates the complete read and write contract', () => {
   assert.deepEqual(validateAssessContract(contractTools(), mapping, { write: true }), { operations: mapping, problems: [] })
 })
@@ -154,7 +177,7 @@ test('closure tools are optional for existing sync and required for online closu
   const adapter = createAssessTaskAdapter({ tools, mapping: closureMapping, projectId: 1, closure: true, session: {
     async callTool(name, args) { calls.push({ name, args }); return { data: { versionId: 20, projectId: 1, revision: 2, state: 'closed' } } }
   } })
-  assert.deepEqual(await adapter.getVersion(20), { id: 20, projectId: 1, revision: 2, status: 'closed' })
+  assert.deepEqual(await adapter.getVersion(20), { id: 20, projectId: 1, name: '', revision: 2, status: 'closed' })
   await adapter.closeVersion({ versionId: 20, revision: 2 })
   assert.deepEqual(calls[1], { name: closureMapping.closeVersion, args: { body: { versionId: 20, revision: 2 } } })
   await assert.rejects(adapter.listTasks({ sprintId: 10 }), { code: 'ASSESS_TASKS_INVALID' })

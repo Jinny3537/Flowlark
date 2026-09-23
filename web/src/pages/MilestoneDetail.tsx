@@ -16,7 +16,9 @@ import {
   milestoneReleaseState,
   withoutMilestoneItem,
 } from './milestoneModel.js';
+import { MilestonePlatformFields } from './MilestonePlatformFields';
 import { MilestoneSyncPanel } from './MilestoneSyncPanel';
+import { IterationRequirementsDialog } from './IterationRequirementsDialog';
 import { ActiveScopeChangeDialog } from './ActiveScopeChangeDialog';
 
 export default function MilestoneDetail() {
@@ -41,6 +43,7 @@ export default function MilestoneDetail() {
   const [error, setError] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [requirementsOpen, setRequirementsOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -196,7 +199,7 @@ export default function MilestoneDetail() {
   const editable = writable && ['planning', 'reviewing'].includes(item?.status || 'planning');
 
   const openEdit = () => {
-    editForm.setFieldsValue({ goal: item?.goal || '', owner: item?.owner || '' });
+    editForm.setFieldsValue({ goal: item?.goal || '', owner: item?.owner || '', title: item?.title, versionNo: item?.versionNo, startAt: item?.startAt, endAt: item?.endAt, platform: item?.platform ? { ...item.platform, sprintId: item.external?.sprintId || item.platform.sprintId } : null });
     setEditOpen(true);
   };
 
@@ -205,13 +208,14 @@ export default function MilestoneDetail() {
       <PageHeader
         eyebrow="迭代详情"
         title={item?.title || name}
-        description="查看周期、交付状态和本轮版本范围。"
+        description="围绕项目版本目标查看需求范围、冲刺执行与原型交付物。"
         backTo="/milestones"
         actions={item ? (
           <Space wrap>
             <Button icon={<EditOutlined />} disabled={!editable} onClick={openEdit}>编辑计划</Button>
-            <Button icon={<PlusOutlined />} disabled={!editable} onClick={() => setAddOpen(true)}>添加版本</Button>
-            {item.status === 'active' ? <Button danger icon={<EditOutlined />} disabled={!writable} onClick={() => setScopeOpen(true)}>变更范围</Button> : null}
+            {item.project ? <Button type="primary" disabled={!editable} onClick={() => setRequirementsOpen(true)}>关联需求</Button> : null}
+            <Button icon={<PlusOutlined />} disabled={!editable} onClick={() => setAddOpen(true)}>添加原型交付物</Button>
+            {item.status === 'active' ? <Button danger icon={<EditOutlined />} disabled={!writable} onClick={() => item.project ? setRequirementsOpen(true) : setScopeOpen(true)}>变更范围</Button> : null}
             <Button icon={<ExportOutlined />} loading={exporting} disabled={!writable} onClick={exportPackage}>导出迭代包</Button>
           </Space>
         ) : null}
@@ -220,17 +224,31 @@ export default function MilestoneDetail() {
         <div className="fl-detail-stack">
           <section className="fl-detail-summary">
             <Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
-              <Descriptions.Item label="迭代名称">{textOf(item?.title)}</Descriptions.Item>
-              <Descriptions.Item label="标识"><span className="fl-mono">{name}</span></Descriptions.Item>
-              <Descriptions.Item label="状态"><Tag color={item?.ready ? 'success' : 'warning'}>{item?.ready ? '可交付' : `${item?.warnings?.length || 0} 项风险`}</Tag></Descriptions.Item>
+              <Descriptions.Item label="迭代版本">{item?.versionNo || name}</Descriptions.Item>
+              <Descriptions.Item label="所属项目">{item?.project || '历史迭代，待整理'}</Descriptions.Item>
+              {!item?.project ? <Descriptions.Item label="标识"><span className="fl-mono">{name}</span></Descriptions.Item> : null}
+              <Descriptions.Item label="原型检查"><Tag color={item?.ready ? 'success' : 'warning'}>{!item?.items?.length ? '尚未添加原型' : item?.ready ? '检查通过' : `${item?.warnings?.length || 0} 项风险`}</Tag></Descriptions.Item>
               <Descriptions.Item label="开始">{textOf(item?.startAt)}</Descriptions.Item>
               <Descriptions.Item label="结束">{textOf(item?.endAt)}</Descriptions.Item>
+              <Descriptions.Item label="平台项目">{item?.platform?.projectName || '本地迭代'}</Descriptions.Item>
+              <Descriptions.Item label="目标发布版本">{item?.platform?.versionName || '未指定'}</Descriptions.Item>
+              <Descriptions.Item label="关联冲刺">{item?.platform?.sprintName || (item?.external?.sprintId ? `#${item.external.sprintId}` : '确认同步后新建')}</Descriptions.Item>
               <Descriptions.Item label="迭代目标">{textOf(item?.goal)}</Descriptions.Item>
-              <Descriptions.Item label="负责人">{textOf(item?.owner)}</Descriptions.Item>
+              <Descriptions.Item label="负责人">{textOf(item?.platform?.ownerName || item?.owner)}</Descriptions.Item>
               <Descriptions.Item label="任务平台">{item?.external ? textOf(item.external.remoteStatus, '已关联') : '本地'}</Descriptions.Item>
               <Descriptions.Item label="同步时间">{item?.external?.syncedAt ? fmtTime(item.external.syncedAt) : '尚未同步'}</Descriptions.Item>
             </Descriptions>
           </section>
+          {item?.project ? <section className="fl-detail-section">
+            <h2>关联需求 · {item.requirements?.length || 0}</h2>
+            <Table rowKey="code" size="small" dataSource={requirements.filter(r => item.requirements?.includes(r.code))} locale={{ emptyText: '尚未关联需求' }}
+              columns={[
+                { title: '需求', render: (_, r: any) => <Button type="link" onClick={() => navigate(`/requirements/${encodeURIComponent(r.code)}`)}>{r.code} · {r.title}</Button> },
+                { title: '优先级', dataIndex: 'priority' }, { title: '负责人', dataIndex: 'owner' },
+                { title: '原型交付物', render: (_, r: any) => item.items.filter((entry: any) => entry.requirement === r.code).length || '待补充' },
+                { title: '执行任务', render: (_, r: any) => { const binding = r.externalTasks?.find((t: any) => t.server === item.external?.server && t.projectId === item.external?.projectId); return binding ? `#${binding.taskId} · ${binding.remoteStatus ?? '已关联'}` : '待创建'; } },
+              ]} />
+          </section> : null}
           {item ? (
             <MilestoneSyncPanel
               name={name}
@@ -252,11 +270,11 @@ export default function MilestoneDetail() {
             />
           ) : null}
           <section className="fl-detail-section">
-            <h2>版本范围</h2>
+            <h2>原型与交付物</h2>
             <Table
               rowKey={(entry: any) => `${entry.requirement}:${entry.project}:${entry.version}`}
               pagination={false}
-              locale={{ emptyText: '本轮还没有版本' }}
+              locale={{ emptyText: '尚未添加原型交付物，需求可先进入冲刺' }}
               dataSource={item?.items || []}
               columns={[
                 { title: '需求', dataIndex: 'requirement', width: 170, render: (value) => <span className="fl-mono">{value}</span> },
@@ -356,14 +374,21 @@ export default function MilestoneDetail() {
         onCancel={() => setEditOpen(false)}
       >
         <Form form={editForm} layout="vertical">
+          <Form.Item name="title" label="迭代名称" rules={[{ required: true }]}><Input maxLength={64} /></Form.Item>
+          {item?.project ? <Form.Item name="versionNo" label="迭代版本号" rules={[{ required: true }]}><Input /></Form.Item> : null}
+          <Form.Item name="startAt" label="开始日期" rules={[{ required: true }]}><Input type="date" /></Form.Item>
+          <Form.Item name="endAt" label="结束日期" rules={[{ required: true }]}><Input type="date" /></Form.Item>
+          {editOpen ? <Form.Item name="platform"><MilestonePlatformFields createMode={!!item?.project} locked={!!item?.external?.syncedAt} /></Form.Item> : null}
           <Form.Item name="goal" label="迭代目标" rules={[{ required: true, whitespace: true, message: '请填写迭代目标' }]}>
             <Input.TextArea rows={3} maxLength={500} showCount />
           </Form.Item>
-          <Form.Item name="owner" label="本地负责人" rules={[{ required: true, whitespace: true, message: '请填写负责人' }]}>
+          <Form.Item name="owner" label="计划联系人（选填）">
             <Input placeholder="用于匹配平台冲刺负责人" />
           </Form.Item>
         </Form>
       </Modal>
+
+      {item?.project ? <IterationRequirementsDialog open={requirementsOpen} item={item} requirements={requirements} onClose={() => setRequirementsOpen(false)} onChanged={load} /> : null}
 
       {item ? (
         <ActiveScopeChangeDialog
@@ -391,7 +416,7 @@ export default function MilestoneDetail() {
               showSearch
               optionFilterProp="label"
               placeholder="选择需求"
-              options={requirements.map((requirement) => ({ value: requirement.code, label: `${requirement.code} · ${requirement.title}` }))}
+              options={requirements.filter((requirement) => !item?.project || item.requirements?.includes(requirement.code)).map((requirement) => ({ value: requirement.code, label: `${requirement.code} · ${requirement.title}` }))}
             />
           </Form.Item>
           <Form.Item name="project" label="项目" rules={[{ required: true, message: '请选择项目' }]}>

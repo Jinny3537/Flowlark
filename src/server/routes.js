@@ -52,6 +52,9 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
 
   // ---- 项目 ----
   r.get('/api/projects', async (req, res) => sendJson(res, 200, hub.listProjects()))
+  r.get('/api/deleted-projects', async (req, res) => sendJson(res, 200, hub.listDeletedProjects()))
+  r.post('/api/deleted-projects/:slug/restore', async (req, res, p) => sendJson(res, 200, hub.restoreProject(p.slug)))
+  r.delete('/api/projects/:slug', async (req, res, p) => sendJson(res, 200, hub.deleteProject(p.slug)))
   r.get('/api/projects/:slug', async (req, res, p) => sendJson(res, 200, hub.getProject(p.slug)))
 
   r.post('/api/projects', async (req, res) => {
@@ -119,6 +122,11 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
     sendJson(res, 200, hub.deleteRequirementToken(p.provider)))
 
   // ---- 迭代 ----
+  r.get('/api/milestone-platform/options', async (req, res) => {
+    const projectId = new URL(req.url, 'http://localhost').searchParams.get('projectId')
+    sendJson(res, 200, await hub.milestonePlatformOptions(projectId))
+  })
+
   r.get('/api/milestones', async (req, res) => sendJson(res, 200, hub.listMilestones()))
   r.post('/api/milestones/sync', async (req, res) => {
     const body = await readJson(req, maxBody)
@@ -126,7 +134,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   })
   r.post('/api/milestones', async (req, res) => {
     const body = await readJson(req, maxBody)
-    sendJson(res, 201, hub.createMilestone(body))
+    sendJson(res, 201, hub.createMilestone(await hub.prepareMilestonePlatform(body)))
   })
   r.get('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.getMilestone(p.name)))
   r.get('/api/milestones/:name/preflight', async (req, res, p) =>
@@ -165,7 +173,7 @@ export function buildApi(hub, { previewPort, runtime = {} }) {
   })
   r.put('/api/milestones/:name', async (req, res, p) => {
     const body = await readJson(req, maxBody)
-    sendJson(res, 200, hub.updateMilestone(p.name, body))
+    sendJson(res, 200, hub.updateMilestone(p.name, await hub.prepareMilestonePlatform(body, p.name)))
   })
   r.delete('/api/milestones/:name', async (req, res, p) => sendJson(res, 200, hub.removeMilestone(p.name)))
 

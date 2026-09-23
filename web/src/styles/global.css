@@ -2838,3 +2838,19 @@ button:active,
 .fl-requirement-detail .fl-detail-section {
   overflow-wrap: anywhere;
 }
+
+/* Tab content must shrink below the tab bar so long requirement lists can scroll. */
+.fl-workbench-tabs > .ant-tabs-content-holder,
+.fl-workbench-tabs > .ant-tabs-body-holder {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 0;
+  overflow: hidden;
+}
+.fl-workbench-tabs > .ant-tabs-body-holder > .ant-tabs-body,
+.fl-workbench-tabs > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content,
+.fl-workbench-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+.fl-workbench-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+  height: 100%;
+  min-height: 0;
+}

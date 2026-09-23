@@ -41,3 +41,10 @@ test('summarizes runtime diagnostics without relying on color alone', () => {
     tone: 'warning', label: '可运行，但有警告', messages: ['文件未签名']
   })
 })
+
+test('HubPooL 全部项目配置自动映射工具并清除单项目限制', () => {
+  const payload = capabilityPayload({ enabled: true, server: 'hubpool', label: '需求', category: 'product', description: '', project: 'old', protocol: 'hubpool', scope: 'all', toolsText: '{}', optionsText: '{}' })
+  assert.equal(payload.project, '')
+  assert.deepEqual(payload.options, { protocol: 'hubpool', scope: 'all' })
+  assert.equal(payload.tools.search, 'list_requirements')
+})

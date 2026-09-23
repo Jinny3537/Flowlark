@@ -164,10 +164,10 @@ export function MilestoneSyncPanel({ name, item, preflight, journal, execution, 
       <div className="fl-section-head">
         <div>
           <h2>迭代推进与平台同步</h2>
-          <p>先检查、再生成计划；所有平台写入都需要审阅后确认。</p>
+          <p>查看本轮冲刺和需求任务，预览变更后执行。</p>
         </div>
         <Space wrap>
-          <Button icon={<SyncOutlined />} loading={busy === 'plan'} disabled={!writable || Boolean(busy)} onClick={() => void prepare()}>生成同步计划</Button>
+          <Button icon={<SyncOutlined />} loading={busy === 'plan'} disabled={!writable || Boolean(busy)} onClick={() => void prepare()}>{item.project && !item.external?.sprintId ? '创建对应冲刺' : '同步需求与冲刺'}</Button>
           {actions.map((action) => (
             <Button
               key={action}

@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Alert, App, Badge, Button, Checkbox, Divider, Dropdown, Empty, Form, Input, Modal, Select, Space, Switch, Tag } from 'antd';
-import { ArrowRightOutlined, EditOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
+import { Alert, App, Badge, Button, Checkbox, Divider, Dropdown, Empty, Form, Input, List, Modal, Select, Space, Switch, Tag } from 'antd';
+import { ArrowRightOutlined, DeleteOutlined, UndoOutlined, EditOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { State } from '@/components/State';
@@ -18,7 +18,7 @@ export default function Projects() {
   const navigate = useNavigate();
   const { session } = useTeamAccess();
   const browseFirst = Boolean(session && !session.host);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { health } = useAppRuntime();
   const writable = health?.canWrite !== false;
   const [items, setItems] = useState<any[]>([]);
@@ -29,6 +29,9 @@ export default function Projects() {
   const [query, setQuery] = useState('');
   const [archiveFilter, setArchiveFilter] = useState('all');
   const [saving, setSaving] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [deleted, setDeleted] = useState<any[]>([]);
+  const [restoring, setRestoring] = useState('');
   const [form] = Form.useForm();
   const filtered = useMemo(
     () => sortProjectsByRecent(filterProjects(items, { query, archived: archiveFilter })),
@@ -102,6 +105,37 @@ export default function Projects() {
     }
   }, [closeEditor, editingProject, form, load, message]);
 
+  const deleteProject = (project: any) => {
+    modal.confirm({
+      title: `删除项目“${project.name}”？`,
+      content: `项目及其 ${project.versionCount || 0} 个原型版本将移入项目回收站，可恢复。独立需求和迭代保留，需求池中的源项目不受影响，后续同步不会自动重建本地项目。`,
+      okText: '删除项目', cancelText: '取消', okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.deleteProject(project.slug);
+          message.success(`项目 ${project.name} 已移入回收站`);
+          await load();
+        } catch (error) { message.error(errorText(error, '删除项目失败')); throw error; }
+      },
+    });
+  };
+
+  const openTrash = async () => {
+    try { setDeleted(await api.deletedProjects()); setTrashOpen(true); }
+    catch (error) { message.error(errorText(error, '读取项目回收站失败')); }
+  };
+
+  const restoreProject = async (project: any) => {
+    setRestoring(project.slug);
+    try {
+      await api.restoreProject(project.slug);
+      message.success(`项目 ${project.name} 已恢复`);
+      setDeleted(await api.deletedProjects());
+      await load();
+    } catch (error) { message.error(errorText(error, '恢复项目失败')); }
+    finally { setRestoring(''); }
+  };
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -112,6 +146,7 @@ export default function Projects() {
         eyebrow="原型项目"
         title="选择项目，进入原型管理"
       />
+      {writable && <Space style={{ marginBottom: 16 }}><Button onClick={() => void openTrash()} icon={<DeleteOutlined />}>项目回收站</Button>{!items.length && <Button type="primary" onClick={startCreate}>新建项目</Button>}</Space>}
       <State loading={loading} error={error} onRetry={load} empty={!items.length} emptyText="还没有项目">
         <div className="fl-section-stack">
           <div className="fl-project-filters fl-project-filters--actions">
@@ -178,8 +213,8 @@ export default function Projects() {
                     <Dropdown
                       trigger={['click']}
                       menu={{
-                        items: [{ key: 'edit', label: '编辑项目', icon: <EditOutlined /> }],
-                        onClick: () => startEdit(item),
+                        items: [{ key: 'edit', label: '编辑项目', icon: <EditOutlined /> }, { key: 'delete', label: '删除项目', icon: <DeleteOutlined />, danger: true }],
+                        onClick: ({ key }) => key === 'delete' ? deleteProject(item) : startEdit(item),
                       }}
                     >
                       <Button
@@ -202,6 +237,9 @@ export default function Projects() {
         </div>
       </State>
 
+      <Modal title="项目回收站" open={trashOpen} onCancel={() => setTrashOpen(false)} footer={<Button onClick={() => setTrashOpen(false)}>关闭</Button>}>
+        <List dataSource={deleted} locale={{ emptyText: '暂无已删除项目' }} renderItem={(project: any) => <List.Item actions={[<Button key="restore" icon={<UndoOutlined />} disabled={!writable || Boolean(restoring)} loading={restoring === project.slug} onClick={() => void restoreProject(project)}>恢复</Button>]}><List.Item.Meta title={`${project.name} · ${project.code}`} description={`${project.versionCount} 个原型版本 · 删除于 ${fmtTime(project.deletedAt)}`} /></List.Item>} />
+      </Modal>
       <Modal
         title={editingProject ? '编辑项目' : '新建项目'}
         open={editorOpen}

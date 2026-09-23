@@ -316,8 +316,6 @@ export function RequirementEditor({ value, onChange, disabled = false }: Require
           <div style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
             <div className="fl-mono fl-muted">{row.code} · {requirements.find(item => item.code === row.code)?.project || '未分项目'}</div>
             <strong>{row.title || row.code}</strong>
-            <label style={{ display: 'block', marginTop: 8 }}>对应页面 / 功能位置<Input disabled={disabled} value={row.location || ''} maxLength={500} onChange={event => onChange(selected.map((item, i) => i === index ? { ...item, location: event.target.value } : item))} /></label>
-            <label style={{ display: 'block', marginTop: 8 }}>本版承载范围<Input.TextArea disabled={disabled} value={row.scope || ''} maxLength={2000} autoSize={{ minRows: 1, maxRows: 4 }} onChange={event => onChange(selected.map((item, i) => i === index ? { ...item, scope: event.target.value } : item))} /></label>
           </div>
           <Button type="text" disabled={disabled} aria-label={`移除需求 ${row.code}`} onClick={() => onChange(selected.filter((_, rowIndex) => rowIndex !== index))}>移除</Button>
         </div>

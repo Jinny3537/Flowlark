@@ -44,6 +44,7 @@ export function groupPlanOperations(plan = {}) {
 }
 
 export function syncHealth({ external = null, journal = null } = {}) {
+  if (journal?.status === 'stale') return { tone: 'warning', label: '计划已变更，待同步', detail: '重新生成计划并同步需求与冲刺' }
   if (journal?.status === 'failed') return { tone: 'error', label: '同步失败', detail: '可查看失败步骤并重试' }
   if (journal?.status === 'running') return { tone: 'processing', label: '同步进行中', detail: '正在执行已确认的同步计划' }
   if (journal?.status === 'completed') return { tone: 'success', label: '同步完成', detail: journal.completedAt || journal.updatedAt || '' }

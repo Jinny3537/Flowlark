@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { milestoneRequirementCodes } from './milestones.js'
 
 const PLAN_TTL_MS = 15 * 60 * 1000
 const PROVIDER = 'assess-task'
@@ -12,6 +13,7 @@ export function buildMilestoneSyncPlan({
   mapping = {},
   action = null,
   scopeItems = null,
+  scopeRequirements = null,
   scopeChangeReason = '',
   resolutions = {},
   now = new Date()
@@ -35,6 +37,7 @@ export function buildMilestoneSyncPlan({
   if (!ownerId) blockers.push(problem('SPRINT_OWNER_REQUIRED', '尚未选择冲刺负责人', 'mapping.ownerId'))
   if (!taskType) blockers.push(problem('TASK_TYPE_REQUIRED', '尚未配置默认任务类型', 'mapping.taskType'))
 
+  if (milestone.project !== undefined && !milestoneRequirementCodes(milestone).length) blockers.push(problem('MILESTONE_SCOPE_EMPTY', '请至少关联一条需求', 'requirements'))
   const sprintAfter = sprintProjection(milestone, { projectId, ownerId, timezoneOffset: mapping.timezoneOffset })
   validateSprintProjection(sprintAfter, blockers)
   const sprintHash = hashProjection(sprintAfter, 'sprint')
@@ -70,7 +73,7 @@ export function buildMilestoneSyncPlan({
   }
 
   const requirementsByCode = new Map(requirements.map((item) => [String(item.code), item]))
-  const requirementCodes = [...new Set((milestone.items || []).map((item) => String(item.requirement || '')).filter(Boolean))].sort()
+  const requirementCodes = milestoneRequirementCodes(milestone).sort()
   const remoteTasksById = new Map(remoteTasks.map((item) => [Number(item.id), item]))
   const currentTaskIds = new Set()
   const targetSprintId = positiveId(sprintBinding?.sprintId || remoteSprint?.id)
@@ -86,7 +89,8 @@ export function buildMilestoneSyncPlan({
       taskType,
       priority: priorityFor(requirement, mapping, blockers),
       assigneeId: assigneeFor(requirement, mapping, warnings),
-      timezoneOffset: mapping.timezoneOffset
+      timezoneOffset: mapping.timezoneOffset,
+      targetVersionId: mapping.versionId
     })
     validateTaskProjection(taskAfter, requirement, blockers)
     const taskHash = hashProjection(taskAfter, 'task')
@@ -112,6 +116,10 @@ export function buildMilestoneSyncPlan({
       blockers.push(problem('REMOTE_TASK_MISSING', `平台任务 ${binding.taskId} 不存在或不可访问`, `requirement:${code}`))
       continue
     }
+    if (milestone.project !== undefined && remoteTask.sprintId && Number(remoteTask.sprintId) !== targetSprintId) {
+      blockers.push(problem('TASK_SPRINT_OCCUPIED', `需求 ${code} 已属于其他冲刺，请先处理范围转移`, `requirement:${code}`))
+      continue
+    }
     currentTaskIds.add(Number(binding.taskId))
     planOwnedChange({
       entity: 'task',
@@ -126,7 +134,7 @@ export function buildMilestoneSyncPlan({
       blockers,
       summary
     })
-    if (targetSprintId && Number(remoteTask.sprintId) !== targetSprintId) {
+    if (!targetSprintId || Number(remoteTask.sprintId) !== targetSprintId) {
       addOperation(operations, summary, {
         key: `task:${binding.taskId}:move`,
         kind: 'task.move',
@@ -135,8 +143,8 @@ export function buildMilestoneSyncPlan({
         taskId: Number(binding.taskId),
         taskRevision: remoteTask.revision,
         before: { sprintId: remoteTask.sprintId ?? null },
-        after: { sprintId: targetSprintId },
-        dependsOn: []
+        after: { sprintId: targetSprintId || '$sprint' },
+        dependsOn: targetSprintId ? [] : [`sprint:${milestone.name}:create`]
       })
     }
   }
@@ -158,13 +166,13 @@ export function buildMilestoneSyncPlan({
     })
   }
 
-  if (Array.isArray(scopeItems)) {
+  if (Array.isArray(scopeItems) || Array.isArray(scopeRequirements)) {
     operations.push({
       key: `local:${milestone.name}:scope-change`,
       kind: 'local.scope-change',
       risk: 'high',
       before: null,
-      after: scopeItems,
+      after: scopeRequirements === null ? scopeItems : { requirements: scopeRequirements, items: milestone.items },
       reason: String(scopeChangeReason || ''),
       dependsOn: operations.filter((item) => item.kind !== 'conflict').map((item) => item.key)
     })
@@ -188,6 +196,7 @@ export function buildMilestoneSyncPlan({
     projectId,
     action,
     scopeItems,
+    scopeRequirements,
     scopeChangeReason: String(scopeChangeReason || ''),
     operations: operations.map(semanticOperation),
     blockers: blockers.map(({ code, target }) => ({ code, target })),
@@ -198,6 +207,7 @@ export function buildMilestoneSyncPlan({
     server: String(mapping.server || ''),
     projectId,
     scopeItems: Array.isArray(scopeItems) ? scopeItems : null,
+    scopeRequirements,
     scopeChangeReason: String(scopeChangeReason || ''),
     generatedAt,
     expiresAt,
@@ -280,7 +290,7 @@ function sprintProjection(milestone, mapping) {
   return {
     projectId: mapping.projectId,
     ownerId: mapping.ownerId,
-    sprintName: String(milestone.title || milestone.name || ''),
+    sprintName: milestone.versionNo ? `${milestone.versionNo} · ${milestone.title}` : String(milestone.title || milestone.name || ''),
     sprintGoal: String(milestone.goal || ''),
     planStartDate: toRemoteDate(milestone.startAt, mapping.timezoneOffset),
     planEndDate: toRemoteDate(milestone.endAt, mapping.timezoneOffset)
@@ -291,6 +301,7 @@ function taskProjection(requirement, milestone, mapping) {
   return {
     projectId: mapping.projectId,
     taskType: mapping.taskType,
+    ...(mapping.targetVersionId !== undefined ? { targetVersionId: mapping.targetVersionId } : {}),
     title: `[${requirement.code}] ${requirement.title}`,
     descriptionDoc: renderDescription(requirement, milestone),
     acceptanceDoc: String(requirement.spec || ''),
@@ -316,6 +327,7 @@ function taskOwned(value = {}) {
   return {
     projectId: positiveId(value.projectId),
     taskType: positiveId(value.taskType),
+    ...(positiveId(value.targetVersionId) ? { targetVersionId: positiveId(value.targetVersionId) } : {}),
     title: String(value.title || value.taskName || value.name || ''),
     descriptionDoc: String(value.descriptionDoc || ''),
     acceptanceDoc: String(value.acceptanceDoc || ''),
@@ -350,6 +362,7 @@ function taskLocalPatch(remote, requirement, mapping) {
 }
 
 function validateSprintProjection(value, blockers) {
+  if (value.planStartDate && value.planEndDate && value.planStartDate > value.planEndDate) blockers.push(problem('SPRINT_DATES_INVALID', '结束日期不能早于开始日期', 'milestone.range'))
   if (!value.sprintName) blockers.push(problem('SPRINT_NAME_REQUIRED', '迭代标题不能为空', 'milestone.title'))
   else if (value.sprintName.length > 64) blockers.push(problem('SPRINT_NAME_TOO_LONG', '平台冲刺名称不能超过 64 字符', 'milestone.title'))
   if (!value.planStartDate || !value.planEndDate) blockers.push(problem('SPRINT_DATES_REQUIRED', '迭代开始和结束日期不能为空', 'milestone.range'))

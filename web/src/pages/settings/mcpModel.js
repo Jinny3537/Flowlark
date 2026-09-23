@@ -41,10 +41,16 @@ export function serverPayload(form) {
 
 export function capabilityPayload(form) {
   const tools = parseObjectJson(form.toolsText, '工具映射')
+  const options = parseJsonObject(form.optionsText, '能力选项')
+  if (form.protocol === 'hubpool') {
+    Object.assign(options, { protocol: 'hubpool', scope: form.scope || 'all' })
+    Object.assign(tools, { test: 'list_projects', search: 'list_requirements', get: 'get_requirement_detail' })
+    delete tools.comment
+  } else if (form.protocol === 'custom') { delete options.protocol; delete options.scope }
   return {
     enabled: Boolean(form.enabled), server: form.server || '', label: form.label.trim(),
-    category: form.category.trim(), description: form.description.trim(), project: form.project.trim(),
-    options: parseJsonObject(form.optionsText, '能力选项'), tools
+    category: form.category.trim(), description: form.description.trim(), project: form.protocol === 'hubpool' && options.scope === 'all' ? '' : form.project.trim(),
+    options, tools
   }
 }
 

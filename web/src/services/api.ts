@@ -102,6 +102,9 @@ export const api = {
   listProjects: () => get<any[]>('/api/projects'),
   getProject: (slug: string) => get<any>(`/api/projects/${enc(slug)}`),
   createProject: (body: unknown) => post<any>('/api/projects', body),
+  deleteProject: (slug: string) => del<any>(`/api/projects/${enc(slug)}`),
+  deletedProjects: () => get<any[]>('/api/deleted-projects'),
+  restoreProject: (slug: string) => post<any>(`/api/deleted-projects/${enc(slug)}/restore`, {}),
   updateProject: (slug: string, body: unknown) => put<any>(`/api/projects/${enc(slug)}`, body),
   preflightVersion: (slug: string, body: unknown) => post<any>(`/api/projects/${enc(slug)}/version-preflight`, body),
   projectPlanning: (slug: string) => get<any>(`/api/projects/${enc(slug)}/planning`),
@@ -166,6 +169,7 @@ export const api = {
   linkRequirement: (code: string, body: unknown) => post(`/api/requirements/${enc(code)}/links`, body),
   unlinkRequirement: (code: string, slug: string, no: string) =>
     del(`/api/requirements/${enc(code)}/links/${enc(slug)}/${enc(no)}`),
+  milestonePlatformOptions: (projectId?: number) => get<any>(`/api/milestone-platform/options${projectId ? `?projectId=${projectId}` : ''}`),
   listMilestones: () => get<any[]>('/api/milestones'),
   getMilestone: (name: string) => get<any>(`/api/milestones/${enc(name)}`),
   createMilestone: (body: unknown) => post<any>('/api/milestones', body),

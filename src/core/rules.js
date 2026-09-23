@@ -107,17 +107,6 @@ export function assertChangelogReady(version, totalVersionCount, { enabled = tru
   }
 }
 
-/** 基线保护：删除与废弃都不能作用于当前基线，否则研发会失去参照 */
-export function assertNotBaseline(version, baselineNo, action) {
-  if (isBaseline(version, baselineNo)) {
-    throw err.bad(
-      'BASELINE_PROTECTED',
-      `${version.versionNo} 是当前基线，不能${action}`,
-      '先把其他版本设为基线：flowlark baseline <项目> <版本号>'
-    )
-  }
-}
-
 /** 时间线排序：创建时间倒序，版本号兜底。仅按时间排，同一秒创建的两版顺序会飘。 */
 export function sortVersions(versions) {
   return [...versions].sort((a, b) => {

@@ -77,7 +77,9 @@ type CumulativeResult = {
 const panelStyle: CSSProperties = {
   height: '100%',
   minHeight: 0,
+  boxSizing: 'border-box',
   overflowY: 'auto',
+  overscrollBehaviorY: 'contain',
   padding: 'var(--fl-s-5)',
 };
 
@@ -747,7 +749,7 @@ export function WorkbenchDocuments({
   );
 
   const requirementsPanel = (
-    <div style={panelStyle}>
+    <div style={panelStyle} aria-label="关联需求内容">
       <div style={toolbarStyle}>
         <div style={{ flex: 1 }} />
         {editable ? (
@@ -776,7 +778,7 @@ export function WorkbenchDocuments({
               <List.Item>
                 <div style={{ ...itemSurfaceStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
                   <Tag color="success" className="fl-mono">{textOf(item.code)}</Tag>
-                  <div style={{ flex: 1, minWidth: 0 }}><Typography.Text>{textOf(item.title, '未填写需求标题')}</Typography.Text><p className="fl-muted">{item.location || '页面位置待补充'} · {item.scope || '承载范围待补充'}</p></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><Typography.Text>{textOf(item.title, '未填写需求标题')}</Typography.Text></div>
                   <Link to={`/requirements/${encodeURIComponent(item.code || '')}`}>查看需求</Link>
                   {url ? <Button icon={<ExportOutlined />} onClick={() => openWindow(url)}>外部原文</Button> : null}
                 </div>
