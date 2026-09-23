@@ -38,7 +38,7 @@ export const SECTION_DESCRIPTIONS: Record<string, string> = {
   mcp: '连接外部需求、迭代和扩展能力。',
   server: '管理原型 HTML 与附件的上传体积限制。',
   git: '配置提交身份；同步操作使用现有 Git 助手。',
-  rules: '控制基线和变更日志相关的业务约束。',
+  rules: '控制正式发版的变更日志检查；设定基线仅变更状态。',
   integrations: '配置反馈流向、反馈标签和团队通知。',
   ui: '时间显示作用于日常列表和详情；审计日志始终使用精确时间。',
 };
@@ -54,7 +54,6 @@ export const VISIBLE_CONFIG_KEYS = new Set([
   'git.userName',
   'git.userEmail',
   'rules.requireChangelog',
-  'rules.lockBaseline',
   'integrations.issueProvider',
   'integrations.issueBaseUrl',
   'integrations.issueProject',

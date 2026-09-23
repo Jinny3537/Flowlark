@@ -97,7 +97,7 @@ describe('CLI 全流程', () => {
     t.assert.strictEqual(v.changes[0].content, '时间格式改为 HH:mm:ss')
   })
 
-  test('R6 拦截会给出可执行的下一步，而不是只报错', (t) => {
+  test('非首版没有变更日志也能通过 CLI 设为基线', (t) => {
     const dir = workspace()
     ph(dir, 'init'); ph(dir, 'new', '订单', '--code', 'ord')
     writeProto(dir, 'a.html'); writeProto(dir, 'b.html')
@@ -106,9 +106,8 @@ describe('CLI 全流程', () => {
     ph(dir, 'add', 'b.html', '-p', 'ord', '-n', 'v1.1', '-t', '二版')
 
     const r = ph(dir, 'baseline', 'ord', 'v1.1')
-    t.assert.strictEqual(r.code, 1)
-    t.assert.match(r.err, /变更日志为空/)
-    t.assert.match(r.err, /flowlark add-change|flowlark change|-m/, '错误提示要告诉用户怎么修')
+    t.assert.strictEqual(r.code, 0)
+    t.assert.match(r.out, /当前基线/)
   })
 
   test('单项目仓库可省略 -p', (t) => {

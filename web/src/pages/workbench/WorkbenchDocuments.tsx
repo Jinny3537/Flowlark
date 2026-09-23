@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   App,
@@ -20,6 +20,7 @@ import {
 import type { CSSProperties } from 'react';
 import {
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   ExportOutlined,
   FileTextOutlined,
@@ -31,18 +32,18 @@ import {
 import DOMPurify from 'dompurify';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { TeamRecords } from './TeamRecords';
+import { changesToText, textToChanges } from './releaseNotesModel.js';
+import { contextualRoute } from '../workflowModel.js';
 import { marked } from 'marked';
 import { api } from '@/services/api';
 import { fmtAbsolute, fmtSize, fmtTime, textOf } from '@/utils/format';
 import {
   filterVersionFeedback,
-  olderSiblings,
   requirementUrl,
 } from './workbenchModel.js';
 import {
   AttachmentsPanel,
   ChangeEditor,
-  ChangeList,
   RequirementEditor,
   type ChangeItem,
   type RequirementLink,
@@ -54,9 +55,7 @@ type WorkbenchDocumentsProps = {
   slug: string;
   versionNo: string;
   version: any;
-  siblings: any[];
   canWrite: boolean;
-  lockBaseline: boolean;
   maxFileBytes: number;
   requirementUrlTemplate: string;
   allTags: any[];
@@ -67,11 +66,6 @@ type WorkbenchDocumentsProps = {
   onSpecHistoryChanged: () => Promise<void>;
   onTagsChanged: () => Promise<void>;
   onFeedbackChanged: () => Promise<void>;
-};
-
-type CumulativeResult = {
-  items?: ChangeItem[];
-  locationCounts?: Record<string, number>;
 };
 
 const panelStyle: CSSProperties = {
@@ -185,9 +179,7 @@ export function WorkbenchDocuments({
   slug,
   versionNo,
   version,
-  siblings,
   canWrite,
-  lockBaseline,
   maxFileBytes,
   requirementUrlTemplate,
   allTags,
@@ -210,17 +202,11 @@ export function WorkbenchDocuments({
   const [specHistoryError, setSpecHistoryError] = useState('');
   const [changesEditing, setChangesEditing] = useState(false);
   const [changeDraft, setChangeDraft] = useState<ChangeItem[]>([]);
-  const [cumFrom, setCumFrom] = useState<string | null>(null);
-  const [changeItems, setChangeItems] = useState<ChangeItem[]>([]);
-  const [locationCounts, setLocationCounts] = useState<Record<string, number>>({});
-  const [changesLoading, setChangesLoading] = useState(false);
-  const [changesError, setChangesError] = useState('');
   const [reqsEditing, setReqsEditing] = useState(false);
   const [reqDraft, setReqDraft] = useState<RequirementLink[]>([]);
   const [tagDraft, setTagDraft] = useState<string[]>([]);
   const [savingTags, setSavingTags] = useState(false);
   const [feedbackAction, setFeedbackAction] = useState('');
-  const cumulativeRequest = useRef(0);
   const specRequest = useRef(0);
   const routeKey = `${slug}\u0000${versionNo}`;
   const routeKeyRef = useRef(routeKey);
@@ -228,20 +214,16 @@ export function WorkbenchDocuments({
 
   const editable = Boolean(
     canWrite
-    && version?.display?.key !== 'VOID'
-    && (!lockBaseline || version?.display?.key === 'DRAFT'),
+    && version?.display?.key !== 'VOID',
   );
   const documentWritable = Boolean(canWrite && version?.display?.key !== 'VOID');
-  const olderVersions = useMemo(
-    () => olderSiblings(siblings, versionNo) as any[],
-    [siblings, versionNo],
-  );
-  const olderVersionKey = olderVersions.map((item) => item.versionNo).join('\u0000');
+  const releaseNotes = changesToText(version?.changes || []);
   const versionFeedbacks = useMemo(
     () => filterVersionFeedback(feedbacks, slug, versionNo) as any[],
     [feedbacks, slug, versionNo],
   );
   const { health: runtimeHealth } = useAppRuntime();
+  const location = useLocation();
   const tagOptions = useMemo(() => {
     const known = allTags.map(item => {
       const value = typeof item === 'string' ? item : item?.tag;
@@ -259,7 +241,6 @@ export function WorkbenchDocuments({
   }, [previewUrl, slug, versionNo]);
 
   useEffect(() => {
-    cumulativeRequest.current += 1;
     specRequest.current += 1;
     setSpecEditing(false);
     setSpecRef(undefined);
@@ -267,9 +248,7 @@ export function WorkbenchDocuments({
     setSpecHistoryLoading(false);
     setSpecHistoryError('');
     setChangesEditing(false);
-    setChangesLoading(false);
     setReqsEditing(false);
-    setChangesError('');
     setSaving(false);
     setImportingSpec(false);
     setSavingTags(false);
@@ -282,38 +261,6 @@ export function WorkbenchDocuments({
     if (!reqsEditing) setReqDraft((version?.requirements || []).map((item: RequirementLink) => ({ ...item })));
     setTagDraft([...(version?.tags || [])]);
   }, [version, specEditing, changesEditing, reqsEditing]);
-
-  useEffect(() => {
-    setCumFrom(olderVersions[0]?.versionNo || null);
-  }, [slug, versionNo, olderVersionKey]);
-
-  const loadChanges = useCallback(async (from: string | null) => {
-    const requestId = ++cumulativeRequest.current;
-    setChangesError('');
-    if (!from) {
-      setChangeItems(version?.changes || []);
-      setLocationCounts({});
-      setChangesLoading(false);
-      return;
-    }
-
-    setChangesLoading(true);
-    try {
-      const result = await api.cumulative(slug, from, versionNo) as CumulativeResult;
-      if (requestId !== cumulativeRequest.current) return;
-      setChangeItems(result.items || []);
-      setLocationCounts(result.locationCounts || {});
-    } catch (error) {
-      if (requestId !== cumulativeRequest.current) return;
-      setChangesError(errorMessage(error, '累计变更读取失败'));
-    } finally {
-      if (requestId === cumulativeRequest.current) setChangesLoading(false);
-    }
-  }, [slug, versionNo, version?.changes]);
-
-  useEffect(() => {
-    void loadChanges(cumFrom);
-  }, [cumFrom, loadChanges]);
 
   const startSpecEdit = () => {
     if (!documentWritable) {
@@ -443,10 +390,10 @@ export function WorkbenchDocuments({
 
   const saveChanges = async () => {
     if (!editable) {
-      message.info('只有编辑中版本可以修改变更日志');
+      message.info('当前版本不可修改变更日志');
       return;
     }
-    const items = changeDraft.filter((item) => item.content?.trim());
+    const items = textToChanges(changesToText(changeDraft).trim());
     const expectedRoute = routeKey;
     setSaving(true);
     try {
@@ -455,13 +402,6 @@ export function WorkbenchDocuments({
       await onVersionChanged(nextVersion);
       if (routeKeyRef.current !== expectedRoute) return;
       setChangesEditing(false);
-      if (!cumFrom) {
-        setChangeItems((nextVersion as any)?.changes || items);
-        setLocationCounts({});
-      } else {
-        await loadChanges(cumFrom);
-        if (routeKeyRef.current !== expectedRoute) return;
-      }
       message.success('变更日志已保存');
     } catch (error) {
       message.error(errorMessage(error, '变更日志保存失败'));
@@ -477,7 +417,7 @@ export function WorkbenchDocuments({
 
   const saveRequirements = async () => {
     if (!editable) {
-      message.info('只有编辑中版本可以修改关联需求');
+      message.info('当前版本不可修改关联需求，请检查写入权限或先恢复废弃版本');
       return;
     }
     const items = reqDraft.filter((item) => item.code?.trim());
@@ -576,6 +516,19 @@ export function WorkbenchDocuments({
     });
   };
 
+  const downloadableSpec = specEditing ? specDraft : specRef ? specAtContent : version?.spec;
+  const downloadSpec = () => {
+    if (!downloadableSpec || specHistoryLoading || specHistoryError) return;
+    const url = URL.createObjectURL(new Blob([downloadableSpec], { type: 'text/markdown;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${slug}-${versionNo}${specRef ? `-${specRef.slice(0, 8)}` : ''}${specEditing ? '-draft' : ''}.spec.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const specificationPanel = (
     <div style={panelStyle}>
       <div style={toolbarStyle}>
@@ -583,6 +536,9 @@ export function WorkbenchDocuments({
           {version?.specUpdatedAt ? `最后编辑 ${fmtTime(version.specUpdatedAt)}` : '尚未保存技术规格说明书'}
         </Typography.Text>
         <div style={{ flex: 1 }} />
+        <Button icon={<DownloadOutlined />} disabled={!downloadableSpec || specHistoryLoading || !!specHistoryError} onClick={downloadSpec}>
+          {specEditing ? '下载草稿' : '下载规格书'}
+        </Button>
         {specCommits.length ? (
           <Select
             allowClear
@@ -640,7 +596,7 @@ export function WorkbenchDocuments({
       <Alert
         type="info"
         showIcon
-        message="技术规格说明书是活文档，版本确认后仍可编辑；原型文件与变更日志则按版本状态锁定。"
+        message="设定基线仅变更状态，原型、变更日志与技术规格说明书仍可编辑。"
         style={{ marginBottom: 16 }}
       />
 
@@ -680,19 +636,8 @@ export function WorkbenchDocuments({
   const changesPanel = (
     <div style={panelStyle}>
       <div style={toolbarStyle}>
-        <Typography.Text type="secondary">对比起点</Typography.Text>
-        <Select
-          allowClear
-          aria-label="累计变更对比起点"
-          placeholder="仅看本版"
-          style={{ minWidth: 220, flex: '1 1 260px' }}
-          value={cumFrom || undefined}
-          options={olderVersions.map((item) => ({
-            value: item.versionNo,
-            label: `${item.versionNo} - ${textOf(item.title, '未命名版本')}`,
-          }))}
-          onChange={(value) => setCumFrom(value || null)}
-        />
+        <Typography.Text type="secondary">本版本变更日志</Typography.Text>
+        <div style={{ flex: 1 }} />
         {editable ? (
           changesEditing
             ? <Button onClick={() => setChangesEditing(false)}>取消编辑</Button>
@@ -714,33 +659,15 @@ export function WorkbenchDocuments({
               type="info"
               showIcon
               message={`${textOf(version.display?.label, '当前状态')} · 已锁定`}
-              description="如需修改结构性内容，请新建版本或将可恢复版本切回编辑中。"
+              description="请确认具有写入权限；已废弃版本需先恢复。"
               style={{ marginBottom: 16 }}
             />
           ) : null}
-          {changesError ? (
-            <Alert
-              type="error"
-              showIcon
-              message="累计变更读取失败"
-              description={changesError}
-              action={<Button size="small" onClick={() => loadChanges(cumFrom)}>重试</Button>}
-              style={{ marginBottom: 16 }}
-            />
-          ) : null}
-          <Spin spinning={changesLoading}>
-            <ChangeList
-              items={changeItems}
-              locationCounts={locationCounts}
-              showHot={Boolean(cumFrom)}
-              onOpenRequirement={(code) => {
-                const item = version?.requirements?.find((entry: RequirementLink) => entry.code === code);
-                const url = requirementUrl(code, item?.url, requirementUrlTemplate);
-                if (url) openWindow(url);
-                else message.info(`需求 ${code} 未登记链接`);
-              }}
-            />
-          </Spin>
+          {releaseNotes.trim() ? (
+            <article aria-label="本版本变更日志" style={{ ...itemSurfaceStyle, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.8 }}>
+              {releaseNotes}
+            </article>
+          ) : <Empty description="本版本尚未填写变更日志" />}
         </>
       )}
     </div>
@@ -777,7 +704,7 @@ export function WorkbenchDocuments({
                 <div style={{ ...itemSurfaceStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
                   <Tag color="success" className="fl-mono">{textOf(item.code)}</Tag>
                   <div style={{ flex: 1, minWidth: 0 }}><Typography.Text>{textOf(item.title, '未填写需求标题')}</Typography.Text><p className="fl-muted">{item.location || '页面位置待补充'} · {item.scope || '承载范围待补充'}</p></div>
-                  <Link to={`/requirements/${encodeURIComponent(item.code || '')}`}>查看需求</Link>
+                  <Link to={contextualRoute(`/requirements/${encodeURIComponent(item.code || '')}`, location.pathname + location.search, `${slug} / ${versionNo}`)}>查看需求</Link>
                   {url ? <Button icon={<ExportOutlined />} onClick={() => openWindow(url)}>外部原文</Button> : null}
                 </div>
               </List.Item>
@@ -937,7 +864,7 @@ export function WorkbenchDocuments({
       tabBarStyle={{ flex: '0 0 auto', margin: 0, padding: '0 var(--fl-s-4)' }}
       items={[
         { key: 'spec', label: '技术规格说明书', children: specificationPanel },
-        { key: 'changes', label: `变更 ${version?.changeCount ?? version?.changes?.length ?? 0}`, children: changesPanel },
+        { key: 'changes', label: '变更日志', children: changesPanel },
         { key: 'reqs', label: `需求 ${version?.requirementCount ?? version?.requirements?.length ?? 0}`, children: requirementsPanel },
         {
           key: 'team',

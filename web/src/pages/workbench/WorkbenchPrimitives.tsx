@@ -36,7 +36,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { api } from '@/services/api';
 import { fmtSize, fmtTime } from '@/utils/format';
-import { baselineBlocked, groupChanges } from './workbenchModel.js';
+import { groupChanges } from './workbenchModel.js';
 import { changesToText, textToChanges, releaseNotesTemplate } from './releaseNotesModel.js';
 
 export type ChangeItem = {
@@ -69,7 +69,7 @@ export function ChangeList({
   const groups = groupChanges(items) as ChangeGroup[];
 
   if (items.length === 0) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更记录" />;
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更日志" />;
   }
 
   if (items.every((item) => !item.location && !item.requirement && (!item.type || item.type === 'MODIFY'))) {
@@ -410,8 +410,6 @@ type BaselineModalProps = {
   slug: string;
   target?: BaselineTarget | null;
   current?: string | null;
-  totalVersions?: number;
-  requireChangelog?: boolean;
   onClose: () => void;
   onDone?: (version: unknown) => void | Promise<void>;
 };
@@ -421,17 +419,14 @@ export function BaselineModal({
   slug,
   target,
   current,
-  totalVersions = 0,
-  requireChangelog = true,
   onClose,
   onDone,
 }: BaselineModalProps) {
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
-  const blocked = baselineBlocked({ target, totalVersions, requireChangelog });
 
   const submit = async () => {
-    if (!target || blocked) return;
+    if (!target) return;
     setSaving(true);
     try {
       const version = await api.setBaseline(slug, target.versionNo);
@@ -460,7 +455,7 @@ export function BaselineModal({
       confirmLoading={saving}
       closable={!saving}
       cancelButtonProps={{ disabled: saving }}
-      okButtonProps={{ disabled: !target || blocked }}
+      okButtonProps={{ disabled: !target }}
       onCancel={() => {
         if (!saving) onClose();
       }}
@@ -468,15 +463,6 @@ export function BaselineModal({
     >
       {target ? (
         <div style={primitiveStyles.modalBody}>
-          {blocked ? (
-            <Alert
-              type="error"
-              showIcon
-              message="无法切换：变更日志为空"
-              description="设为基线前至少要有 1 条变更说明，否则研发无法判断本版改动。请先到工作台的「变更日志」补充。"
-            />
-          ) : null}
-
           <div style={primitiveStyles.baselineComparison}>
             <div style={primitiveStyles.baselineVersion}>
               <span style={primitiveStyles.secondaryText}>当前基线</span>
@@ -493,7 +479,7 @@ export function BaselineModal({
 
           <ul style={primitiveStyles.baselineNotes}>
             <li>切换后打开本项目默认落在 <strong>{target.versionNo}</strong>。</li>
-            <li>该版本的原型文件与变更日志将被<strong>锁定</strong>，技术规格说明书仍可编辑。</li>
+            <li>仅更新基线状态，原型、变更日志和技术规格说明书仍可编辑。</li>
             {current ? <li>可在项目时间线或功能台里一键退回 {current}。</li> : null}
           </ul>
         </div>

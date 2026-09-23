@@ -43,6 +43,7 @@ try {
   const gp = await guest.newPage()
   gp.on('pageerror', (e) => errors.push(e.message))
   await gp.goto(`${base}/#/projects/demo/versions/v1`)
+  await gp.getByRole('button', { name: '以游客身份继续' }).click()
   await gp.getByRole('radio', { name: '游客 · 浏览、评论、下载' }).check()
   await gp.screenshot({ path: path.join(output, 'choose-role.png'), fullPage: true })
   await gp.getByRole('button', { name: '确认角色并进入' }).click()

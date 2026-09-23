@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import { Alert, App, Button, Form, Input, List, Modal, Select, Space, Tag } from 'antd';
 import { BellOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -8,11 +8,15 @@ import { useAppRuntime } from '@/runtime/AppRuntime';
 import { api } from '@/services/api';
 import { errorText } from '@/services/requestModel.js';
 import { fmtTime } from '@/utils/format';
+import { SourceContext } from './WorkflowLinks';
 import DeliveryComposer, { purposeLabels } from './delivery/DeliveryComposer';
 import './delivery/Delivery.css';
 
 export default function Deliveries() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const initialMilestone = params.get("prepare") || "";
   const { message } = App.useApp();
   const { health, reload: reloadRuntime } = useAppRuntime();
   const writable = health?.canWrite !== false;
@@ -21,7 +25,9 @@ export default function Deliveries() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(initialMilestone));
+  useEffect(() => { if (initialMilestone) setOpen(true); }, [initialMilestone]);
+  const closeComposer = () => setOpen(false);
   const [query, setQuery] = useState('');
   const [purpose, setPurpose] = useState('all');
   const [flushing, setFlushing] = useState(false);
@@ -118,6 +124,7 @@ export default function Deliveries() {
 
   return (
     <main className="fl-page">
+      <SourceContext />
       <PageHeader
         eyebrow="产品交付中心"
         title="交付"
@@ -175,7 +182,7 @@ export default function Deliveries() {
         </section>
       </State>
 
-      <DeliveryComposer open={open} onClose={() => setOpen(false)} writable={writable} milestones={milestones} snapshots={snapshots}
+      <DeliveryComposer open={open} initialMilestone={initialMilestone} draftOrigin={params.get("draft") ?? initialMilestone} returnContext={location.search} onClose={closeComposer} writable={writable} milestones={milestones} snapshots={snapshots}
         onCreated={(item: any) => { setOpen(false); message.success('交付材料已冻结'); navigate(`/deliveries/${encodeURIComponent(item.name)}`); }} />
 
       <Modal

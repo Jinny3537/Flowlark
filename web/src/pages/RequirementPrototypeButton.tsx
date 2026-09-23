@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { Alert, Button, List, Modal, Space, Tag } from 'antd';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { contextualRoute } from './workflowModel.js';
 import { api } from '@/services/api';
 import { useAppRuntime } from '@/runtime/AppRuntime';
 import { previewUrl } from './workbench/workbenchModel.js';
 
 export function PrototypeLink({ project, versionNo, code, label = '预览原型' }: { project: string; versionNo: string; code?: string; label?: string }) {
   const { health } = useAppRuntime();
+  const location = useLocation();
   const href = previewUrl({ protocol: window.location.protocol, hostname: window.location.hostname,
     previewPort: health?.previewPort || 7789, slug: project, versionNo });
   return <Space wrap><a href={href} target="_blank" rel="noreferrer">{label}</a>
-    <Link to={`/projects/${encodeURIComponent(project)}/versions/${encodeURIComponent(versionNo)}?tab=reqs${code ? `&requirement=${encodeURIComponent(code)}` : ''}`}>版本与需求</Link></Space>;
+    <Link to={contextualRoute(`/projects/${encodeURIComponent(project)}/versions/${encodeURIComponent(versionNo)}?tab=reqs${code ? `&requirement=${encodeURIComponent(code)}` : ''}`, location.pathname + location.search, code ? `需求 ${code}` : "需求原型")}>版本与需求</Link></Space>;
 }
 
 export default function RequirementPrototypeButton({ code }: { code: string }) {

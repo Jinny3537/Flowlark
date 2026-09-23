@@ -222,7 +222,7 @@ export function PrototypeStage({
               {annotationMode ? '退出标注' : '标注反馈'}
             </Button>
           </Tooltip>
-          <Tooltip title={editable ? '直接编辑当前原型中的文字和内容' : '只有编辑中版本可以在线编辑'}>
+          <Tooltip title={editable ? '直接编辑当前原型中的文字和内容' : '当前版本不可在线编辑，请检查写入权限或先恢复废弃版本'}>
             <Button
               size="small"
               icon={<EditOutlined />}
@@ -232,7 +232,7 @@ export function PrototypeStage({
               在线编辑
             </Button>
           </Tooltip>
-          <Tooltip title={editable ? '用源码、文件或 URL 替换原型 HTML' : '只有编辑中版本可以修改原型文件'}>
+          <Tooltip title={editable ? '用源码、文件或 URL 替换原型 HTML' : '当前版本不可修改原型文件，请检查写入权限或先恢复废弃版本'}>
             <Button
               size="small"
               icon={<CodeOutlined />}

@@ -66,14 +66,14 @@ export const SCHEMA = [
 
   // ---------- 业务规则 ----------
   {
-    key: 'rules.requireChangelog', type: 'bool', default: true, label: '设为基线前必须有变更日志',
+    key: 'rules.requireChangelog', type: 'bool', default: true, label: '正式发版前必须有变更日志',
     danger: true,
     note: '关掉后研发无法判断每版改了什么，这个产品最核心的价值就没了（规则 R6）'
   },
   {
-    key: 'rules.lockBaseline', type: 'bool', default: true, label: '基线内容锁定',
+    key: 'rules.lockBaseline', type: 'bool', default: false, label: '基线内容锁定（已停用）',
     danger: true,
-    note: '关掉后已确认版本的原型文件和变更日志可以被改，原型就失去追溯证据的效力（规则 R4）'
+    note: '兼容旧配置；基线仅表示状态，此开关不再限制编辑。'
   },
   {
     key: 'rules.autoOffline', type: 'bool', default: false, label: '归档时自动生成离线版',

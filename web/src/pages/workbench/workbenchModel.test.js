@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  baselineBlocked,
   canEditStructure,
   decodeAnchor,
   encodeAnchor,
@@ -33,16 +32,12 @@ test('builds an encoded full-screen prototype editor route', () => {
   )
 })
 
-test('enforces draft structural editing and baseline rules', () => {
+test('allows baseline and history editing while preserving read-only and void restrictions', () => {
   assert.equal(canEditStructure({ canWrite: true, version: versions[0] }), true)
   assert.equal(canEditStructure({ canWrite: false, version: versions[0] }), false)
-  assert.equal(canEditStructure({ canWrite: true, version: versions[1] }), false)
+  assert.equal(canEditStructure({ canWrite: true, version: versions[1] }), true)
   assert.equal(canEditStructure({ canWrite: true, version: versions[1], lockBaseline: false }), true)
   assert.equal(canEditStructure({ canWrite: true, version: { display: { key: 'VOID' } }, lockBaseline: false }), false)
-  assert.equal(baselineBlocked({ target: { changeCount: 0 }, totalVersions: 2 }), true)
-  assert.equal(baselineBlocked({ target: { changeCount: 0 }, totalVersions: 2, requireChangelog: false }), false)
-  assert.equal(baselineBlocked({ target: { changeCount: 0, baselineAt: '2026-08-01' }, totalVersions: 2 }), false)
-  assert.equal(baselineBlocked({ target: { changeCount: 0 }, totalVersions: 1 }), false)
 })
 
 test('returns only siblings older than the selected version', () => {

@@ -1,0 +1,183 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { chromium } from '/Users/beluga/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+import { newHub, html, cleanup } from '../test/helpers.js';
+import { startServer } from '../src/server/index.js';
+import * as team from '../src/core/team.js';
+const { root, hub } = newHub();
+for (const code of ['REQ-A', 'REQ-B']) hub.createRequirement({ code, title: code === 'REQ-A' ? '订单筛选优化' : '订单导出', description: '功能关联验证', acceptanceCriteria: '按选定版本核对' });
+for (const project of ['orders', 'other']) {
+  hub.createProject({ code: project, name: project === 'orders' ? '订单中心' : '另一个项目' });
+  for (const versionNo of ['v1.2', 'v1.3']) {
+    hub.addVersion(project, { versionNo, title: `筛选原型 ${versionNo}`, html: html(`<h1>订单筛选 ${versionNo}</h1><input placeholder="订单号"><button>查询</button>`), requirements: ['REQ-A', 'REQ-B'], changes: [{ type: 'MODIFY', location: '筛选区', content: '更新查询交互' }] });
+    hub.setReviewStatus(project, versionNo, 'confirmed');
+  }
+}
+const server = await startServer(root, { port: 0, previewPort: 0 });
+const browser = await chromium.launch({ headless: true, executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+page.setDefaultTimeout(12000);
+const errors = [], passed = [];
+page.on('pageerror', e => errors.push(e.message));
+const base = `http://127.0.0.1:${server.port}`;
+const out = '/tmp/flowlark-workflow-linkage'; fs.mkdirSync(out, { recursive: true });
+async function goto(route) { await page.goto(base + '/#' + route, { waitUntil: 'networkidle' }); }
+async function select(name, text) {
+  await page.getByRole('combobox', { name, exact: true }).click();
+  await page.locator('.ant-select-dropdown:visible').getByText(text, { exact: true }).click();
+}
+async function finishAssign() {
+  await page.getByRole('button', { name: '核对范围', exact: true }).click();
+  await page.getByRole('button', { name: '确认并加入', exact: true }).click();
+  await page.getByRole('link', { name: '查看迭代', exact: true }).waitFor();
+}
+try {
+  await goto('/requirements/REQ-A');
+  await page.getByRole('button', { name: '原型 4', exact: true }).click();
+  await page.locator('.ant-popover:visible').getByRole('link', { name: '在本页查看', exact: true }).click();
+  assert.match(page.url(), /section=archives/);
+  await page.getByRole('heading', { name: '归档原型与变更', exact: true }).click();
+
+  await page.getByRole('button', { name: '安排到迭代', exact: true }).click();
+  await select('候选归档版本', 'orders / v1.2');
+  await page.getByRole('radio', { name: '新建迭代并加入' }).check();
+  await page.getByLabel('迭代标识', { exact: true }).fill('canceled-create');
+  await page.getByRole('dialog').getByRole('button', { name: /取\s*消/ }).click();
+  assert.equal(hub.listMilestones().length, 0);
+  await page.getByRole('button', { name: '安排到迭代', exact: true }).click();
+  await select('候选归档版本', 'orders / v1.2');
+  await page.getByRole('radio', { name: '新建迭代并加入' }).check();
+  await page.getByLabel('迭代标识', { exact: true }).fill('sprint-one');
+  await page.getByLabel('迭代标题', { exact: true }).fill('九月第一轮');
+  await finishAssign();
+  assert.deepEqual(hub.getMilestone('sprint-one').items.map(x => [x.requirement, x.project, x.version]), [['REQ-A', 'orders', 'v1.2']]);
+  await page.getByRole('link', { name: '查看迭代', exact: true }).click();
+  await page.getByRole('heading', { name: '本次需求与原型', exact: true }).waitFor();
+  passed.push('A1 需求就地创建并加入，取消不留空迭代');
+  const reqLink = page.locator('.ant-table').getByRole('link', { name: /REQ-A/ });
+  await reqLink.click();
+  await page.getByRole('heading', { name: '订单筛选优化', exact: true }).waitFor();
+  await page.getByRole('tab', { name: '规则与验收', exact: true }).click();
+  await page.getByRole('link', { name: '返回迭代 sprint-one', exact: true }).click();
+  await page.locator('.fl-scope-selected').waitFor();
+  assert.match(await page.locator('.fl-scope-selected').innerText(), /v1.2/);
+  passed.push('A7 从迭代打开需求再返回定位原范围行');
+  await page.screenshot({ path: path.join(out, 'milestone-desktop.png'), fullPage: true });
+  await page.getByRole('button', { name: '准备交付包', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('交付标题', { exact: true }).fill('第一轮研发交接');
+  await dialog.getByLabel('交付标识', { exact: true }).fill('delivery-one');
+  assert.match(await dialog.innerText(), /九月第一轮/);
+  await dialog.getByRole('button', { name: '检查交付材料', exact: true }).click();
+  await dialog.getByRole('button', { name: '填写交接说明', exact: true }).click();
+  await dialog.getByLabel('本次交付说明', { exact: true }).fill('只采用 v1.2，其他版本不在本次范围');
+  await dialog.getByRole('button', { name: '上一步', exact: true }).click();
+  await dialog.getByRole('link', { name: '补充材料', exact: true }).click();
+  await page.getByRole('link', { name: '返回交付准备', exact: true }).waitFor();
+  await page.screenshot({ path: path.join(out, 'prototype-desktop.png'), fullPage: true });
+  await page.getByRole('link', { name: '返回交付准备', exact: true }).click();
+  assert.equal(await dialog.getByLabel('交付标题', { exact: true }).inputValue(), '第一轮研发交接');
+  await dialog.getByRole('button', { name: '检查交付材料', exact: true }).click();
+  await dialog.getByRole('button', { name: '填写交接说明', exact: true }).click();
+  assert.equal(await dialog.getByLabel('本次交付说明', { exact: true }).inputValue(), '只采用 v1.2，其他版本不在本次范围');
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.equal(await dialog.getByLabel('交付标题', { exact: true }).inputValue(), '第一轮研发交接');
+  await dialog.getByRole('button', { name: '检查交付材料', exact: true }).click();
+  await dialog.getByRole('button', { name: '填写交接说明', exact: true }).click();
+  await dialog.getByRole('button', { name: '冻结并创建交付包', exact: true }).click();
+  await page.getByRole('heading', { name: '第一轮研发交接', exact: true }).waitFor();
+  assert.equal(hub.listSnapshots().length, 1);
+  assert.equal(hub.getSnapshot('delivery-one').items[0].version, 'v1.2');
+  assert.equal(await page.evaluate(() => Object.keys(sessionStorage).filter(k => k.startsWith('flowlark.delivery-draft:')).length), 0);
+  passed.push('A8 交付预填、补材料返回、刷新保留输入并冻结成功');
+  await goto('/projects/orders/versions/v1.3');
+  await page.getByRole('button', { name: '加入迭代', exact: true }).click();
+  await select('本次需求', 'REQ-A · 订单筛选优化'); await page.keyboard.press('Escape');
+  await select('目标迭代', '九月第一轮');
+  await page.getByRole('radio', { name: '保留原版本，并加入本次版本', exact: true }).check();
+  await finishAssign();
+  assert.equal(hub.getMilestone('sprint-one').items.length, 2);
+  assert.ok(hub.getMilestone('sprint-one').items.every(x => x.requirement === 'REQ-A'));
+  await page.getByRole('button', { name: '留在当前页', exact: true }).click();
+  passed.push('A2 多需求原型仅加入选定需求，显式保留旧版本');
+  hub.createMilestone({ name: 'active-two', title: '第二轮采用新版', status: 'active', items: [{ requirement: 'REQ-A', project: 'orders', version: 'v1.3' }] });
+  hub.createMilestone({ name: 'other-project', title: '另一项目同号版本', items: [{ requirement: 'REQ-A', project: 'other', version: 'v1.2' }] });
+  await goto('/projects/orders/versions/v1.2');
+  await page.getByRole('button', { name: '迭代 1', exact: true }).click();
+  await page.locator('.ant-popover:visible').getByRole('link', { name: '九月第一轮', exact: true }).waitFor();
+  assert.equal(await page.locator('.ant-popover:visible').getByText('另一项目同号版本').count(), 0);
+  await page.keyboard.press('Escape');
+  await goto('/requirements/REQ-A');
+  assert.equal(hub.getMilestone('active-two').items[0].version, 'v1.3');
+  passed.push('A3/A4/A5 多迭代不同版本、跨项目不串联、新归档不改采用范围');
+  await page.getByRole('button', { name: '安排到迭代', exact: true }).click();
+  await select('候选归档版本', 'other / v1.3');
+  await select('目标迭代', '九月第一轮');
+  await page.getByRole('button', { name: '核对范围', exact: true }).click();
+  hub.updateMilestone('sprint-one', { goal: '另一窗口更新' });
+  await page.getByRole('button', { name: '确认并加入', exact: true }).click();
+  await page.getByText('迭代范围已变化，请重新核对后确认', { exact: true }).waitFor();
+  assert.equal(hub.getMilestone('sprint-one').items.length, 2);
+  await page.getByRole('dialog').getByRole('button', { name: /取\s*消/ }).click();
+  passed.push('A6 写前范围改变被拒绝，保留用户选择');
+  hub.createSnapshot({ name: 'delivery-two', milestone: 'sprint-one', title: '第二次交付' });
+  await goto('/milestones/sprint-one');
+  await page.getByRole('link', { name: '第一轮研发交接', exact: true }).waitFor();
+  await page.getByRole('link', { name: '第二次交付', exact: true }).waitFor();
+  passed.push('A9 多次交付分别保留并可从来源迭代追溯');
+  await page.route('**/api/workflow-links?*', route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '测试关联读取失败' }) }));
+  await goto('/requirements/REQ-A');
+  await page.getByText('关联信息读取失败', { exact: true }).waitFor();
+  await page.unroute('**/api/workflow-links?*');
+  await page.getByRole('button', { name: '重试关联', exact: true }).click();
+  await page.getByRole('button', { name: '迭代 3', exact: true }).waitFor();
+  passed.push('A11 查询失败不会显示无关联，重试恢复');
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const [route, image] of [['/requirements/REQ-A', 'requirement-mobile'], ['/milestones/sprint-one', 'milestone-mobile'], ['/projects/orders/versions/v1.2', 'prototype-mobile']]) {
+    await goto(route);
+    await page.screenshot({ path: path.join(out, `${image}.png`), fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false, `${image} overflow`);
+  }
+  await goto('/requirements/REQ-A');
+  await page.getByRole('button', { name: '安排到迭代', exact: true }).click();
+  await select('候选归档版本', 'orders / v1.2');
+  await select('目标迭代', '九月第一轮');
+  await page.getByRole('radio', { name: '保留原版本，并加入本次版本', exact: true }).check();
+  await page.getByRole('button', { name: '核对范围', exact: true }).click();
+  await page.locator('.ant-select-dropdown:visible').waitFor({ state: 'hidden' });
+  await page.getByRole('dialog').screenshot({ path: path.join(out, 'assignment-mobile.png'), animations: 'disabled' });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false, 'assignment overflow');
+  await page.getByRole('dialog').getByRole('button', { name: /取\s*消/ }).click();
+  await goto('/deliveries?prepare=sprint-one');
+  await page.getByLabel('交付标题', { exact: true }).fill('暂存标题');
+  await page.getByRole('button', { name: '暂存并关闭', exact: true }).click();
+  await page.getByRole('button', { name: /准备交付包/, exact: true }).click();
+  assert.equal(await page.getByLabel('交付标题', { exact: true }).inputValue(), '暂存标题');
+  await page.getByLabel('交付标题', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('dialog').screenshot({ path: path.join(out, 'delivery-mobile.png'), animations: 'disabled' });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false, 'delivery overflow');
+  await page.getByRole('button', { name: '放弃草稿', exact: true }).click();
+  assert.equal(hub.listSnapshots().length, 2, '仅进入与暂存不创建交付');
+  passed.push('A12 进入暂存不产生交付，重复映射在核心回归验证；小屏安排和交付弹窗');
+  team.setTeamEnabled(root, true);
+  for (const role of ['guest', 'developer', 'tester']) {
+    const context = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.20' }, viewport: { width: 1280, height: 900 } });
+    const remote = await context.newPage(); remote.on('pageerror', e => errors.push(e.message));
+    const visitor = team.createVisitor(root, '192.0.2.20');
+    team.assignRole(root, visitor.item.id, role, { first: true });
+    await context.addCookies([{ name: 'flowlark_visitor', value: visitor.token, domain: '127.0.0.1', path: '/api' }]);
+    await remote.goto(base + '/#/projects/orders/versions/v1.2');
+    await remote.getByRole('button', { name: '迭代 1', exact: true }).waitFor();
+    assert.ok(await remote.getByRole('button', { name: '加入迭代', exact: true }).isDisabled());
+    await context.close();
+  }
+  passed.push('A10 访客研发测试可读关联、不能安排范围');
+  assert.deepEqual(errors, []);
+  passed.push('桌面和 390px 页面无横向溢出；无浏览器未处理异常');
+  fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify({ passed, screenshots: out }, null, 2));
+  console.log(JSON.stringify({ passed, screenshots: out }, null, 2));
+} catch (error) {
+  console.error('CURRENT URL', page.url()); console.error('DOM', (await page.locator('body').innerText()).slice(-9000));
+  await page.screenshot({ path: path.join(out, 'failed.png'), fullPage: true }); throw error;
+} finally { await browser.close(); await server.close(); cleanup(root); }

@@ -1,3 +1,4 @@
+import { scopeCounts } from './workflowModel.js';
 import { useNavigate } from 'react-router-dom';
 import { App, Button, Checkbox, DatePicker, Form, Input, Modal, Space, Table, Tag } from 'antd';
 import { PlusOutlined, SyncOutlined } from '@ant-design/icons';
@@ -105,7 +106,7 @@ export default function Milestones() {
           columns={[
             { title: '迭代', render: (_, record: any) => <><span className="fl-table-title">{record.title || record.name}</span><div className="fl-muted fl-mono">{record.name}</div></> },
             { title: '周期', render: (_, record: any) => `${textOf(record.startAt)} 至 ${textOf(record.endAt)}` },
-            { title: '版本数', render: (_, record: any) => record.items?.length || 0 },
+            { title: '需求 / 原型', render: (_, record: any) => `${scopeCounts(record.items).requirements} 条需求 / ${scopeCounts(record.items).versions} 个版本` },
             {
               title: '阶段',
               render: (_, record: any) => {

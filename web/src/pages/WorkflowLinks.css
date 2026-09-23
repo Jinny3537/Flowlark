@@ -1,0 +1,7 @@
+.fl-workflow-links { flex: 0 0 auto; padding: 10px 16px; border: 1px solid var(--fl-line, #e5e7eb); border-radius: 8px; background: var(--fl-surface, #fff); margin-bottom: 12px; min-width: 0; }
+.fl-workflow-links strong { font-size: 13px; color: var(--fl-text-2, #566); margin-right: 4px; }
+.fl-workflow-popover { width: min(380px, 78vw); max-height: 360px; overflow: auto; overflow-wrap: anywhere; }
+.fl-workflow-popover p { margin: 4px 0; }
+.fl-workflow-source { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 10px; padding: 0 4px; font-size: 13px; overflow-wrap: anywhere; }
+.fl-scope-selected > td { background: #eaf6f3 !important; }
+.fl-assignment-preview { border: 1px solid var(--fl-line, #e5e7eb); border-radius: 6px; padding: 12px; margin: 12px 0; max-height: 240px; overflow: auto; overflow-wrap: anywhere; }

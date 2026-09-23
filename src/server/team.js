@@ -4,9 +4,14 @@ import { err } from '../core/errors.js'
 import { readJson, sendJson } from './router.js'
 import { SLUG_RE, assertVersionNo } from '../core/store.js'
 
+import { wechatConfig, beginWechat, consumeWechatState, exchangeWechat } from './wechat.js'
+
+const STATE_COOKIE = 'flowlark_wechat_state'
+const clearStateCookie = `${STATE_COOKIE}=; Path=/api/team/wechat; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
 const COOKIE = 'flowlark_visitor'
 const versionRecords = /^\/api\/team\/records\/([^/]+)\/([^/]+)$/
 const publicReads = [
+  /^\/api\/workflow-links$/,
   /^\/api\/snapshots\/[^/]+\/(?:download|file)$/,
   /^\/api\/projects(?:\/[^/]+(?:\/(?:versions|planning|cumulative|since-read|baseline-history|contributors))?)?$/,
   /^\/api\/versions\/[^/]+\/[^/]+(?:\/(?:download|history|spec-history|spec-at|attachments\/[^/]+))?$/,
@@ -16,12 +21,22 @@ const publicReads = [
 ]
 
 export function localTeamHost(req) {
-  return isLocalRequest(req) && !req.headers.forwarded && !req.headers['x-forwarded-for'] && !req.headers['x-forwarded-host']
+  return isLocalRequest(req) && !req.headers.forwarded && !req.headers['x-forwarded-for'] && !req.headers['x-forwarded-host'] && !req.headers['x-forwarded-proto']
 }
 
-function tokenOf(req) {
+function tokenOf(req, name = COOKIE) {
   return String(req.headers.cookie || '').split(';').map((part) => part.trim())
-    .find((part) => part.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1) || ''
+    .find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) || ''
+}
+
+function isHttps(req) {
+  return Boolean(req.socket.encrypted) || req.headers['x-forwarded-proto'] === 'https'
+}
+function wechatAvailability(req) {
+  const config = wechatConfig()
+  if (!config) return { wechatAvailable: false, wechatUnavailableReason: '微信登录尚未配置，请联系主机或使用游客访问。' }
+  if (new URL(config.callback).host !== req.headers.host || !isHttps(req)) return { wechatAvailable: false, wechatUnavailableReason: '请通过主机配置的 HTTPS 工作台域名使用微信登录。' }
+  return { wechatAvailable: true, wechatUnavailableReason: null }
 }
 
 async function readTeamBody(req, limit = 1024) {
@@ -33,8 +48,8 @@ async function readTeamBody(req, limit = 1024) {
 export function teamContext(root, req) {
   const enabled = team.teamEnabled(root)
   const host = localTeamHost(req)
-  const item = enabled && !host ? team.visitor(root, tokenOf(req)) : null
-  return { enabled, host, role: host ? 'product' : enabled ? item?.role || null : 'guest', id: host ? 'host' : item?.id || null }
+  const item = !host ? team.visitor(root, tokenOf(req)) : null
+  return { enabled, host, role: host ? 'product' : enabled ? item?.role || null : 'guest', id: host ? 'host' : item?.id || null, user: item?.identity ? { provider: item.identity.provider, name: item.identity.name } : null }
 }
 
 function assertSameOrigin(req) {
@@ -71,10 +86,10 @@ export async function handleTeamRequest(hub, req, res, url, { mirror }) {
   if (pathname === '/api/team/session' && req.method === 'GET') {
     if (context.enabled && !context.host && !context.id) {
       const { token } = team.createVisitor(hub.root, req.socket.remoteAddress)
-      res.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=31536000`)
+      res.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/api; HttpOnly; SameSite=Lax; Max-Age=${team.VISITOR_MAX_AGE}${isHttps(req) ? '; Secure' : ''}`)
       // Role remains unselected until the explicit selection request.
     }
-    sendJson(res, 200, { ...context, kinds: (!context.enabled && !context.host) || mirror || !hub.writePermission().canWrite ? [] : team.recordKinds(context.role) })
+    sendJson(res, 200, { ...context, ...wechatAvailability(req), kinds: (!context.enabled && !context.host) || mirror || !hub.writePermission().canWrite ? [] : team.recordKinds(context.role) })
     return true
   }
   if (pathname === '/api/team/config' && req.method === 'PUT') {
@@ -84,9 +99,48 @@ export async function handleTeamRequest(hub, req, res, url, { mirror }) {
     sendJson(res, 200, { enabled: body.enabled })
     return true
   }
+  if (pathname === '/api/team/logout' && req.method === 'POST') {
+    team.revokeVisitor(hub.root, tokenOf(req))
+    res.setHeader('Set-Cookie', [`${COOKIE}=; Path=/api; HttpOnly; SameSite=Lax; Max-Age=0${isHttps(req) ? '; Secure' : ''}`, clearStateCookie])
+    sendJson(res, 200, { ok: true })
+    return true
+  }
+  if (pathname === '/api/team/wechat/start' && req.method === 'POST') {
+    const config = wechatConfig()
+    if (!config) throw err.bad('WECHAT_NOT_CONFIGURED', '微信登录尚未配置，请联系主机或使用游客访问')
+    if (new URL(config.callback).host !== req.headers.host) throw err.bad('WECHAT_HOST_MISMATCH', '请通过微信登录配置的站点域名访问')
+    if (!isHttps(req)) throw err.bad('WECHAT_HTTPS_REQUIRED', '请通过 HTTPS 工作台域名使用微信登录')
+    const body = await readTeamBody(req, 2048)
+    if (!team.teamEnabled(hub.root)) throw err.forbidden('TEAM_DISABLED', '团队模式已关闭')
+    const login = beginWechat(hub.root, config, Date.now(), body.returnTo)
+    res.setHeader('Set-Cookie', `${STATE_COOKIE}=${login.state}; Path=/api/team/wechat; HttpOnly; Secure; SameSite=Lax; Max-Age=300`)
+    sendJson(res, 200, { url: login.url })
+    return true
+  }
+  if (pathname === '/api/team/wechat/callback' && req.method === 'GET') {
+    res.setHeader('Referrer-Policy', 'no-referrer')
+    res.setHeader('Set-Cookie', clearStateCookie)
+    let returnTo = '/actions'
+    try {
+      const config = wechatConfig()
+      if (!config || new URL(config.callback).host !== req.headers.host) throw new Error('invalid config')
+      returnTo = consumeWechatState(hub.root, url.searchParams.get('state'), tokenOf(req, STATE_COOKIE))
+      const identity = await exchangeWechat(config, url.searchParams.get('code'))
+      if (!team.teamEnabled(hub.root)) throw new Error('team disabled')
+      const { token } = team.loginVisitor(hub.root, identity, req.socket.remoteAddress)
+      res.setHeader('Set-Cookie', [`${COOKIE}=${token}; Path=/api; HttpOnly; Secure; SameSite=Lax; Max-Age=${team.VISITOR_MAX_AGE}`, clearStateCookie])
+      res.writeHead(302, { Location: `/#${returnTo}` })
+    } catch {
+      res.writeHead(302, { Location: `/?login_error=wechat#${returnTo}` })
+    }
+    res.end()
+    return true
+  }
   if (!context.enabled && !(versionRecords.test(pathname) && (context.host || req.method === 'GET'))) throw err.forbidden('TEAM_DISABLED', '当前为只读分享，不能执行协作操作')
   if (pathname === '/api/team/role' && req.method === 'POST') {
     const body = await readTeamBody(req)
+    context = teamContext(hub.root, req)
+    if (!context.enabled) throw err.forbidden('TEAM_DISABLED', '团队模式已关闭')
     if (!context.id || context.host) throw err.forbidden('TEAM_SESSION_REQUIRED', '请重新打开角色选择页面')
     team.assignRole(hub.root, context.id, body.role, { first: true })
     sendJson(res, 200, { role: body.role })

@@ -132,7 +132,6 @@ export default function PrototypeEditor() {
   const editable = canEditStructure({
     canWrite: health?.canWrite !== false,
     version,
-    lockBaseline: health?.rules?.lockBaseline !== false,
   });
   const editorSrc = useMemo(() => previewUrl({
     protocol: window.location.protocol,
@@ -299,7 +298,7 @@ export default function PrototypeEditor() {
           title="当前版本不可在线编辑"
           subTitle={health?.canWrite === false
             ? '当前工作区是只读模式。'
-            : '只有编辑中版本可以修改原型；基线、历史和已废弃版本保持只读。'}
+            : '已废弃版本不可编辑，请先恢复版本。'}
           extra={<Button type="primary" onClick={() => navigate(workbenchRoute)}>返回版本工作台</Button>}
         />
       </main>

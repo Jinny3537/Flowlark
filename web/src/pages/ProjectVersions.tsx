@@ -23,7 +23,6 @@ import {
   DownOutlined,
   EyeOutlined,
   FileAddOutlined,
-  FileTextOutlined,
   HistoryOutlined,
   LinkOutlined,
   MoreOutlined,
@@ -35,6 +34,8 @@ import {
   UndoOutlined,
 } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import WorkflowLinks from './WorkflowLinks';
+import { contextualRoute } from './workflowModel.js';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { NewVersionDialog } from '@/components/NewVersionDialog';
 import { api, type HealthInfo } from '@/services/api';
@@ -76,6 +77,7 @@ export default function ProjectVersions() {
   const { slug = '' } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const linkedObject = (target: string) => contextualRoute(target, `/projects/${encodeURIComponent(slug)}?${searchParams}`, `项目 ${slug}`);
   const { message, modal } = App.useApp();
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const canWrite = health?.canWrite !== false;
@@ -278,7 +280,7 @@ export default function ProjectVersions() {
   }, [loadPage, loadPlanning]);
 
   const openWorkbench = useCallback((versionNo: string) => {
-    navigate(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}`);
+    navigate(linkedObject(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}`));
   }, [navigate, slug]);
 
   const openComparison = useCallback((pair: { a: string; b: string } | null) => {
@@ -305,14 +307,6 @@ export default function ProjectVersions() {
   const setBaseline = useCallback(async (version: any) => {
     if (!ensureWritable()) return;
     const versionNo = versionNoOf(version);
-    if (version.reviewStatus === 'questions' && !version.baselineAt) {
-      message.warning('该版本仍有评审疑问，请先处理问题并更新评审状态');
-      return;
-    }
-    if (versions.length > 1 && !version?.baselineAt && !version?.changes?.length && !version?.changeCount) {
-      message.warning('设为基线前至少需要 1 条变更说明');
-      return;
-    }
     let cumulative: any = null;
     if (baseline && versionNoOf(baseline) !== versionNo) {
       try {
@@ -350,7 +344,7 @@ export default function ProjectVersions() {
           title: `${versionNo} 已成为当前基线`,
           content: (
             <div className={styles.resultSummary}>
-              <p>{notificationFailed ? '基线已更新，但部分通知发送失败，可在设置或通知中心重试。' : '基线和评审状态已更新。'}</p>
+              <p>{notificationFailed ? '基线已更新，但部分通知发送失败，可在设置或通知中心重试。' : '基线状态已更新。'}</p>
               <Space wrap>
                 <Button onClick={() => openWorkbench(versionNo)}>打开基线</Button>
                 {baseline ? <Button icon={<SwapOutlined />} onClick={() => openComparison({ a: versionNoOf(baseline), b: versionNo })}>查看对比</Button> : null}
@@ -541,10 +535,10 @@ export default function ProjectVersions() {
       { type: 'divider' },
       display.key === 'VOID'
         ? { key: 'reopen', label: '恢复为编辑中', disabled: !canWrite }
-        : { key: 'void', label: '废弃', disabled: !canWrite || isBaselineVersion(selectedVersion) },
+        : { key: 'void', label: '废弃', disabled: !canWrite },
       {
         key: 'remove', label: '删除', danger: true,
-        disabled: !canWrite || isBaselineVersion(selectedVersion),
+        disabled: !canWrite,
       },
     ];
 
@@ -568,7 +562,7 @@ export default function ProjectVersions() {
             >
               查看原型
             </Button>
-            {canWrite && !isBaselineVersion(selectedVersion) && display.key !== 'VOID' ? (
+            {canWrite && !isBaselineVersion(selectedVersion) ? (
               <Button disabled={!canWrite} onClick={() => void setBaseline(selectedVersion)}>
                 {display.key === 'HISTORY' ? '回滚为基线' : '设为基线'}
               </Button>
@@ -578,9 +572,6 @@ export default function ProjectVersions() {
                 与当前基线比较
               </Button>
             ) : null}
-            <Button icon={<ArrowRightOutlined />} onClick={() => navigate(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}?tab=changes`)}>
-              查看变更
-            </Button>
             <Dropdown
               trigger={['click']}
               menu={{ items: canWrite ? detailMenuItems : detailMenuItems.slice(0, 2), onClick: ({ key }) => handleDetailAction(key, selectedVersion) }}
@@ -594,33 +585,16 @@ export default function ProjectVersions() {
               {isBaselineVersion(selectedVersion) ? <span className={styles.baselineLabel}>当前基线</span> : null}
               <span>{createdByOf(selectedVersion)}</span>
               <span>{fmtTime(createdAtOf(selectedVersion))}</span>
-              <span><FileTextOutlined aria-hidden />{selectedVersion.changeCount || selectedVersion.changes?.length || 0} 条变更</span>
               <span><LinkOutlined aria-hidden />{selectedVersion.requirementCount || selectedVersion.requirements?.length || 0} 条需求</span>
               <span><ThunderboltOutlined aria-hidden />{selectedVersion.externalRefs?.length || 0} 个外部依赖</span>
             </div>
         </header>
 
-        <section className={styles.summarySection} aria-labelledby={`${testId}-changes`}>
-          <div className={styles.sectionHeading}>
-            <h3 id={`${testId}-changes`}>变更日志 <span>{selectedVersion.changes?.length || 0}</span></h3>
-            <Button type="link" size="small" onClick={() => navigate(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}?tab=changes`)}>查看详情 <ArrowRightOutlined /></Button>
-          </div>
-          {selectedVersion.changes?.length ? (
-            <div className={styles.changeList}>
-              {selectedVersion.changes.map((change: any, index: number) => (
-                <div className={styles.changeRow} key={`${change.location || 'change'}-${change.type || 'item'}-${index}`}>
-                  {change.location ? <span className={styles.changeLocation}>{change.location}</span> : null}
-                  <span style={{ whiteSpace: 'pre-wrap', ...(!change.location ? { gridColumn: '1 / -1' } : {}) }}>{change.content || change.description || '未填写变更说明'}</span>
-                </div>
-              ))}
-            </div>
-          ) : <div className={styles.compactEmpty}><FileTextOutlined aria-hidden /><div><strong>尚未记录变更</strong><p>补充本版本调整的内容，便于评审和后续追溯。</p></div></div>}
-        </section>
-
+        <WorkflowLinks query={{ project: slug, version: versionNo }} refresh={selectedVersion.updatedAt} />
         <section className={styles.summarySection} aria-labelledby={`${testId}-requirements`}>
           <div className={styles.sectionHeading}>
             <h3 id={`${testId}-requirements`}>关联需求 <span>{selectedVersion.requirements?.length || 0}</span></h3>
-            <Button type="link" size="small" onClick={() => navigate(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}?tab=reqs`)}>{canWrite && display.key === 'DRAFT' ? '管理关联需求' : '查看详情'} <ArrowRightOutlined /></Button>
+            <Button type="link" size="small" onClick={() => navigate(linkedObject(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}?tab=reqs`))}>{canWrite && display.key !== 'VOID' ? '管理关联需求' : '查看详情'} <ArrowRightOutlined /></Button>
           </div>
           {selectedVersion.requirements?.length ? (
             <div className={styles.requirementList}>
@@ -629,7 +603,7 @@ export default function ProjectVersions() {
                 const title = typeof requirement === 'string' ? '' : requirement.title;
                 return (
                   <div className={styles.requirementRow} key={code || `requirement-${index}`}>
-                    <Link className={`fl-mono ${styles.breakText}`} to={`/requirements/${encodeURIComponent(code)}`}>{code || '未编号'}</Link>
+                    <Link className={`fl-mono ${styles.breakText}`} to={linkedObject(`/requirements/${encodeURIComponent(code)}`)}>{code || '未编号'}</Link>
                     <span className={styles.breakText}>{title || '未填写标题'}</span>
                   </div>
                 );
@@ -774,7 +748,7 @@ export default function ProjectVersions() {
         <section className={styles.pageEmpty} aria-label="项目版本空状态">
           <span className={styles.emptyIcon} aria-hidden><FileAddOutlined /></span>
           <h2>还没有版本</h2>
-          <p>创建首个版本后，可以在这里查看原型、变更和关联需求。</p>
+          <p>创建首个版本后，可以在这里查看原型和关联需求。</p>
           <Button
             type="primary"
             icon={<PlusOutlined />}

@@ -139,6 +139,7 @@
   position: relative;
   width: 7px;
   flex: 0 0 7px;
+  padding: 0;
   border: 0;
   background: var(--pw-color-gray-200);
   cursor: col-resize;
@@ -303,4 +304,13 @@
   .toolbarActions { flex: 1 1 100%; width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
   .toolbarActions > * { flex-shrink: 0; }
   .versionSelect { width: min(220px, 58vw); min-width: 0; }
+}
+
+.stageDragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.stageDragging iframe {
+  pointer-events: none;
 }

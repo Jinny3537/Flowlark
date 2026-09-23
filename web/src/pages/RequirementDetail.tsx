@@ -1,10 +1,12 @@
+import { contextualRoute } from './workflowModel.js';
+import WorkflowLinks, { SourceContext } from './WorkflowLinks';
 import RequirementWorkflow, { RequirementActions } from './RequirementWorkflow';
 import RequirementPrototypeButton from './RequirementPrototypeButton';
 import RequirementFields, { requirementSections } from './RequirementFields';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { safeRequirementUrl } from './requirementsModel.js';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, App, Button, Descriptions, Form, List, Modal, Space, Tabs, Tag } from 'antd';
 import { EditOutlined, ExportOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -17,20 +19,21 @@ import { errorText } from '@/services/requestModel.js';
 import { fmtTime, textOf } from '@/utils/format';
 import { requirementPayload } from './requirementsModel.js';
 
-const statusLabels: Record<string, string> = {
-  not_started: '未开始',
-  designing: '已归档 / 待定稿',
-  finalized: '已定稿',
-  delivered: '原型已确认',
-};
-
 export default function RequirementDetail() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [params, setParams] = useSearchParams();
+  const [item, setItem] = useState<any>(null);
+  useEffect(() => {
+    const section = params.get('section');
+    if (!['archives', 'iterations'].includes(section || '')) return;
+    const frame = requestAnimationFrame(() => document.getElementById(`requirement-${section}`)?.scrollIntoView({ block: 'center' }));
+    return () => cancelAnimationFrame(frame);
+  }, [params, item]);
   const { code = '' } = useParams();
   const { message } = App.useApp();
   const { health } = useAppRuntime();
   const writable = health?.canWrite !== false;
-  const [item, setItem] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -107,6 +110,7 @@ export default function RequirementDetail() {
 
   return (
     <main className="fl-page fl-requirement-detail">
+      <SourceContext />
       <PageHeader
         eyebrow="需求详情"
         title={item?.title || code}
@@ -123,10 +127,10 @@ export default function RequirementDetail() {
       />
       <State loading={loading && item?.code !== code} error={error} onRetry={load} empty={!item} emptyText="没有找到需求">
         <div className="fl-detail-stack">
+          <WorkflowLinks query={{ requirement: code }} refresh={item} />
           <section className="fl-detail-summary">
 <Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
               <Descriptions.Item label="需求标题">{textOf(item?.title)}</Descriptions.Item>
-              <Descriptions.Item label="本地原型进度"><Tag>{statusLabels[item?.derivedStatus] || textOf(item?.derivedStatus, '未开始')}</Tag></Descriptions.Item>
               <Descriptions.Item label="负责人">{textOf(item?.owner)}</Descriptions.Item>
               <Descriptions.Item label="项目">{textOf(item?.project, '未分项目')}</Descriptions.Item>
               <Descriptions.Item label="模块">{textOf(item?.module, '未分模块')}</Descriptions.Item>
@@ -134,7 +138,7 @@ export default function RequirementDetail() {
               <Descriptions.Item label="需求池阶段">{textOf(item?.stage, '待明确')}</Descriptions.Item>
 </Descriptions>
           </section>
-          <Tabs key={code} defaultActiveKey="workflow" items={[
+          <Tabs key={code} activeKey={params.get("tab") || "workflow"} onChange={tab => { const next = new URLSearchParams(params); next.set("tab", tab); setParams(next, { replace: true }); }} items={[
             { key: 'workflow', label: '协作与开发依据', children: item ? <RequirementWorkflow item={item} writable={writable} onChanged={load} /> : null },
             { key: 'local', label: '本地分析与历史', children: <div className="fl-detail-stack"><section className="fl-detail-section"><h2>本地分析（同步保留）</h2><p style={{ whiteSpace: 'pre-wrap' }}>{item?.localNotes || '尚未补充分析、待确认问题与决策理由'}</p></section><List dataSource={[...(item?.history || [])].reverse()} locale={{ emptyText: '暂无变更记录，旧数据不会补造历史' }} renderItem={(event: any) => <List.Item><div><strong>{fmtTime(event.at)} · {event.action === 'update' ? '字段更新' : event.action}</strong>{event.by ? <p>{event.by}</p> : null}{event.changes?.map((change: any) => <p key={change.field} style={{ overflowWrap: 'anywhere' }}>{change.field}：{typeof change.before === 'object' ? JSON.stringify(change.before) : String(change.before ?? '')} → {typeof change.after === 'object' ? JSON.stringify(change.after) : String(change.after ?? '')}</p>)}</div></List.Item>} /></div> },
             { key: 'content', label: '需求内容', children: <div className="fl-detail-stack">{renderSections(['businessValue', 'description'])}</div> },
@@ -180,7 +184,7 @@ export default function RequirementDetail() {
                         <Button
                           type="link"
                           className="fl-result-link"
-                          onClick={() => navigate(`/projects/${encodeURIComponent(version.project)}/versions/${encodeURIComponent(versionNo)}`)}
+                          onClick={() => navigate(contextualRoute(`/projects/${encodeURIComponent(version.project)}/versions/${encodeURIComponent(versionNo)}`, location.pathname + location.search, `需求 ${code}`))}
                         >
                           {version.project} / {versionNo} · {textOf(version.title)}
                         </Button>
