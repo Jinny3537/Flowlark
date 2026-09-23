@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { Alert, App, Button, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import { DeleteOutlined, EditOutlined, ExportOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -19,10 +19,18 @@ import {
 import { MilestonePlatformFields } from './MilestonePlatformFields';
 import { MilestoneSyncPanel } from './MilestoneSyncPanel';
 import { IterationRequirementsDialog } from './IterationRequirementsDialog';
+import { SourceContext, MilestoneDeliveries } from './WorkflowLinks';
+import { contextualRoute, milestoneRowId, scopeCounts, scopeKey, scopeLabel } from './workflowModel.js';
 import { ActiveScopeChangeDialog } from './ActiveScopeChangeDialog';
 
 export default function MilestoneDetail() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const scopeRoute = (target: string, entry: any) => {
+    const query = new URLSearchParams(location.search); query.set('focus', scopeKey(entry));
+    return contextualRoute(target, location.pathname + '?' + query, `迭代 ${name}`);
+  };
   const { name = '' } = useParams();
   const { message } = App.useApp();
   const { health } = useAppRuntime();
@@ -117,7 +125,7 @@ export default function MilestoneDetail() {
     setSaving(true);
     try {
       const items = [...milestoneItems(item.items), values];
-      await api.updateMilestone(name, { items });
+      await api.updateMilestone(name, { items, expectedRevision: item.revision });
       form.resetFields();
       setVersions([]);
       setAddOpen(false);
@@ -134,7 +142,7 @@ export default function MilestoneDetail() {
     const key = `${entry.requirement}:${entry.project}:${entry.version}`;
     setRemoving(key);
     try {
-      await api.updateMilestone(name, { items: withoutMilestoneItem(item.items, entry) });
+      await api.updateMilestone(name, { items: withoutMilestoneItem(item.items, entry), expectedRevision: item.revision });
       message.success('已从迭代范围移除');
       await load();
     } catch (nextError) {
@@ -198,6 +206,13 @@ export default function MilestoneDetail() {
 
   const editable = writable && ['planning', 'reviewing'].includes(item?.status || 'planning');
 
+  useEffect(() => {
+    const focus = params.get('focus');
+    if (!focus || loading || !item) return;
+    const entry = item.items.find((x: any) => scopeKey(x) === focus);
+    if (entry) document.getElementById(milestoneRowId(entry))?.scrollIntoView({ block: 'center' });
+  }, [params, loading, item]);
+
   const openEdit = () => {
     editForm.setFieldsValue({ goal: item?.goal || '', owner: item?.owner || '', title: item?.title, versionNo: item?.versionNo, startAt: item?.startAt, endAt: item?.endAt, platform: item?.platform ? { ...item.platform, sprintId: item.external?.sprintId || item.platform.sprintId } : null });
     setEditOpen(true);
@@ -205,6 +220,7 @@ export default function MilestoneDetail() {
 
   return (
     <main className="fl-page">
+      <SourceContext />
       <PageHeader
         eyebrow="迭代详情"
         title={item?.title || name}
@@ -216,6 +232,9 @@ export default function MilestoneDetail() {
             {item.project ? <Button type="primary" disabled={!editable} onClick={() => setRequirementsOpen(true)}>关联需求</Button> : null}
             <Button icon={<PlusOutlined />} disabled={!editable} onClick={() => setAddOpen(true)}>添加原型交付物</Button>
             {item.status === 'active' ? <Button danger icon={<EditOutlined />} disabled={!writable} onClick={() => item.project ? setRequirementsOpen(true) : setScopeOpen(true)}>变更范围</Button> : null}
+            <Button icon={<PlusOutlined />} disabled={!editable} onClick={() => setAddOpen(true)}>添加需求与原型</Button>
+            {item.status === 'active' ? <Button danger icon={<EditOutlined />} disabled={!writable} onClick={() => setScopeOpen(true)}>变更范围</Button> : null}
+            <Button type="primary" disabled={!writable} onClick={() => navigate(contextualRoute(`/deliveries?prepare=${encodeURIComponent(name)}`, location.pathname + location.search, `迭代 ${name}`))}>准备交付包</Button>
             <Button icon={<ExportOutlined />} loading={exporting} disabled={!writable} onClick={exportPackage}>导出迭代包</Button>
           </Space>
         ) : null}
@@ -270,14 +289,15 @@ export default function MilestoneDetail() {
             />
           ) : null}
           <section className="fl-detail-section">
-            <h2>原型与交付物</h2>
+            <h2>本次需求与原型</h2><p>{scopeCounts(item?.items).requirements} 条需求 · {scopeCounts(item?.items).projects} 个项目 · {scopeCounts(item?.items).versions} 个原型版本 · {scopeLabel(item?.status)}</p>
             <Table
               rowKey={(entry: any) => `${entry.requirement}:${entry.project}:${entry.version}`}
               pagination={false}
-              locale={{ emptyText: '尚未添加原型交付物，需求可先进入冲刺' }}
+              locale={{ emptyText: <Space direction="vertical"><span>本轮尚未安排需求与原型</span><Button disabled={!editable} onClick={() => setAddOpen(true)}>添加需求与原型</Button></Space> }}
+              onRow={(entry: any) => ({ id: milestoneRowId(entry), className: params.get('focus') === scopeKey(entry) ? 'fl-scope-selected' : '' })}
               dataSource={item?.items || []}
               columns={[
-                { title: '需求', dataIndex: 'requirement', width: 170, render: (value) => <span className="fl-mono">{value}</span> },
+                { title: '需求', dataIndex: 'requirement', width: 170, render: (value, entry: any) => <div><Link to={scopeRoute(`/requirements/${encodeURIComponent(value)}`, entry)}>{value}<br />{requirements.find(r => r.code === value)?.title || '需求资料缺失'}</Link>{entry.linkMissing && <Tag color="warning">原型关联待核对</Tag>}</div> },
                 { title: '项目', dataIndex: 'project', width: 160 },
                 {
                   title: '版本',
@@ -285,7 +305,7 @@ export default function MilestoneDetail() {
                     <Button
                       type="link"
                       className="fl-result-link"
-                      onClick={() => navigate(`/projects/${encodeURIComponent(entry.project)}/versions/${encodeURIComponent(entry.version)}`)}
+                      onClick={() => navigate(scopeRoute(`/projects/${encodeURIComponent(entry.project)}/versions/${encodeURIComponent(entry.version)}`, entry))}
                     >
                       {entry.version} · {textOf(entry.versionTitle)}
                     </Button>
@@ -352,6 +372,19 @@ export default function MilestoneDetail() {
               scroll={{ x: 900 }}
             />
           </section>
+          <MilestoneDeliveries name={name} />
+          {item ? (
+            <MilestoneSyncPanel
+              name={name}
+              item={item}
+              preflight={preflight}
+              journal={journal}
+              execution={execution}
+              writable={writable}
+              onChanged={load}
+            />
+          ) : null}
+
         </div>
       </State>
 

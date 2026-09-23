@@ -58,22 +58,9 @@ export function isBaseline(version, baselineNo) {
   return !!baselineNo && version.versionNo === baselineNo
 }
 
-/**
- * R4：只有「编辑中」的版本能改结构性内容（原型文件、标题、变更日志、关联需求）。
- * 规格书不走这个校验 —— 见 assertSpecEditable。
- */
-export function assertEditable(version, baselineNo, what, { enabled = true } = {}) {
-  // 配置项 rules.lockBaseline 可以关掉这条约束。关掉后原型就失去追溯证据的效力，
-  // 所以默认开启，且在设置页里标为高风险开关。
-  if (!enabled) return
-  const st = displayStatus(version, baselineNo)
-  if (st.key !== 'DRAFT') {
-    throw err.bad(
-      'VERSION_LOCKED',
-      `${version.versionNo} 当前是「${st.label}」，${what}已锁定`,
-      '原型是需求追溯的证据，确认后就不该再变。要改请新建版本；规格书、标签、附件不受此限制。'
-    )
-  }
+/** 基线仅表示状态；结构性编辑仍遵守废弃版本不可编辑的约束。 */
+export function assertEditable(version) {
+  assertSpecEditable(version)
 }
 
 /** R4 的另一半：规格书是活文档，除了已废弃版本，任何状态都能改 */
@@ -83,15 +70,7 @@ export function assertSpecEditable(version) {
   }
 }
 
-/**
- * R6：设为基线前必须有变更日志。两种豁免：
- *   1) 项目的首个版本 —— 它没有「上一版」可对比；
- *   2) 曾经当过基线的版本（baselineAt 非空）—— 这是 R3 的回滚路径。
- *
- * 第二条是上一版实现跑测试才发现的：首版靠豁免成为基线时没有变更日志，
- * 等它被顶替成历史版本后想回滚就会被 R6 卡住 —— 而回滚正是新版出问题时的止血动作。
- * R6 该约束的是「向前推进」，不是「往回退」。
- */
+/** 正式发版的日志检查；单独设定基线不调用此校验。 */
 export function assertChangelogReady(version, totalVersionCount, { enabled = true } = {}) {
   // 配置项 rules.requireChangelog 可以关掉。关掉后研发无法判断每版改了什么，
   // 这个产品最核心的价值就没了，所以默认开启。
@@ -101,7 +80,7 @@ export function assertChangelogReady(version, totalVersionCount, { enabled = tru
   if (version.changes.length === 0 && !isFirstEver && !wasBaselineBefore) {
     throw err.bad(
       'CHANGELOG_REQUIRED',
-      `${version.versionNo} 的变更日志为空，不能设为基线`,
+      `${version.versionNo} 的变更日志为空，不能正式发版`,
       `补一条：flowlark add-change <项目> ${version.versionNo} -m "修改:位置:改了什么"`
     )
   }

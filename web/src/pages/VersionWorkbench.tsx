@@ -1,3 +1,6 @@
+import WorkflowLinks, { SourceContext } from './WorkflowLinks';
+import AssignIterationDialog from './AssignIterationDialog';
+import { safeReturn } from './workflowModel.js';
 import {
   ArrowLeftOutlined,
   BranchesOutlined,
@@ -49,6 +52,8 @@ export default function VersionWorkbench() {
   const anchorQuery = searchParams.get('anchor');
   const { message } = App.useApp();
 
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [linksRefresh, setLinksRefresh] = useState(0);
   const [project, setProject] = useState<any>(null);
   const [version, setVersion] = useState<any>(null);
   const [siblings, setSiblings] = useState<any[]>([]);
@@ -93,7 +98,6 @@ export default function VersionWorkbench() {
   const editable = canEditStructure({
     canWrite,
     version,
-    lockBaseline: health?.rules?.lockBaseline !== false,
   });
   const currentBaselineNo = useMemo(
     () => siblings.find((item) => item.isBaseline)?.versionNo || project?.baselineVersionNo || null,
@@ -234,10 +238,25 @@ export default function VersionWorkbench() {
     localStorage.setItem('flowlark.docsCollapsed', docsCollapsed ? '1' : '0');
   }, [docsCollapsed]);
 
+  const clampSplit = (value: number, width: number) => {
+    const max = Math.max(30, Math.min(88, (width - 347) / width * 100));
+    return Math.max(30, Math.min(max, value));
+  };
+
+  useEffect(() => {
+    const stage = workspaceRef.current;
+    if (!stage) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) setLeftPct(value => clampSplit(value, entry.contentRect.width));
+    });
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [loading, docsCollapsed]);
+
   const moveSplit = useCallback((clientX: number) => {
     const rect = workspaceRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setLeftPct(Math.max(30, Math.min(88, ((clientX - rect.left) / rect.width) * 100)));
+    setLeftPct(clampSplit(((clientX - rect.left) / rect.width) * 100, rect.width));
   }, []);
 
   useEffect(() => {
@@ -252,9 +271,13 @@ export default function VersionWorkbench() {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp, { once: true });
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('blur', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('blur', onUp);
     };
   }, [dragging, moveSplit]);
 
@@ -286,7 +309,7 @@ export default function VersionWorkbench() {
 
   const openPrototypeEditor = () => {
     if (!editable) {
-      message.info('只有编辑中版本可以在线编辑');
+      message.info('当前版本不可在线编辑，请检查写入权限或先恢复废弃版本');
       return;
     }
     setAnnotationMode(false);
@@ -352,10 +375,10 @@ export default function VersionWorkbench() {
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
-            aria-label={`返回 ${textOf(project?.name, slug)} 的版本列表`}
-            onClick={() => navigate(`/projects/${encodeURIComponent(slug)}`)}
+            aria-label={safeReturn(searchParams.get("returnTo")) ? "返回来源" : `返回 ${textOf(project?.name, slug)} 的版本列表`}
+            onClick={() => navigate(safeReturn(searchParams.get("returnTo")) || `/projects/${encodeURIComponent(slug)}`)}
           >
-            返回版本列表
+            {safeReturn(searchParams.get("returnTo")) ? "返回来源" : "返回版本列表"}
           </Button>
           <div className={styles.contextCopy}>
             <div className={styles.contextPath}>
@@ -397,7 +420,7 @@ export default function VersionWorkbench() {
           <Button icon={<BranchesOutlined />} onClick={goCompare}>并排对比</Button>
           {version?.isBaseline ? (
             <Button disabled>当前基线</Button>
-          ) : canWrite && version && version.display?.key !== 'VOID' ? (
+          ) : canWrite && version ? (
             <Button type="primary" disabled={!canWrite} onClick={() => setBaselineOpen(true)}>
               {version.display?.key === 'HISTORY' ? '回滚为基线' : '设为当前基线'}
             </Button>
@@ -405,6 +428,12 @@ export default function VersionWorkbench() {
         </div>
       </header>
 
+      <SourceContext />
+      {version && !error && <WorkflowLinks query={{ project: slug, version: versionNo }} refresh={`${version.updatedAt}:${linksRefresh}:${JSON.stringify(version.requirements)}`} actions={
+        version.requirements?.length ? <Button size="small" disabled={!canWrite || !session?.host || version.status === 'VOID'} onClick={() => setAssignOpen(true)}>加入迭代</Button>
+          : <Button size="small" onClick={() => openPanel('reqs')}>关联需求</Button>
+      } />}
+      <AssignIterationDialog open={assignOpen} onClose={() => setAssignOpen(false)} source={{ project: slug, version: versionNo }} writable={canWrite && !!session?.host} onChanged={() => setLinksRefresh(n => n + 1)} />
       {error ? (
         <Alert
           className={styles.coreError}
@@ -449,7 +478,7 @@ export default function VersionWorkbench() {
               onChange={(value) => setMobileMode(String(value))}
             />
           </div>
-          <div className={styles.stage} ref={workspaceRef}>
+          <div className={`${styles.stage} ${dragging ? styles.stageDragging : ''}`} ref={workspaceRef}>
             <section
               className={`${styles.previewPane} ${docsCollapsed ? styles.previewPaneFull : ''}`
                 + ` ${mobileMode !== 'preview' ? styles.mobileHidden : ''}`}
@@ -487,7 +516,27 @@ export default function VersionWorkbench() {
                 className={`${styles.splitter} ${dragging ? styles.splitterDragging : ''}`}
                 type="button"
                 aria-label="拖动调整原型与文档宽度，双击恢复默认"
-                onPointerDown={() => setDragging(true)}
+                role="separator"
+                aria-orientation="vertical"
+                aria-valuemin={30}
+                aria-valuemax={88}
+                aria-valuenow={Math.round(leftPct)}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setDragging(true);
+                }}
+                onLostPointerCapture={() => setDragging(false)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Home') { event.preventDefault(); resetSplit(); return; }
+                  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+                  event.preventDefault();
+                  const width = workspaceRef.current?.getBoundingClientRect().width || 1;
+                  const value = clampSplit(leftPct + (event.key === 'ArrowLeft' ? -2 : 2), width);
+                  setLeftPct(value);
+                  localStorage.setItem('flowlark.split', String(value));
+                }}
                 onDoubleClick={resetSplit}
               />
             ) : null}
@@ -502,9 +551,7 @@ export default function VersionWorkbench() {
                 slug={slug}
                 versionNo={versionNo}
                 version={version}
-                siblings={siblings}
                   canWrite={canWrite}
-                  lockBaseline={health?.rules?.lockBaseline !== false}
                 maxFileBytes={health?.maxFileBytes || 10 * 1024 * 1024}
                 requirementUrlTemplate={health?.requirementUrlTemplate || ''}
                 allTags={allTags}
@@ -536,8 +583,6 @@ export default function VersionWorkbench() {
         slug={slug}
         target={version}
         current={currentBaselineNo}
-        totalVersions={siblings.length}
-        requireChangelog={health?.rules?.requireChangelog !== false}
         onClose={() => setBaselineOpen(false)}
         onDone={async () => {
           setBaselineOpen(false);

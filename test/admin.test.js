@@ -148,27 +148,29 @@ describe('更名后的老仓库', () => {
 
 // ============================================================
 describe('业务规则开关', () => {
-  test('关掉 R6 后无变更日志也能设为基线', (t) => {
+  test('旧变更日志配置不再限制设定基线', (t) => {
     const { hub } = repo()
     hub.addVersion('ord', { versionNo: 'v1.1', title: '二版', html: html() })
-    throwsCode(t, 'CHANGELOG_REQUIRED', () => hub.setBaseline('ord', 'v1.1'))
+    hub.setConfig('rules.requireChangelog', 'true')
+    t.assert.strictEqual(hub.setBaseline('ord', 'v1.1').isBaseline, true)
+    hub.setBaseline('ord', 'v1.0')
 
     hub.setConfig('rules.requireChangelog', 'false')
     t.assert.strictEqual(hub.setBaseline('ord', 'v1.1').isBaseline, true)
   })
 
-  test('关掉 R4 后基线内容可改', (t) => {
+  test('旧锁定配置不再限制基线编辑', (t) => {
     const { hub } = repo()
-    throwsCode(t, 'VERSION_LOCKED', () => hub.updateVersion('ord', 'v1.0', { title: 'x' }))
+    t.assert.doesNotThrow(() => hub.updateVersion('ord', 'v1.0', { title: 'x' }))
 
     hub.setConfig('rules.lockBaseline', 'false')
     t.assert.strictEqual(hub.updateVersion('ord', 'v1.0', { title: '改过了' }).title, '改过了')
   })
 
-  test('两个开关默认都是开的', (t) => {
+  test('旧锁定配置默认关闭，正式发版保留日志检查', (t) => {
     const { hub } = repo()
     t.assert.strictEqual(hub.getConfig('rules.requireChangelog'), true)
-    t.assert.strictEqual(hub.getConfig('rules.lockBaseline'), true)
+    t.assert.strictEqual(hub.getConfig('rules.lockBaseline'), false)
   })
 })
 
@@ -255,7 +257,7 @@ describe('版本附件', () => {
   test('附件不受基线锁定 —— 和规格书同理', (t) => {
     // v1.0 是基线，改标题会被拒；但事后补一份评审纪要是常态
     const { hub } = repo()
-    throwsCode(t, 'VERSION_LOCKED', () => hub.updateVersion('ord', 'v1.0', { title: 'x' }))
+    t.assert.doesNotThrow(() => hub.updateVersion('ord', 'v1.0', { title: 'x' }))
     const v = hub.addAttachment('ord', 'v1.0', { name: '评审纪要.md', content: 'ok' })
     t.assert.strictEqual(v.attachments.length, 1)
   })

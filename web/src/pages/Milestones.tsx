@@ -1,3 +1,4 @@
+import { scopeCounts } from './workflowModel.js';
 import { useNavigate } from 'react-router-dom';
 import { Button, Input, Select, Space, Table, Tag } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -70,6 +71,7 @@ export default function Milestones() {
             { title: '发布版本', render: (_, record: any) => record.platform?.versionName || '—' },
             { title: '冲刺', render: (_, record: any) => record.platform?.sprintName || (record.external?.sprintId ? `#${record.external.sprintId}` : '待新建') },
             { title: '需求数', render: (_, record: any) => (record.requirements || [...new Set((record.items || []).map((i: any) => i.requirement))]).length },
+            { title: '需求 / 原型', render: (_, record: any) => `${scopeCounts(record.items).requirements} 条需求 / ${scopeCounts(record.items).versions} 个版本` },
             {
               title: '阶段',
               render: (_, record: any) => {

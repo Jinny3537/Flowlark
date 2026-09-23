@@ -68,15 +68,14 @@ describe('HTTP API', () => {
     await api.send('POST', '/api/projects/ord/versions', {
       versionNo: 'v1.1', title: '二版', html: html('二版')
     })
-    // R6：非首版无变更日志不能设为基线
+    // 基线仅改变状态，不要求变更日志
     let r = await api.send('POST', '/api/versions/ord/v1.1/baseline')
-    t.assert.strictEqual(r.status, 400)
-    t.assert.strictEqual(r.body.code, 'CHANGELOG_REQUIRED')
-    t.assert.ok(r.body.hint, '错误响应要带可执行的下一步')
+    t.assert.strictEqual(r.status, 200)
+    t.assert.strictEqual(r.body.isBaseline, true)
 
-    // R4：基线锁定
+    // 基线和历史版本仍可编辑
     r = await api.send('PUT', '/api/versions/ord/v1.0', { title: '改名' })
-    t.assert.strictEqual(r.body.code, 'VERSION_LOCKED')
+    t.assert.strictEqual(r.status, 200)
 
     // R4 另一半：规格书仍可改
     r = await api.send('PUT', '/api/versions/ord/v1.0/spec', { markdown: '# 补充说明' })
@@ -214,7 +213,7 @@ describe('升级后的 API', () => {
 
   test('标签对基线版本同样可写（不受 R4 锁定）', async (t) => {
     const locked = await api.send('PUT', '/api/versions/ord/v1.0', { title: 'x' })
-    t.assert.strictEqual(locked.body.code, 'VERSION_LOCKED')
+    t.assert.strictEqual(locked.status, 200)
 
     const r = await api.send('PUT', '/api/versions/ord/v1.0/tags', { tags: ['已交付'] })
     t.assert.strictEqual(r.status, 200)

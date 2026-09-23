@@ -91,6 +91,8 @@ const put = <T,>(p: string, b?: unknown) => request<T>('PUT', p, b);
 const del = <T,>(p: string) => request<T>('DELETE', p);
 
 export const api = {
+  startWechatLogin: (returnTo: string) => post<{ url: string }>('/api/team/wechat/start', { returnTo }),
+  logoutTeam: () => post<any>('/api/team/logout', {}),
   teamSession: () => get<any>('/api/team/session'),
   setTeamMode: (enabled: boolean) => put<any>('/api/team/config', { enabled }),
   chooseTeamRole: (role: string) => post<any>('/api/team/role', { role }),
@@ -171,6 +173,8 @@ export const api = {
     del(`/api/requirements/${enc(code)}/links/${enc(slug)}/${enc(no)}`),
   milestonePlatformOptions: (projectId?: number) => get<any>(`/api/milestone-platform/options${projectId ? `?projectId=${projectId}` : ''}`),
   listMilestones: () => get<any[]>('/api/milestones'),
+  workflowLinks: (query: Record<string, string>) => get<any>(`/api/workflow-links?${new URLSearchParams(query)}`),
+  assignMilestone: (name: string, body: unknown) => post<any>(`/api/milestones/${enc(name)}/assign`, body),
   getMilestone: (name: string) => get<any>(`/api/milestones/${enc(name)}`),
   createMilestone: (body: unknown) => post<any>('/api/milestones', body),
   preflightMilestoneFormalRelease: (name: string, slug: string, no: string, body: unknown) =>

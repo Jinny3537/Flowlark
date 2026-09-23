@@ -15,20 +15,6 @@ import { requirementPayload } from './requirementsModel.js';
 
 const requirementStatuses = ['待评审', '评审通过', '开发中', '已上线', '已拒绝', '暂缓'];
 
-const statusLabels: Record<string, string> = {
-  not_started: '未开始',
-  designing: '已归档 / 待定稿',
-  finalized: '已定稿',
-  delivered: '原型已确认',
-};
-
-const statusColors: Record<string, string> = {
-  not_started: 'default',
-  designing: 'gold',
-  finalized: 'cyan',
-  delivered: 'green',
-};
-
 type ExternalState = {
   provider: string;
   token: string;
@@ -40,7 +26,6 @@ export default function Requirements() {
   const [params, setParams] = useSearchParams();
   const [view] = useState(params.get('view') || 'active');
   const [pending] = useState(params.get('pending') || '');
-  const [syncPreview, setSyncPreview] = useState<any>(null);
   const [syncResult, setSyncResult] = useState<any>(null);
   const screens = Grid.useBreakpoint();
   const { message } = App.useApp();
@@ -166,12 +151,11 @@ export default function Requirements() {
     }
   }, [external.provider, external.token, load, message, navigate]);
 
-  const syncPool = useCallback(async (preview = true, codes?: string[]) => {
+  const syncPool = useCallback(async (codes?: string[]) => {
     setSyncing(true);
     try {
-      const result: any = await api.syncRequirements(external.provider, { token: external.token }, { preview, codes: codes || (!preview && syncPreview ? syncPreview.changes.map((entry: any) => entry.code) : undefined), expected: !preview && syncPreview ? Object.fromEntries(syncPreview.changes.map((entry: any) => [entry.code, entry.token])) : undefined });
-      if (preview) { setSyncPreview(result); return; }
-      setSyncPreview(null); setSyncResult(result);
+      const result: any = await api.syncRequirements(external.provider, { token: external.token }, { preview: false, codes });
+      setSyncResult(result);
       await load();
       const failed = Array.isArray(result.failed) ? result.failed.length : Number(result.failed || 0);
       const summary = `已同步 ${result.updated}/${result.total} 条（新增 ${result.imported || 0} 条，移入回收站 ${result.removed || 0} 条，排除源回收站 ${result.excluded || 0} 条）`;
@@ -187,7 +171,7 @@ export default function Requirements() {
     } finally {
       setSyncing(false);
     }
-  }, [external.provider, external.token, message, load, syncPreview]);
+  }, [external.provider, external.token, message, load]);
 
   useEffect(() => {
     void load();
@@ -275,7 +259,6 @@ export default function Requirements() {
               { title: '优先级', dataIndex: 'priority', width: 100, render: value => value ? <Tag color="gold">{value}</Tag> : '—' },
               { title: '需求状态', key: 'sourceStatus', width: 120, render: (_, item: any) => item.external?.status || (item.external ? '来源未提供' : '本地需求') },
               { title: '需求池阶段', dataIndex: 'stage', width: 130, render: value => textOf(value, '待明确') },
-              { title: '本地原型进度', dataIndex: 'derivedStatus', width: 130, render: value => <Tag color={statusColors[value]}>{statusLabels[value] || '未开始'}</Tag> },
               { title: '负责人', dataIndex: 'owner', width: 110, render: value => textOf(value) },
               { title: '最近更新', key: 'updated', width: 120, render: (_, record: any) => fmtTime(record.sourceUpdatedAt || record.updatedAt) },
               { title: '操作', key: 'actions', width: 350, render: (_, item: any) => <Space wrap><RequirementPrototypeButton code={item.code} /><RequirementActions item={item} writable={writable} onChanged={load} /></Space> },

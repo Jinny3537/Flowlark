@@ -41,6 +41,8 @@ export function editablePreviewHtml(buf) {
   let savedRange = null
   let selectedTarget = null
   let stateFrame = 0
+  let originalEditable = null
+  let originalSpellcheck = null
 
   const post = (payload) => window.parent.postMessage(payload, '*')
   const formatState = () => {
@@ -116,6 +118,8 @@ export function editablePreviewHtml(buf) {
   const enable = () => {
     try {
       addEditorStyle()
+      originalEditable = document.body && document.body.getAttribute('contenteditable')
+      originalSpellcheck = document.body && document.body.getAttribute('spellcheck')
       document.designMode = 'on'
       if (document.body) {
         document.body.setAttribute('contenteditable', 'true')
@@ -131,7 +135,15 @@ export function editablePreviewHtml(buf) {
       }, true)
       document.addEventListener('input', () => { window.__flowlarkEdits.finish(); markDirty() }, true)
       document.addEventListener('pointerover', markTarget)
-      document.addEventListener('click', markTarget)
+      document.addEventListener('click', (event) => {
+        markTarget(event)
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }, true)
+      document.addEventListener('submit', (event) => {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }, true)
       post({ type: 'flowlark:edit-ready', state: formatState() })
     } catch {}
   }
@@ -150,6 +162,7 @@ export function editablePreviewHtml(buf) {
     }
     let ok = false
     try {
+      window.focus()
       restoreSelection()
       window.__flowlarkEdits.begin()
       ok = document.execCommand(command, false, data.value == null ? null : String(data.value))

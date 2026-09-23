@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { requirementWorkflow } from './requirement-workflow.js'
+import { workflowLinks } from './workflow-links.js'
 import { requirementDetailFields } from './requirement-fields.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -569,6 +570,15 @@ export class Hub {
     return milestones.listMilestones(this.root)
   }
 
+  workflowLinks(input) { return workflowLinks(this.root, input) }
+
+  assignMilestone(name, input) {
+    this.#assertWritable('安排到迭代')
+    const item = milestones.assignMilestone(this.root, name, input)
+    this.#log(null, null, 'MILESTONE_UPDATE', `安排需求与原型到迭代 ${name}`)
+    return item
+  }
+
   getMilestone(name) {
     return milestones.inspectMilestone(this.root, name)
   }
@@ -653,6 +663,7 @@ export class Hub {
 
   createMilestone(input) {
     this.#assertWritable('创建迭代')
+    if (input.contextual) milestones.validateAssignment(this.root, input.items)
     const item = milestones.createMilestone(this.root, input)
     this.#log(null, null, 'MILESTONE_CREATE', `创建迭代 ${item.name}`)
     return item
@@ -1315,23 +1326,10 @@ export class Hub {
     if (rules.isBaseline(v, baselineNo)) {
       throw err.bad('ALREADY_BASELINE', `${versionNo} 已经是当前基线`)
     }
-    if (v.status === 'VOID') {
-      throw err.bad('VERSION_VOID', `${versionNo} 已废弃，不能设为基线`, '先 reopen 恢复')
-    }
-    if (!v.baselineAt && v.reviewStatus === 'questions') {
-      throw err.bad('REVIEW_QUESTIONS_BLOCKED', `${versionNo} 仍有评审疑问，不能设为基线`, '先处理问题并更新评审状态')
-    }
-    if (!store.readHtml(this.root, slug, versionNo)) {
-      throw err.bad('FILE_MISSING', `${versionNo} 的原型文件丢失，不能设为基线`)
-    }
-
-    const total = store.listVersionNos(this.root, slug).length
-    rules.assertChangelogReady(v, total, { enabled: this.settings.rules.requireChangelog })
-
     const isRollback = !!v.baselineAt
     const now = new Date().toISOString()
 
-    // 只有首次成为基线才记 baselineAt —— 它同时是「历史版本」的判据和 R6 回滚豁免的依据
+    // 只有首次成为基线才记 baselineAt —— 它同时是「历史版本」的判据
     if (!v.baselineAt) v.baselineAt = now
     v.status = 'READY'
     v.reviewStatus = 'confirmed'

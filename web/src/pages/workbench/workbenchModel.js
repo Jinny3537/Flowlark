@@ -16,14 +16,10 @@ export function prototypeEditorRoute(slug, versionNo) {
   return `/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}/edit`
 }
 
-export function canEditStructure({ canWrite, version, lockBaseline = true }) {
+export function canEditStructure({ canWrite, version }) {
   if (!canWrite || !version?.display) return false
   if (version.display.key === 'VOID') return false
-  return !lockBaseline || version.display.key === 'DRAFT'
-}
-
-export function baselineBlocked({ target, totalVersions, requireChangelog = true }) {
-  return Boolean(requireChangelog && target && Number(target.changeCount || target.changes?.length || 0) === 0 && totalVersions > 1 && !target.baselineAt)
+  return true
 }
 
 export function olderSiblings(versions, versionNo) {

@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { err } from './errors.js'
 import { parse, stringify } from './json.js'
@@ -66,7 +67,8 @@ export function readMilestone(root, name) {
   const safe = assertMilestoneName(name)
   const file = store.paths.milestoneFile(root, safe)
   if (!fs.existsSync(file)) throw err.notFound(`迭代「${safe}」`)
-  return normalizeStoredMilestone(parse(fs.readFileSync(file, 'utf8'), `${safe}.json`))
+  const text = fs.readFileSync(file, 'utf8')
+  return { ...normalizeStoredMilestone(parse(text, `${safe}.json`)), revision: crypto.createHash('sha256').update(text).digest('hex') }
 }
 
 export function listMilestones(root) {
@@ -78,7 +80,27 @@ export function listMilestones(root) {
 }
 
 export function updateMilestone(root, name, patch, { system = false } = {}) {
+  return withMilestoneLock(root, name, () => updateUnlocked(root, name, patch, system))
+}
+
+function withMilestoneLock(root, name, action) {
+  const dir = path.join(root, '.flowlark', 'cache', 'milestone-locks')
+  fs.mkdirSync(dir, { recursive: true })
+  const lock = path.join(dir, `${assertMilestoneName(name)}.lock`)
+  let fd
+  try { fd = fs.openSync(lock, 'wx') }
+  catch (error) {
+    if (error.code === 'EEXIST') throw err.conflict('MILESTONE_BUSY', '迭代正在被修改，请稍后重新读取并重试')
+    throw error
+  }
+  try { return action() } finally { fs.closeSync(fd); fs.unlinkSync(lock) }
+}
+
+function updateUnlocked(root, name, patch, system = false) {
   const item = readMilestone(root, name)
+  if (patch.expectedRevision !== undefined && patch.expectedRevision !== item.revision) {
+    throw err.conflict('MILESTONE_STALE', '迭代范围已变化，请重新核对后确认')
+  }
   const businessFields = ['title', 'goal', 'owner', 'startAt', 'endAt', 'items', 'platform', 'project', 'versionNo', 'requirements']
   if (!system && isLocked(item.status) && businessFields.some((key) => patch[key] !== undefined)) {
     throw err.conflict('MILESTONE_LOCKED', `迭代「${item.name}」处于 ${item.status} 状态，不能直接编辑`)
@@ -101,14 +123,45 @@ export function updateMilestone(root, name, patch, { system = false } = {}) {
   if (patch.external !== undefined) item.external = patch.external || null
   validateIterationScope(root, item)
   item.updatedAt = new Date().toISOString()
-  fs.writeFileSync(store.paths.milestoneFile(root, item.name), stringify(item, 'milestone'))
-  return inspectMilestone(root, item)
+  delete item.revision
+  const file = store.paths.milestoneFile(root, item.name)
+  const temp = `${file}.${crypto.randomUUID()}.tmp`
+  try { fs.writeFileSync(temp, stringify(item, 'milestone')); fs.renameSync(temp, file) }
+  finally { if (fs.existsSync(temp)) fs.unlinkSync(temp) }
+  return inspectMilestone(root, name)
+}
+
+// Contextual assignment only accepts existing requirement/prototype links.
+export function validateAssignment(root, items) {
+  if (!Array.isArray(items) || !items.length) throw err.bad('MILESTONE_SCOPE_EMPTY', '请选择需求与原型')
+  const selected = normalizeMilestoneItems(root, items)
+  for (const entry of selected) {
+    const version = store.readVersion(root, entry.project, entry.version)
+    if (version.status === 'VOID') throw err.bad('MILESTONE_VERSION_VOID', '废弃版本不能加入候选范围')
+    if (!(version.requirements || []).some(r => (typeof r === 'string' ? r : r.code) === entry.requirement)) {
+      throw err.bad('MILESTONE_LINK_MISSING', `${entry.requirement} 尚未关联 ${entry.project}/${entry.version}，请先关联归档原型`)
+    }
+  }
+  return selected
+}
+
+export function assignMilestone(root, name, input) {
+  return withMilestoneLock(root, name, () => {
+    const current = readMilestone(root, name)
+    if (!input.expectedRevision || input.expectedRevision !== current.revision) throw err.conflict('MILESTONE_STALE', '迭代范围已变化，请重新核对后确认')
+    if (!['append', 'replace'].includes(input.mode)) throw err.bad('MILESTONE_ASSIGN_MODE', '请选择保留或替换现有候选版本')
+    const selected = validateAssignment(root, input.items)
+    const retained = input.mode === 'replace' ? current.items.filter(old => !selected.some(next => next.requirement === old.requirement && next.project === old.project)) : current.items
+    return updateUnlocked(root, name, { items: [...retained, ...selected], expectedRevision: input.expectedRevision })
+  })
 }
 
 export function removeMilestone(root, name) {
-  const item = readMilestone(root, name)
-  fs.rmSync(store.paths.milestoneFile(root, item.name))
-  return { name: item.name }
+  return withMilestoneLock(root, name, () => {
+    const item = readMilestone(root, name)
+    fs.rmSync(store.paths.milestoneFile(root, item.name))
+    return { name: item.name }
+  })
 }
 
 export function inspectMilestone(root, input) {
@@ -116,12 +169,19 @@ export function inspectMilestone(root, input) {
   const warnings = []
   if (item.project !== undefined && !milestoneRequirementCodes(item).length) warnings.push({ code: 'MILESTONE_SCOPE_EMPTY', message: '尚未关联本轮需求' })
   const details = item.items.map((entry) => {
-    const version = store.readVersion(root, entry.project, entry.version)
+    let version
+    try { version = store.readVersion(root, entry.project, entry.version) }
+    catch (error) {
+      if (error.code !== 'NOT_FOUND' && error.code !== 'ENOENT') throw error
+      warnings.push({ code: 'VERSION_MISSING', ...entry, message: `${entry.project}/${entry.version} 归档缺失，请核对历史范围` })
+      return { ...entry, missing: true }
+    }
     const baseline = store.readBaseline(root, entry.project)
     if (version.status === 'VOID') warnings.push({ code: 'VERSION_VOID', ...entry, message: `${entry.project}/${entry.version} 已废弃` })
     else if (version.status === 'DRAFT') warnings.push({ code: 'VERSION_DRAFT', ...entry, message: `${entry.project}/${entry.version} 仍是草稿` })
     if (baseline !== entry.version) warnings.push({ code: 'BASELINE_DRIFT', ...entry, baseline, message: `${entry.project} 当前基线已变为 ${baseline || '无'}` })
-    return { ...entry, versionTitle: version.title, versionStatus: version.status, reviewStatus: version.reviewStatus, currentBaseline: baseline }
+    const linkMissing = !(version.requirements || []).some(r => (typeof r === 'string' ? r : r.code) === entry.requirement)
+    return { ...entry, linkMissing, versionTitle: version.title, versionStatus: version.status, reviewStatus: version.reviewStatus, currentBaseline: baseline }
   })
   return { ...item, items: details, warnings, ready: warnings.length === 0 }
 }

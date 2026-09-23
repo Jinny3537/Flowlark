@@ -120,7 +120,7 @@ describe('版本标签', () => {
   test('标签不受基线锁定影响', (t) => {
     // v1.0 是基线，改标题会被拒；但标签是事后追加的组织信息，应该放行
     const { hub } = seeded()
-    throwsCode(t, 'VERSION_LOCKED', () => hub.updateVersion('ord', 'v1.0', { title: 'x' }))
+    t.assert.doesNotThrow(() => hub.updateVersion('ord', 'v1.0', { title: 'x' }))
     const v = hub.setTags('ord', 'v1.0', ['已交付'])
     t.assert.deepStrictEqual(v.tags, ['已交付'])
   })

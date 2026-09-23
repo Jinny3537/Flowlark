@@ -1,4 +1,6 @@
-import { Link, useParams } from 'react-router-dom';
+import { contextualRoute } from './workflowModel.js';
+import { SourceContext } from './WorkflowLinks';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { Alert, App, Button, Descriptions, List, Space, Tabs, Tag } from 'antd';
 import { DownloadOutlined, LinkOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
@@ -12,6 +14,8 @@ import './delivery/Delivery.css';
 const fileKinds: Record<string, string> = { prototype: '产品原型', spec: '技术规格说明书', requirement: '需求文档', attachment: '附件', metadata: '版本信息' };
 export default function DeliveryDetail() {
   const { name = '' } = useParams();
+  const location = useLocation();
+  const linked = (target: string) => contextualRoute(target, location.pathname + location.search, `交付 ${name}`);
   const { message } = App.useApp();
   const [item, setItem] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -42,9 +46,10 @@ export default function DeliveryDetail() {
   const versions = item?.versions || item?.items || [];
   const files = item?.files || [];
   return <main className="fl-page">
+    <SourceContext />
     <PageHeader eyebrow={purposeLabels[item?.purpose] || '历史交付快照'} title={item?.title || name} backTo="/deliveries"
       description={frozen ? '需求、原型与技术文件已固定在本次交付中。请按此材料沟通和追溯。' : '历史快照保留版本范围，不包含当时的完整材料副本。'}
-      actions={<Space wrap><Button icon={<LinkOutlined />} onClick={async () => { try { await navigator.clipboard.writeText(window.location.href); message.success('交付地址已复制'); } catch { message.error('复制失败，请复制浏览器地址'); } }}>复制交付地址</Button><Button type="primary" icon={<DownloadOutlined />} disabled={!frozen || Boolean(downloading)} loading={downloading === 'package'} onClick={() => download()}>下载完整交付包</Button></Space>} />
+      actions={<Space wrap>{item?.milestone && <Link to={`/milestones/${encodeURIComponent(item.milestone)}`}>返回来源迭代</Link>}<Button icon={<LinkOutlined />} onClick={async () => { try { await navigator.clipboard.writeText(window.location.href); message.success('交付地址已复制'); } catch { message.error('复制失败，请复制浏览器地址'); } }}>复制交付地址</Button><Button type="primary" icon={<DownloadOutlined />} disabled={!frozen || Boolean(downloading)} loading={downloading === 'package'} onClick={() => download()}>下载完整交付包</Button></Space>} />
     <State loading={loading} error={error} onRetry={load} empty={!item} emptyText="没有找到交付包">
       <div className="fl-detail-stack">
         {!frozen && <Alert type="warning" showIcon title="旧快照仅保存版本引用" description="无法证明源技术规格说明书和附件与交付当时一致。如需完整固定材料，请新建交付包。" />}
@@ -56,7 +61,7 @@ export default function DeliveryDetail() {
             <Descriptions.Item label="创建人">{textOf(item?.createdBy)}</Descriptions.Item>
             <Descriptions.Item label="创建时间">{fmtTime(item?.createdAt)}</Descriptions.Item>
             <Descriptions.Item label="交付对象">{item?.audience || '未填写'}</Descriptions.Item>
-            <Descriptions.Item label="来源迭代">{item?.milestone ? <Link to={`/milestones/${encodeURIComponent(item.milestone)}`}>{item.milestone}</Link> : '手动选择版本'}</Descriptions.Item>
+            <Descriptions.Item label="来源迭代">{item?.milestone ? <Link to={linked(`/milestones/${encodeURIComponent(item.milestone)}`)}>{item.milestone}</Link> : '手动选择版本'}</Descriptions.Item>
             {item?.supersedes && <Descriptions.Item label="上次交付"><Link to={`/deliveries/${encodeURIComponent(item.supersedes)}`}>{item.supersedes}</Link></Descriptions.Item>}
           </Descriptions>
         </section>
@@ -70,7 +75,7 @@ export default function DeliveryDetail() {
             { key: 'requirements', label: `需求范围 (${item?.requirements?.length ?? new Set((item?.items || []).map((entry: any) => entry.requirement).filter(Boolean)).size})`, children: <List locale={{ emptyText: frozen ? '本次未关联需求，请参考交接说明' : '旧快照未保存需求正文，请查阅版本范围' }} dataSource={item?.requirements || []} renderItem={(entry: any) => <List.Item><List.Item.Meta title={`${entry.code} · ${entry.title}`} description={<div className="delivery-text">{entry.description || '未填写需求描述'}<br />负责人：{entry.owner || '未填写'}</div>} /><Tag>冻结时内容</Tag></List.Item>} /> },
             { key: 'versions', label: `原型版本 (${versions.length})`, children: <List dataSource={versions} renderItem={(entry: any) => <List.Item>
               <List.Item.Meta title={`${entry.project} / ${entry.version || entry.versionNo || entry.no}`} description={<><div>{entry.title || ''}</div><div>{(item?.items || []).filter((mapping: any) => mapping.project === entry.project && mapping.version === entry.version).map((mapping: any) => mapping.requirement).filter(Boolean).join(' · ')}</div>{(entry.changes || []).map((change: any, i: number) => <div key={i}>{change.type} · {change.location}：{change.content}</div>)}</>} />
-              <Space wrap>{frozen && <Button disabled={Boolean(downloading)} onClick={() => download(`versions/${entry.project}/${entry.version}/prototype.html`)}>下载冻结原型</Button>}<Link to={`/projects/${encodeURIComponent(entry.project)}/versions/${encodeURIComponent(entry.version || entry.versionNo || entry.no)}`}>查看源版本与协作记录</Link></Space>
+              <Space wrap>{frozen && <Button disabled={Boolean(downloading)} onClick={() => download(`versions/${entry.project}/${entry.version}/prototype.html`)}>下载冻结原型</Button>}<Link to={linked(`/projects/${encodeURIComponent(entry.project)}/versions/${encodeURIComponent(entry.version || entry.versionNo || entry.no)}`)}>查看源版本与协作记录</Link></Space>
             </List.Item>} /> },
             { key: 'files', label: `交付文件 (${files.length})`, children: <>
               <Alert type="info" showIcon title="下载的是冻结副本" description="原型保留原始 HTML，CDN 和接口可能需要网络。在线文档仅保留链接，不包含远端正文。技术方案、接口文档和测试用例可在源版本附件中补充，变更后另建交付。" />

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+
+import { safeReturn } from '../pages/workflowModel.js';
 
 type PageHeaderProps = {
   title: string;
@@ -13,6 +15,7 @@ type PageHeaderProps = {
 
 export function PageHeader({ title, description, backTo, actions }: PageHeaderProps) {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
 
   return (
     <>
@@ -21,7 +24,7 @@ export function PageHeader({ title, description, backTo, actions }: PageHeaderPr
         <header className="fl-page-toolbar">
           {backTo ? (
             <div className="fl-page-toolbar-context">
-              <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate(backTo)}>返回</Button>
+              <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate(safeReturn(params.get("returnTo")) || backTo)}>返回</Button>
               {description ? <span className="fl-muted">{description}</span> : null}
             </div>
           ) : null}
