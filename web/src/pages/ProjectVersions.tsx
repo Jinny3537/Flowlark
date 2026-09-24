@@ -6,8 +6,10 @@ import {
   Drawer,
   Dropdown,
   Empty,
+  Form,
   Input,
   Popover,
+  Modal,
   Skeleton,
   Space,
   Tag,
@@ -22,6 +24,7 @@ import {
   DownloadOutlined,
   DownOutlined,
   EyeOutlined,
+  EditOutlined,
   FileAddOutlined,
   HistoryOutlined,
   LinkOutlined,
@@ -99,6 +102,9 @@ export default function ProjectVersions() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [baselineExpanded, setBaselineExpanded] = useState(false);
   const [rollbackLoading, setRollbackLoading] = useState(false);
+  const [editingVersion, setEditingVersion] = useState<any>(null);
+  const [savingVersion, setSavingVersion] = useState(false);
+  const [versionForm] = Form.useForm();
 
   const selectedVersionNoRef = useRef<string | null>(null);
   const detailCacheRef = useRef(new Map<string, any>());
@@ -418,17 +424,18 @@ export default function ProjectVersions() {
     const versionNo = versionNoOf(version);
     modal.confirm({
       title: `废弃版本 ${versionNo}？`,
-      content: '废弃后默认不在版本索引显示，记录仍然保留。',
+      content: isBaselineVersion(version)
+        ? '该版本是当前基线。废弃后将清空当前基线，不会自动切换到其他版本；默认不在版本索引显示，记录仍然保留。'
+        : '废弃后默认不在版本索引显示，记录仍然保留。',
       okText: '废弃',
       okButtonProps: { danger: true },
       onOk: async () => {
         await api.voidVersion(slug, versionNo);
         message.success('已废弃');
-        detailCacheRef.current.delete(versionNo);
-        await loadPage();
+        await reloadAll();
       },
     });
-  }, [ensureWritable, loadPage, message, modal, slug]);
+  }, [ensureWritable, message, modal, reloadAll, slug]);
 
   const reopenVersion = useCallback(async (version: any) => {
     if (!ensureWritable()) return;
@@ -444,20 +451,27 @@ export default function ProjectVersions() {
     const versionNo = versionNoOf(version);
     modal.confirm({
       title: `删除版本 ${versionNo}？`,
-      content: '文件会移入 .flowlark/trash，可在回收站恢复。',
+      content: isBaselineVersion(version)
+        ? '该版本是当前基线。删除后将清空当前基线，不会自动切换到其他版本；文件会移入 .flowlark/trash，可在回收站恢复，恢复后需重新设置基线。'
+        : '文件会移入 .flowlark/trash，可在回收站恢复。',
       okText: '删除',
       okButtonProps: { danger: true },
       onOk: async () => {
         await api.removeVersion(slug, versionNo);
         message.success('已移入回收站');
-        detailCacheRef.current.delete(versionNo);
-        await loadPage();
+        await reloadAll();
       },
     });
-  }, [ensureWritable, loadPage, message, modal, slug]);
+  }, [ensureWritable, message, modal, reloadAll, slug]);
 
   const handleDetailAction = useCallback((key: string, version: any) => {
     const versionNo = versionNoOf(version);
+    if (key === 'edit') {
+      if (!ensureWritable()) return;
+      versionForm.resetFields();
+      versionForm.setFieldsValue({ title: version.title || '', note: version.note || '' });
+      setEditingVersion(version);
+    }
     if (key === 'read') void markRead(versionNo);
     if (key === 'download') {
       window.open(api.downloadUrl(slug, versionNo), '_blank', 'noopener,noreferrer');
@@ -465,7 +479,31 @@ export default function ProjectVersions() {
     if (key === 'void') confirmVoid(version);
     if (key === 'reopen') void reopenVersion(version);
     if (key === 'remove') confirmRemove(version);
-  }, [confirmRemove, confirmVoid, markRead, reopenVersion, slug]);
+  }, [confirmRemove, confirmVoid, ensureWritable, markRead, reopenVersion, slug, versionForm]);
+
+  const saveVersionInfo = async () => {
+    if (!editingVersion || savingVersion || !ensureWritable()) return;
+    let values;
+    try {
+      values = await versionForm.validateFields();
+    } catch {
+      return;
+    }
+    setSavingVersion(true);
+    try {
+      await api.updateVersion(slug, versionNoOf(editingVersion), {
+        title: values.title.trim(),
+        note: values.note || '',
+      });
+      setEditingVersion(null);
+      message.success('原型基本信息已保存');
+      await reloadAll();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存失败，请重试');
+    } finally {
+      setSavingVersion(false);
+    }
+  };
 
   const handleIndexKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) return;
@@ -530,6 +568,10 @@ export default function ProjectVersions() {
     const review = reviewStateOf(selectedVersion);
     const versionNo = versionNoOf(selectedVersion);
     const detailMenuItems: MenuProps['items'] = [
+      {
+        key: 'edit', label: '编辑基本信息', icon: <EditOutlined />,
+        disabled: !canWrite || (health?.rules?.lockBaseline !== false && display.key !== 'DRAFT'),
+      },
       { key: 'read', label: '标记为已读' },
       { key: 'download', label: '下载 HTML', icon: <DownloadOutlined /> },
       { type: 'divider' },
@@ -590,6 +632,30 @@ export default function ProjectVersions() {
             </div>
         </header>
 
+        {selectedVersion.note ? (
+          <section className={styles.summarySection} aria-labelledby={`${testId}-note`}>
+            <h3 id={`${testId}-note`}>备注</h3>
+            <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+              {selectedVersion.note}
+            </Typography.Paragraph>
+          </section>
+        ) : null}
+        <section className={styles.summarySection} aria-labelledby={`${testId}-changes`}>
+          <div className={styles.sectionHeading}>
+            <h3 id={`${testId}-changes`}>变更日志 <span>{selectedVersion.changes?.length || 0}</span></h3>
+            <Button type="link" size="small" onClick={() => navigate(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionNo)}?tab=changes`)}>查看详情 <ArrowRightOutlined /></Button>
+          </div>
+          {selectedVersion.changes?.length ? (
+            <div className={styles.changeList}>
+              {selectedVersion.changes.map((change: any, index: number) => (
+                <div className={styles.changeRow} key={`${change.location || 'change'}-${change.type || 'item'}-${index}`}>
+                  {change.location ? <span className={styles.changeLocation}>{change.location}</span> : null}
+                  <span style={{ whiteSpace: 'pre-wrap', ...(!change.location ? { gridColumn: '1 / -1' } : {}) }}>{change.content || change.description || '未填写变更说明'}</span>
+                </div>
+              ))}
+            </div>
+          ) : <div className={styles.compactEmpty}><FileTextOutlined aria-hidden /><div><strong>尚未记录变更</strong><p>补充本版本调整的内容，便于评审和后续追溯。</p></div></div>}
+        </section>
         <WorkflowLinks query={{ project: slug, version: versionNo }} refresh={selectedVersion.updatedAt} />
         <section className={styles.summarySection} aria-labelledby={`${testId}-requirements`}>
           <div className={styles.sectionHeading}>
@@ -895,6 +961,31 @@ export default function ProjectVersions() {
           基线历史来自 Git 提交；尚未同步的本地切换可能只出现在页面当前状态中。
         </Typography.Text>
       </Drawer>
+      <Modal
+        title="编辑原型基本信息"
+        open={Boolean(editingVersion)}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={savingVersion}
+        cancelButtonProps={{ disabled: savingVersion }}
+        closable={!savingVersion}
+        maskClosable={!savingVersion}
+        keyboard={!savingVersion}
+        onCancel={() => { if (!savingVersion) setEditingVersion(null); }}
+        onOk={() => void saveVersionInfo()}
+      >
+        <Form form={versionForm} layout="vertical" disabled={savingVersion}>
+          <Form.Item label="版本号">
+            <Input value={versionNoOf(editingVersion)} disabled />
+          </Form.Item>
+          <Form.Item name="title" label="原型名称" rules={[{ required: true, whitespace: true, message: '请输入原型名称' }]}>
+            <Input placeholder="请输入原型名称" />
+          </Form.Item>
+          <Form.Item name="note" label="备注">
+            <Input.TextArea rows={4} placeholder="补充原型说明（选填）" />
+          </Form.Item>
+        </Form>
+      </Modal>
       <NewVersionDialog
         open={newVersionOpen}
         slug={slug}

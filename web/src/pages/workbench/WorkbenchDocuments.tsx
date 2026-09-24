@@ -71,7 +71,9 @@ type WorkbenchDocumentsProps = {
 const panelStyle: CSSProperties = {
   height: '100%',
   minHeight: 0,
+  boxSizing: 'border-box',
   overflowY: 'auto',
+  overscrollBehaviorY: 'contain',
   padding: 'var(--fl-s-5)',
 };
 
@@ -674,7 +676,7 @@ export function WorkbenchDocuments({
   );
 
   const requirementsPanel = (
-    <div style={panelStyle}>
+    <div style={panelStyle} aria-label="关联需求内容">
       <div style={toolbarStyle}>
         <div style={{ flex: 1 }} />
         {editable ? (

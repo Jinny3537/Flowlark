@@ -157,6 +157,15 @@ export default function Requirements() {
       const result: any = await api.syncRequirements(external.provider, { token: external.token }, { preview: false, codes });
       setSyncResult(result);
       await load();
+      const failed = Array.isArray(result.failed) ? result.failed.length : Number(result.failed || 0);
+      const summary = `已同步 ${result.updated}/${result.total} 条（新增 ${result.imported || 0} 条，移入回收站 ${result.removed || 0} 条，排除源回收站 ${result.excluded || 0} 条）`;
+      const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+      if (failed || warnings.length) {
+        const details = Array.isArray(result.failed) ? result.failed.map((item: any) => `${item.code}：${item.message}`).join('；') : '';
+        message.warning([summary, failed ? `失败 ${failed} 条：${details}` : '', ...warnings].filter(Boolean).join('；'));
+      } else {
+        message.success(summary);
+      }
     } catch (nextError) {
       message.error(errorText(nextError, '同步需求池失败'));
     } finally {
@@ -260,8 +269,17 @@ export default function Requirements() {
       </State>
       </div>
 
-      <Modal title="同步结果" open={!!syncResult} onCancel={() => setSyncResult(null)} footer={<Space><Button onClick={() => setSyncResult(null)}>关闭</Button>{syncResult?.failed?.length ? <Button loading={syncing} onClick={() => void syncPool(syncResult.failed.map((f: any) => f.code))}>重试失败项</Button> : null}</Space>}>
-        <p>同步成功 {syncResult?.updated || 0} 条，失败 {syncResult?.failed?.length || 0} 条。</p>
+      <Modal title="同步差异预览" open={!!syncPreview} onCancel={() => setSyncPreview(null)} confirmLoading={syncing} okText="确认同步" onOk={() => void syncPool(false)} width={800}>
+        <p>按设置的项目范围同步，保留项目及版本归属。本地分析保留。确认前校验数据是否变化；有变化的条目需重新预览，已删除需求跳过。</p>
+        {syncPreview?.projects?.length ? <p>覆盖 {syncPreview.projects.length} 个项目：{syncPreview.projects.map((p: any) => `${p.name}（${p.ok ? `${p.count} 条` : '查询失败'}）`).join('、')}</p> : null}
+        <List dataSource={syncPreview?.changes || []} renderItem={(entry: any) => <List.Item><div><strong>{entry.project ? `${entry.project} / ` : ''}{entry.code} · {entry.title}{entry.action === 'delete' ? '（源端已删除，移入本地回收站）' : entry.imported ? '（新增）' : ''}</strong>{entry.fields.length ? entry.fields.map((f: any) => <p key={f.field} style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{f.field}：{String(f.before)} → {String(f.after)}</p>) : <p>内容无变化</p>}</div></List.Item>} />
+        {(syncPreview?.failed || []).map((failure: any) => <p key={failure.code}>{failure.code}：{failure.message}</p>)}
+        {(syncPreview?.warnings || []).map((warning: string) => <p key={warning}>{warning}</p>)}
+      </Modal>
+      <Modal title="同步结果" open={!!syncResult} onCancel={() => setSyncResult(null)} footer={<Space><Button onClick={() => setSyncResult(null)}>关闭</Button>{syncResult?.failed?.length ? <Button loading={syncing} onClick={() => void syncPool(true, syncResult.failed.map((f: any) => f.code))}>重试失败项</Button> : null}</Space>}>
+        <p>覆盖 {syncResult?.projects?.length || 0} 个项目，已更新 {syncResult?.updated}/{syncResult?.total} 条，新增 {syncResult?.imported} 条，移入本地回收站 {syncResult?.removed || 0} 条，排除源回收站 {syncResult?.excluded || 0} 条。</p>
+        {(syncResult?.failed || []).map((failure: any) => <p key={failure.code}>{failure.code}：{failure.message}</p>)}
+        {(syncResult?.warnings || []).map((warning: string) => <p key={warning}>{warning}</p>)}
       </Modal>
       <Modal title="新建需求" open={open} confirmLoading={saving} onOk={create} onCancel={() => setOpen(false)} width={760}>
         <Form form={form} layout="vertical">

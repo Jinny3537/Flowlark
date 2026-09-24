@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "servers": [
+    {
+      "id": "assess-task-local",
+      "name": "研发任务管理",
+      "type": "stdio",
+      "adapter": "assess-task",
+      "runtimeProfile": "assess-task-local",
+      "enabled": true,
+      "timeoutMs": 15000
+    }
+  ],
+  "capabilities": {
+    "requirements": {
+      "enabled": false,
+      "server": "",
+      "project": "",
+      "tools": {
+        "test": "requirements.test",
+        "search": "requirements.search",
+        "get": "requirements.get",
+        "comment": "requirements.comment"
+      }
+    },
+    "milestones": {
+      "enabled": true,
+      "server": "assess-task-local",
+      "project": "",
+      "options": {},
+      "tools": {
+        "test": "milestones.test",
+        "list": "milestones.list",
+        "get": "milestones.get",
+        "upsert": "milestones.upsert"
+      }
+    }
+  }
+}

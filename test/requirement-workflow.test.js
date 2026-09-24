@@ -73,7 +73,7 @@ test('需求同步预览不落库、本地分析不覆盖、过期预览被阻�
   const server = http.createServer(async (request, response) => {
     let raw = ''; for await (const chunk of request) raw += chunk
     const rpc = JSON.parse(raw), name = rpc.params.name
-    const value = name === 'list_requirements' ? [{ id: 'REQ-S', name: title }] : { id: 'REQ-S', name: title, businessDescription: '源内容' }
+    const value = name === 'list_projects' ? [{ id: 'test', name: '测试项目' }] : name === 'list_requirements' ? [{ id: 'REQ-S', name: title }] : { id: 'REQ-S', name: title, businessDescription: '源内容' }
     response.setHeader('Content-Type', 'application/json')
     response.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(value) }] } }))
   })

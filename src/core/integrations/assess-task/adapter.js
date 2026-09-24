@@ -10,18 +10,23 @@ export function createAssessTaskAdapter({ session, tools = [], mapping = {}, pro
   }
 
   const call = (operation, args = {}) => session.callTool(contract.operations[operation], args)
+  const listAll = async (operation, args = {}) => {
+    const schema = tools.find((tool) => tool.name === contract.operations[operation])?.inputSchema
+    if (!schema?.properties?.pageNum || !schema?.properties?.pageSize) return itemsFrom(await call(operation, args))
+    const result = []
+    for (let pageNum = 1; ; pageNum++) {
+      const value = objectFrom(await call(operation, { ...args, pageNum, pageSize: 500 }))
+      const items = itemsFrom(value)
+      result.push(...items)
+      if (!items.length || (Number.isFinite(value.total) ? result.length >= value.total : items.length < 500)) return result
+    }
+  }
   const selectedProject = () => {
     if (parsedProjectId == null) throw err.bad('ASSESS_PROJECT_REQUIRED', '尚未选择平台项目')
     return parsedProjectId
   }
 
   return {
-    async getVersion(versionId) {
-      const item = objectFrom(await call('getVersion', { versionId: numericId(versionId) }))
-      return { id: numericId(item.id ?? item.versionId), projectId: numberOrNull(item.projectId),
-        revision: numberOrNull(item.revision), status: item.status ?? item.state ?? null }
-    },
-
     async closeVersion(body) {
       return objectFrom(await call('closeVersion', { body }))
     },
@@ -30,7 +35,7 @@ export function createAssessTaskAdapter({ session, tools = [], mapping = {}, pro
       const item = objectFrom(await call('currentUser'))
       return {
         account: String(item.account || item.login || item.username || ''),
-        name: String(item.name || item.userName || item.displayName || ''),
+        name: String(item.name || item.realName || item.userName || item.displayName || ''),
         roles: strings(item.roles || item.roleNames),
         permissions: strings(item.permissions || item.authorities)
       }
@@ -38,7 +43,7 @@ export function createAssessTaskAdapter({ session, tools = [], mapping = {}, pro
 
     async listProjects(keyword = '') {
       const args = String(keyword || '').trim() ? { keyword: String(keyword).trim() } : {}
-      return itemsFrom(await call('listProjects', args)).map(normalizeProject)
+      return (await listAll('listProjects', args)).map(normalizeProject)
     },
 
     async getProjectCapabilities(project = selectedProject()) {
@@ -46,13 +51,23 @@ export function createAssessTaskAdapter({ session, tools = [], mapping = {}, pro
     },
 
     async listMembers(project = selectedProject()) {
-      return itemsFrom(await call('listMembers', { projectId: numericId(project) })).map(normalizeMember)
+      return (await listAll('listMembers', { projectId: numericId(project) })).map(normalizeMember)
     },
 
     async listSprints({ statuses = [], pageNum = 1, pageSize = 500 } = {}) {
       const args = { projectId: selectedProject(), pageNum, pageSize }
       if (statuses.length) args.status = statuses
       return itemsFrom(await call('listSprints', args)).map(normalizeSprint)
+    },
+
+    async listVersions() {
+      if (!contract.operations.listVersions) throw err.bad('ASSESS_VERSION_TOOL_MISSING', '请配置平台版本查询工具')
+      return (await listAll('listVersions', { projectId: selectedProject() })).map(normalizeVersion)
+    },
+
+    async getVersion(versionId) {
+      if (!contract.operations.getVersion) throw err.bad('ASSESS_VERSION_TOOL_MISSING', '请配置平台版本详情工具')
+      return normalizeVersion(objectFrom(await call('getVersion', { versionId: numericId(versionId) })))
     },
 
     async getSprint(sprintId) {
@@ -153,9 +168,9 @@ function normalizeProject(raw) {
 function normalizeMember(raw) {
   const item = objectFrom(raw)
   return {
-    id: numericId(item.id ?? item.userId ?? item.employeeId),
+    id: numericId(item.userId ?? item.employeeId ?? item.id),
     account: String(item.account || item.login || item.username || ''),
-    name: String(item.name || item.userName || item.displayName || '')
+    name: String(item.name || item.realName || item.userName || item.displayName || '')
   }
 }
 
@@ -184,6 +199,7 @@ function normalizeTask(raw) {
     code: String(item.code || item.taskCode || id),
     title: String(item.title || item.taskName || item.name || ''),
     taskType: numberOrNull(item.taskType),
+    ...(item.targetVersionId !== undefined ? { targetVersionId: numberOrNull(item.targetVersionId) } : {}),
     descriptionDoc: String(item.descriptionDoc || ''),
     acceptanceDoc: String(item.acceptanceDoc || ''),
     priority: numberOrNull(item.priority),
@@ -245,4 +261,11 @@ function hasItemArray(value) {
   if (Array.isArray(value)) return true
   if (!value || typeof value !== 'object') return false
   return ['items', 'records', 'rows', 'results', 'list', 'data', 'result'].some((key) => hasItemArray(value[key]))
+}
+
+function normalizeVersion(raw) {
+  const item = objectFrom(raw)
+  return { id: numericId(item.id ?? item.versionId), projectId: numberOrNull(item.projectId),
+    name: String(item.versionName || item.name || item.versionNo || item.versionCode || item.id || ''),
+    revision: numberOrNull(item.revision), status: item.status ?? item.state ?? null }
 }

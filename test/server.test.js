@@ -101,6 +101,33 @@ describe('HTTP API', () => {
     t.assert.strictEqual(r.body.items[0].fromVersionNo, 'v1.1')
   })
 
+  for (const action of ['void', 'remove']) {
+    test(`已确认的当前基线可通过 HTTP ${action}，项目摘要同步清空基线`, async (t) => {
+      const slug = `baseline-${action}`
+      hub.createProject({ name: `基线生命周期 ${action}`, code: slug })
+      hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
+      hub.setBaseline(slug, 'v1.0')
+
+      const result = action === 'void'
+        ? await api.send('POST', `/api/versions/${slug}/v1.0/void`)
+        : await api.send('DELETE', `/api/versions/${slug}/v1.0`)
+      t.assert.strictEqual(result.status, 200)
+      if (action === 'void') {
+        t.assert.strictEqual(result.body.display.key, 'VOID')
+        t.assert.strictEqual(result.body.isBaseline, false)
+      } else {
+        t.assert.ok(result.body.trashDir)
+      }
+      const project = await api.get(`/api/projects/${slug}`)
+      t.assert.strictEqual(project.body.baselineVersionNo, null)
+      const versions = await api.get(`/api/projects/${slug}/versions`)
+      t.assert.deepStrictEqual(versions.body, [])
+      const planning = await api.get(`/api/projects/${slug}/planning`)
+      t.assert.strictEqual(planning.status, 200)
+      t.assert.strictEqual(planning.body.baseline, null)
+    })
+  }
+
   test('未知接口返回结构化 404', async (t) => {
     const r = await api.get('/api/nope')
     t.assert.strictEqual(r.status, 404)

@@ -42,7 +42,7 @@ const REQUIRED = {
 
 export function validateAssessContract(tools, mapping = {}, { write = false, closure = false } = {}) {
   const byName = new Map((tools || []).map((tool) => [String(tool?.name || ''), tool]))
-  const operations = Object.fromEntries([...ASSESS_OPERATIONS, ...ASSESS_CLOSURE_OPERATIONS]
+  const operations = Object.fromEntries([...ASSESS_OPERATIONS, ...ASSESS_CLOSURE_OPERATIONS, 'listVersions']
     .map((operation) => [operation, String(mapping[operation] || '').trim()])
     .filter(([, name]) => name))
   const problems = []

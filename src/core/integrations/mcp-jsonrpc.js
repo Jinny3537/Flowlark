@@ -57,7 +57,7 @@ export async function callTool(config, name, args = {}) {
     const detail = body.error.message || body.error.code || '工具调用失败'
     throw err.bad('INTEGRATION_REJECTED', `MCP 工具调用失败：${detail}`)
   }
-  return unwrapToolResult(body && body.result !== undefined ? body.result : body)
+  return unwrapToolResult(body && body.result !== undefined ? body.result : body, config.onWarning)
 }
 
 function parseResponseText(text) {
@@ -70,7 +70,7 @@ function parseResponseText(text) {
   return JSON.parse(trimmed)
 }
 
-function unwrapToolResult(value) {
+function unwrapToolResult(value, onWarning) {
   if (!value || typeof value !== 'object') return value
   if (value.isError) {
     const detail = (value.content || []).filter((item) => item?.type === 'text').map((item) => item.text).join('；')
@@ -81,7 +81,18 @@ function unwrapToolResult(value) {
     const json = value.content.find((item) => item && item.type === 'text' && looksJson(item.text))
     if (json) return JSON.parse(json.text)
     const text = value.content.find((item) => item && item.type === 'text')
-    if (text) return { text: text.text }
+    if (text) {
+      const raw = String(text.text || '')
+      const start = raw.search(/(?:^|\n)\s*\[/)
+      if (start >= 0) {
+        const jsonStart = raw.indexOf('[', start)
+        try {
+          const parsed = JSON.parse(raw.slice(jsonStart))
+          if (Array.isArray(parsed)) { onWarning?.(raw.slice(0, jsonStart).trim()); return parsed }
+        } catch {}
+      }
+      return { text: text.text }
+    }
   }
   return value
 }

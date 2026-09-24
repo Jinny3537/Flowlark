@@ -112,3 +112,96 @@ test('需求池同步会首次导入、更新、发现新增，并报告冲突�
   assert.equal(hub.getRequirement('LOCAL').title, '本地需求')
   assert.equal(hub.getRequirement('REQ-new').external.provider, 'mcp')
 })
+
+test('全部项目同步只写需求，保留归属、隔离失败并识别截断提示', async t => {
+  let extra = false
+  const server = http.createServer(async (req, res) => {
+    let raw = ''
+    for await (const chunk of req) raw += chunk
+    const rpc = JSON.parse(raw)
+    const { name, arguments: args } = rpc.params
+    let value
+    if (name === 'list_projects') value = [{ id: 'a', name: '甲项目', code: 'A' }, { id: 'b', name: '乙项目', code: 'B' }, { id: 'empty', name: '空项目', code: 'EMPTY' }, { id: 'fail', name: '失败项目', code: 'FAIL' }, ...(extra ? [{ id: 'new', name: '新增项目', code: 'NEW' }] : [])]
+    if (name === 'list_requirements') value = args.projectId === 'empty' ? [] : [{ id: args.projectId + '-1', code: 'DUPLICATE', name: '需求' }]
+    if (name === 'get_requirement_detail') value = { id: args.requirementId, code: 'DUPLICATE', projectId: args.requirementId.split('-')[0], name: '完整需求', businessDescription: '正文' }
+    const result = args.projectId === 'fail'
+      ? { isError: true, content: [{ type: 'text', text: '项目不可用' }] }
+      : { content: [{ type: 'text', text: (args.projectId === 'b' ? '结果已截断\n' : '') + JSON.stringify(value) }] }
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }))
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const { root, hub } = newHub(); t.after(() => cleanup(root))
+  hub.saveMcpServer({ id: 'hubpool', type: 'http', url: `http://127.0.0.1:${server.address().port}`, headers: { 'X-Test': '1' } })
+  hub.saveMcpCapability('requirements', { enabled: true, server: 'hubpool', project: '', options: { protocol: 'hubpool', scope: 'all' }, tools: { test: 'list_projects', search: 'list_requirements', get: 'get_requirement_detail' } })
+  assert.match((await hub.testRequirementConnection('mcp')).identity, /全部 4 个项目/)
+  const preview = await hub.syncExternalRequirements('mcp', {}, { preview: true })
+  assert.equal(preview.projects.length, 4)
+  assert.equal(preview.changes.length, 2)
+  assert.equal(hub.listRequirements().length, 0)
+  assert.equal(hub.listProjects().some(p => p.code === 'EMPTY'), false)
+  const first = await hub.syncExternalRequirements('mcp')
+  assert.equal(first.imported, 2)
+  assert.equal(hub.listProjects().length, 0)
+  assert.ok(first.warnings.some(w => w.includes('截断')))
+  assert.ok(first.warnings.some(w => w.includes('失败项目')))
+  assert.equal(hub.getRequirement('a-1').project, '甲项目')
+  assert.equal(hub.getRequirement('b-1').projectId, 'b')
+  hub.updateRequirement('a-1', { localNotes: '保留本地分析' })
+  extra = true
+  const next = await hub.syncExternalRequirements('mcp')
+  assert.equal(next.imported, 1)
+  assert.equal(hub.listProjects().length, 0)
+  assert.equal(hub.getRequirement('a-1').localNotes, '保留本地分析')
+  assert.equal(hub.getRequirement('new-1').project, '新增项目')
+  hub.createProject({ name: '新增项目', code: 'NEW' })
+  hub.deleteProject('new')
+  await hub.syncExternalRequirements('mcp')
+  assert.equal(hub.listProjects().some(p => p.code === 'NEW'), false)
+  assert.equal(hub.getRequirement('new-1').project, '新增项目')
+  hub.restoreProject('new')
+  assert.equal(hub.getProject('new').name, '新增项目')
+  const projectBefore = hub.getProject('new')
+  await hub.syncExternalRequirements('mcp')
+  assert.deepEqual(hub.getProject('new'), projectBefore)
+})
+
+test('源回收站仅在详情暴露：搜索和导入排除，同步预览并可恢复清理本地副本', async t => {
+  let trashed = false
+  const server = http.createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk
+    const rpc = JSON.parse(raw), { name } = rpc.params
+    const value = name === 'list_projects' ? [{ id: 'p', name: '项目' }]
+      : name === 'list_requirements' ? [{ id: 'R-trash', name: '需求' }]
+      : { id: 'R-trash', name: '需求', projectId: 'p', trashedAt: trashed ? '2026-09-14T00:00:00Z' : '' }
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(value) }] } }))
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => new Promise(resolve => server.close(resolve)))
+  const { root, hub } = newHub(); t.after(() => cleanup(root))
+  hub.saveMcpServer({ id: 'pool', type: 'http', url: `http://127.0.0.1:${server.address().port}`, headers: { 'X-Test': '1' } })
+  hub.saveMcpCapability('requirements', { enabled: true, server: 'pool', options: { protocol: 'hubpool', scope: 'all' }, tools: { test: 'list_projects', search: 'list_requirements', get: 'get_requirement_detail' } })
+  trashed = true
+  assert.equal((await hub.syncExternalRequirements('mcp')).imported, 0)
+  assert.deepEqual(await hub.searchExternalRequirements('mcp', ''), [])
+  await assert.rejects(hub.importExternalRequirement('mcp', 'R-trash'), { code: 'REQUIREMENT_SOURCE_TRASHED' })
+  trashed = false
+  await hub.syncExternalRequirements('mcp')
+  hub.updateRequirement('R-trash', { localNotes: '保留分析' })
+  trashed = true
+  const preview = await hub.syncExternalRequirements('mcp', {}, { preview: true })
+  assert.equal(preview.changes[0].action, 'delete')
+  assert.equal(hub.listRequirements().length, 1)
+  trashed = false
+  const stale = await hub.syncExternalRequirements('mcp', {}, { expected: { 'R-trash': preview.changes[0].token } })
+  assert.equal(stale.failed.length, 1)
+  assert.equal(hub.listRequirements().length, 1)
+  trashed = true
+  const result = await hub.syncExternalRequirements('mcp', {}, { expected: { 'R-trash': preview.changes[0].token } })
+  assert.equal(result.removed, 1)
+  assert.equal(hub.listRequirements().length, 0)
+  assert.equal(hub.getRequirement('R-trash').localNotes, '保留分析')
+  assert.ok(hub.getRequirement('R-trash').deletedAt)
+  assert.equal((await hub.syncExternalRequirements('mcp')).removed, 0)
+})

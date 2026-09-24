@@ -10,6 +10,7 @@ import * as net from '../core/net.js'
 import { startWecomMcpSidecar, unavailableWecomMcp } from '../core/wecom-mcp-manager.js'
 import { buildApi } from './routes.js'
 import { sendJson, sendError } from './router.js'
+import { prototypeEdits, editsRuntimeScript, injectBeforeBodyEnd } from './prototype-edits.js'
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist/', import.meta.url))
 
@@ -25,9 +26,13 @@ const MIME = {
   '.woff2': 'font/woff2'
 }
 
-function editablePreviewHtml(buf) {
+export function editablePreviewHtml(buf) {
+  const source = buf.toString('utf8')
+  const originalJson = JSON.stringify(source).replace(/</g, '\\u003c')
   const bridge = `<script id="flowlark-edit-bridge">
 (() => {
+  const originalHtml = ${originalJson}
+  const runtimeFunction = ${JSON.stringify(prototypeEdits.toString()).replace(/</g, '\\u003c')}
   const ALLOWED_COMMANDS = new Set([
     'bold', 'italic', 'underline', 'fontSize', 'foreColor',
     'justifyLeft', 'justifyCenter', 'justifyRight'
@@ -77,20 +82,18 @@ function editablePreviewHtml(buf) {
     selection.addRange(savedRange)
   }
   const serialize = () => {
-    // Export a detached clone: removing/reinserting live scripts can execute them again.
-    const clone = document.documentElement.cloneNode(true)
-    clone.querySelectorAll('#flowlark-edit-bridge,#flowlark-edit-style').forEach(node => node.remove())
-    clone.querySelectorAll('[data-flowlark-edit-target]').forEach(node => node.removeAttribute('data-flowlark-edit-target'))
-    const body = clone.querySelector('body')
-    if (body) {
-      if (originalEditable == null) body.removeAttribute('contenteditable')
-      else body.setAttribute('contenteditable', originalEditable)
-      if (originalSpellcheck == null) body.removeAttribute('spellcheck')
-      else body.setAttribute('spellcheck', originalSpellcheck)
-    }
-    const dt = document.doctype
+    const edits = window.__flowlarkEdits
+    edits.finish()
+    // Keep the source scripts and initial state; persist edits separately.
+    const doc = new DOMParser().parseFromString(originalHtml, 'text/html')
+    doc.querySelectorAll('#flowlark-saved-edits,#flowlark-edit-bridge,#flowlark-edit-style').forEach(node => node.remove())
+    const runtime = document.getElementById('flowlark-saved-edits').cloneNode(true)
+    const data = JSON.stringify(edits.patches).replace(/</g, '\\\\u003c')
+    runtime.textContent = '(' + runtimeFunction + ')(' + data + ')'
+    doc.body.appendChild(runtime)
+    const dt = doc.doctype
     const doctype = dt ? '<!DOCTYPE ' + dt.name + (dt.publicId ? ' PUBLIC "' + dt.publicId + '"' : '') + (dt.systemId ? ' "' + dt.systemId + '"' : '') + '>' : '<!DOCTYPE html>'
-    return doctype + '\\n' + clone.outerHTML
+    return doctype + '\\n' + doc.documentElement.outerHTML
   }
   const addEditorStyle = () => {
     if (document.getElementById('flowlark-edit-style')) return
@@ -126,7 +129,11 @@ function editablePreviewHtml(buf) {
         rememberSelection()
         postState()
       })
-      document.addEventListener('input', markDirty)
+      document.addEventListener('beforeinput', () => {
+        window.__flowlarkEdits.begin()
+        setTimeout(() => window.__flowlarkEdits.finish(), 0)
+      }, true)
+      document.addEventListener('input', () => { window.__flowlarkEdits.finish(); markDirty() }, true)
       document.addEventListener('pointerover', markTarget)
       document.addEventListener('click', (event) => {
         markTarget(event)
@@ -157,10 +164,12 @@ function editablePreviewHtml(buf) {
     try {
       window.focus()
       restoreSelection()
+      window.__flowlarkEdits.begin()
       ok = document.execCommand(command, false, data.value == null ? null : String(data.value))
+      window.__flowlarkEdits.finish()
       rememberSelection()
       if (ok) markDirty()
-    } catch {}
+    } catch {} finally { window.__flowlarkEdits.finish() }
     event.source.postMessage({
       type: 'flowlark:edit-command-result',
       id: data.id,
@@ -172,10 +181,8 @@ function editablePreviewHtml(buf) {
   else enable()
 })()
 </script>`
-  const html = buf.toString('utf8')
-  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, () => `${bridge}</body>`)
-  if (/<\/html\s*>/i.test(html)) return html.replace(/<\/html\s*>/i, () => `${bridge}</html>`)
-  return `${html}\n${bridge}`
+  const runtime = source.includes('id="flowlark-saved-edits"') ? '' : editsRuntimeScript()
+  return injectBeforeBodyEnd(source, runtime + bridge)
 }
 
 /**

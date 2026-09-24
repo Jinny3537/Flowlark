@@ -59,6 +59,21 @@ describe('v0.2.0 Git 只读权限', () => {
     throwsCode(t, 'GIT_READONLY', () => hub.setBaseline('ord', 'v1.0'))
   })
 
+  test('只读用户仍不能废弃或删除已确认的当前基线', (t) => {
+    const { root, hub } = newHub()
+    dirs.push(root)
+    hub.createProject({ name: '订单中心', code: 'ord' })
+    hub.addVersion('ord', { versionNo: 'v1.0', title: '首版', html: html() })
+    hub.setBaseline('ord', 'v1.0')
+    makeGitReadonly(root)
+
+    throwsCode(t, 'GIT_READONLY', () => hub.voidVersion('ord', 'v1.0'))
+    throwsCode(t, 'GIT_READONLY', () => hub.removeVersion('ord', 'v1.0'))
+    t.assert.strictEqual(hub.getVersion('ord', 'v1.0').isBaseline, true)
+    t.assert.strictEqual(hub.getVersion('ord', 'v1.0').reviewStatus, 'confirmed')
+    t.assert.strictEqual(hub.listTrash('ord').length, 0)
+  })
+
   test('只读用户仍可执行本地阅读状态', (t) => {
     const { root, hub } = newHub()
     dirs.push(root)

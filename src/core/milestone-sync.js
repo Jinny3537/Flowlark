@@ -95,6 +95,7 @@ export async function executeMilestoneSync({
 export async function resumeMilestoneSync(options = {}) {
   const journal = readMilestoneSyncJournal(options.root, options.milestoneName)
   if (!journal) throw err.notFound(`迭代「${options.milestoneName}」的同步记录`)
+  if (journal.status === 'stale') throw err.conflict('MCP_SYNC_PLAN_CHANGED', '迭代计划已修改，请重新生成同步计划')
   const plan = options.plan || journal.plan
   if (!plan || plan.hash !== journal.planHash) throw err.conflict('MCP_SYNC_PLAN_CHANGED', '同步计划已经变化，请重新确认')
   return executeMilestoneSync({ ...options, plan, confirmed: true, reason: options.reason || journal.reason, resume: true })
@@ -253,7 +254,10 @@ async function verifyFinalState(root, plan, adapter) {
 }
 
 function finalizeLocalStatus(root, milestoneName, plan) {
-  if (Array.isArray(plan.scopeItems)) {
+  if (Array.isArray(plan.scopeRequirements)) {
+    const current = milestones.readMilestone(root, milestoneName)
+    milestones.updateMilestone(root, milestoneName, { requirements: plan.scopeRequirements, items: (plan.scopeItems || current.items).filter(entry => plan.scopeRequirements.includes(entry.requirement)) }, { system: true })
+  } else if (Array.isArray(plan.scopeItems)) {
     milestones.updateMilestone(root, milestoneName, { items: plan.scopeItems }, { system: true })
   }
   const target = { start: 'active', end: 'delivered', cancel: 'canceled' }[

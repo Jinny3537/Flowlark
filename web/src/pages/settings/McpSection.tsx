@@ -68,6 +68,8 @@ type ServerValues = {
 };
 
 type CapabilityValues = {
+  protocol?: string;
+  scope?: string;
   enabled: boolean;
   server: string;
   label: string;
@@ -129,6 +131,8 @@ const EMPTY_EXTENSION = {
 function capabilityForm(capability: McpCapability | undefined, defaults: typeof REQUIREMENT_DEFAULTS): CapabilityValues {
   const value = { ...defaults, ...(capability || {}) };
   return {
+    protocol: String(capability?.options?.protocol || 'custom'),
+    scope: String(capability?.options?.scope || (value.project ? 'single' : 'all')),
     enabled: value.enabled === true,
     server: value.server || '',
     label: value.label || defaults.label,
@@ -235,6 +239,8 @@ function CapabilityEditor({
   onTest,
 }: CapabilityEditorProps) {
   const noun = name === 'requirements' ? '需求' : '迭代';
+  const protocol = Form.useWatch('protocol', form);
+  const scope = Form.useWatch('scope', form);
   return (
     <div className="fl-mcp-capability">
       <div className="fl-mcp-subtitle">{title}</div>
@@ -247,8 +253,12 @@ function CapabilityEditor({
             <Select options={serverOptions} placeholder="选择 MCP 服务" allowClear />
           </Form.Item>
         </div>
+        {name === 'requirements' && <div className="fl-mcp-form-grid">
+          <Form.Item name="protocol" label="需求来源"><Select options={[{ value: 'hubpool', label: 'HubPooL 需求池' }, { value: 'custom', label: '自定义 MCP' }]} /></Form.Item>
+          {protocol === 'hubpool' && <Form.Item name="scope" label="同步范围" extra="查询全部源项目的需求并保留归属，不同步到项目模块。"><Select options={[{ value: 'all', label: '全部项目（推荐）' }, { value: 'single', label: '指定项目' }]} /></Form.Item>}
+        </div>}
         <div className="fl-mcp-form-grid">
-          <Form.Item name="project" label={`${noun}外部项目标识`}><Input placeholder="可选" /></Form.Item>
+          {!(protocol === 'hubpool' && scope === 'all') && <Form.Item name="project" label={`${noun}外部项目标识`} rules={protocol === 'hubpool' ? [{ required: true, whitespace: true, message: '请填写项目 ID，或选择全部项目' }] : []}><Input placeholder={protocol === 'hubpool' ? 'HubPooL 项目 ID' : '可选'} /></Form.Item>}
           <Form.Item name="label" label={nameLabel} rules={[{ required: true, whitespace: true, message: `请填写${noun}能力名称` }]}>
             <Input />
           </Form.Item>

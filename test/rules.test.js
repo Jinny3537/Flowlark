@@ -294,7 +294,67 @@ describe('R7 逻辑删除', () => {
   })
 })
 
-describe('基线保护', () => {
+describe('基线版本生命周期', () => {
+  for (const action of ['voidVersion', 'removeVersion']) {
+    test(`${action} 允许操作已确认的当前基线，清空引用且恢复后不自动重设基线`, (t) => {
+      const { root, hub, slug } = fresh()
+      hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
+      hub.setBaseline(slug, 'v1.0')
+      hub.addVersion(slug, { versionNo: 'v1.1', title: '二版', html: html('基线原型'), changes: CHANGES })
+      hub.setSpec(slug, 'v1.1', '# 基线规格')
+      const original = hub.setBaseline(slug, 'v1.1')
+      t.assert.strictEqual(original.reviewStatus, 'confirmed')
+
+      const result = hub[action](slug, 'v1.1')
+      t.assert.strictEqual(store.readBaseline(root, slug), null)
+      t.assert.strictEqual(hub.getProject(slug).baselineVersionNo, null)
+      t.assert.strictEqual(hub.projectPlanning(slug).baseline, null)
+      t.assert.strictEqual(hub.getVersion(slug, 'v1.0').display.key, 'HISTORY')
+      t.assert.ok(hub.listVersions(slug, { includeVoid: true }).every((v) => !v.isBaseline))
+      if (action === 'voidVersion') {
+        t.assert.strictEqual(result.display.key, 'VOID')
+        t.assert.strictEqual(result.reviewStatus, 'obsolete')
+        t.assert.strictEqual(result.isBaseline, false)
+        t.assert.strictEqual(hub.listVersions(slug).length, 1)
+      } else {
+        t.assert.strictEqual(hub.listTrash(slug).length, 1)
+        t.assert.strictEqual(store.versionExists(root, slug, 'v1.1'), false)
+      }
+
+      const restored = action === 'voidVersion'
+        ? hub.reopenVersion(slug, 'v1.1')
+        : hub.restoreTrashEntry(hub.listTrash(slug)[0].id)
+      t.assert.strictEqual(restored.isBaseline, false)
+      t.assert.strictEqual(restored.baselineAt, original.baselineAt)
+      t.assert.match(restored.spec, /基线规格/)
+      t.assert.match(store.readHtml(root, slug, 'v1.1').toString(), /基线原型/)
+      t.assert.strictEqual(hub.getProject(slug).baselineVersionNo, null)
+      t.assert.strictEqual(hub.setBaseline(slug, 'v1.1').isBaseline, true)
+    })
+
+    test(`${action} 操作历史基线时保留当前基线`, (t) => {
+      const { hub, slug } = fresh()
+      hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
+      hub.setBaseline(slug, 'v1.0')
+      hub.addVersion(slug, { versionNo: 'v1.1', title: '二版', html: html(), changes: CHANGES })
+      hub.setBaseline(slug, 'v1.1')
+
+      hub[action](slug, 'v1.0')
+      t.assert.strictEqual(hub.getProject(slug).baselineVersionNo, 'v1.1')
+      t.assert.strictEqual(hub.getVersion(slug, 'v1.1').isBaseline, true)
+    })
+  }
+
+  test('删除唯一基线后复用版本号不会继承基线身份', (t) => {
+    const { hub, slug } = fresh()
+    hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })
+    hub.setBaseline(slug, 'v1.0')
+    hub.removeVersion(slug, 'v1.0')
+    t.assert.strictEqual(hub.getProject(slug).versionCount, 0)
+    const version = hub.addVersion(slug, { versionNo: 'v1.0', title: '新原型', html: html() })
+    t.assert.strictEqual(version.isBaseline, false)
+    t.assert.strictEqual(version.display.key, 'DRAFT')
+  })
   test('当前基线可废弃和删除，并清除基线指针', (t) => {
     const { hub, slug } = fresh()
     hub.addVersion(slug, { versionNo: 'v1.0', title: '首版', html: html() })

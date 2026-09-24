@@ -141,8 +141,6 @@ export default function RequirementWorkflow({ item, writable, onChanged }: { ite
           try { setVersions(await api.listVersions(value)); } catch (e) { setError(e instanceof Error ? e.message : '读取版本失败'); }
         }} /></Form.Item>
         <Form.Item name="versionNo" label="归档版本" rules={[{ required: true }]}><Select options={versions.map(v => ({ value: v.versionNo, label: `${v.versionNo} · ${v.title}` }))} /></Form.Item>
-        <Form.Item name="location" label="对应页面 / 功能位置"><Input maxLength={500} /></Form.Item>
-        <Form.Item name="scope" label="本版承载范围"><Input.TextArea maxLength={2000} /></Form.Item>
       </Form>
     </Modal>
   </div>;

@@ -23,6 +23,7 @@ import * as drafts from './drafts.js'
 import * as watchbox from './watch-inbox.js'
 import * as reqx from './requirements.js'
 import * as projectx from './projects.js'
+import * as projectTrash from './project-trash.js'
 import * as projectPreferences from './project-preferences.js'
 import { bindOnlineVersion, markVersionOnline } from './version-online.js'
 import * as versionPlanning from './version-planning.js'
@@ -46,7 +47,7 @@ import { createAssessTaskAdapter } from './integrations/assess-task/adapter.js'
 import { freezePreflight, transitionMilestoneStatus } from './milestone-lifecycle.js'
 import { buildMilestoneSyncPlan } from './milestone-sync-plan.js'
 import { executeMilestoneSync as executeSync, resumeMilestoneSync as resumeSync } from './milestone-sync.js'
-import { readMilestoneSyncJournal } from './milestone-sync-journal.js'
+import { readMilestoneSyncJournal, writeMilestoneSyncJournal } from './milestone-sync-journal.js'
 import { search as runSearch } from './search.js'
 import { detectExternalRefs } from './scan.js'
 import * as cfg from './config.js'
@@ -97,6 +98,22 @@ export class Hub {
   listProjects() {
     const requirements = reqx.listRequirements(this.root)
     return store.listProjectSlugs(this.root).map((slug) => this.#projectDetail(slug, requirements))
+  }
+
+  listDeletedProjects() { return projectTrash.listDeletedProjects(this.root) }
+
+  deleteProject(slug) {
+    this.#assertWritable('删除项目')
+    const result = projectTrash.deleteProject(this.root, slug, currentUser())
+    this.#log(null, null, 'PROJECT_DELETE', `删除项目 ${result.name}（可恢复）`)
+    return result
+  }
+
+  restoreProject(slug) {
+    this.#assertWritable('恢复项目')
+    const result = projectTrash.restoreProject(this.root, slug)
+    this.#log(slug, null, 'PROJECT_RESTORE', `恢复项目 ${result.name}`)
+    return this.getProject(slug)
   }
 
   getProject(slug) {
@@ -188,6 +205,7 @@ export class Hub {
       throw err.conflict('PROJECT_EXISTS', `项目「${slug}」已存在`)
     }
 
+    if (projectTrash.isDeletedProject(this.root, { slug, code, name: trimmedName })) throw err.conflict('PROJECT_DELETED', '项目已在回收站，请先恢复该项目')
     const now = new Date().toISOString()
     const who = currentUser()
     const project = {
@@ -596,6 +614,53 @@ export class Hub {
     return this.#formalRelease(slug, versionNo, input)
   }
 
+  async milestonePlatformOptions(projectId = null) {
+    const platform = projectId ? milestones.normalizePlatform({ projectId }) : null
+    return this.#withAssessAdapter(false, async (adapter, config) => {
+      const projects = await adapter.listProjects()
+      if (!platform) return { projects, versions: [], sprints: [], members: [] }
+      if (!projects.some((item) => Number(item.id) === platform.projectId)) throw err.bad('ASSESS_PROJECT_INVALID', '项目不存在或不可访问')
+      const [versions, sprints, members, capabilities] = await Promise.all([
+        adapter.listVersions(), adapter.listSprints(), adapter.listMembers(), adapter.getProjectCapabilities()
+      ])
+      return { projects, versions, sprints, members, capabilities, server: config.server?.id }
+    }, { platform })
+  }
+
+  async prepareMilestonePlatform(input, name = null) {
+    if (input.platform === undefined) return input
+    this.#assertWritable('配置迭代项目')
+    const current = name ? milestones.readMilestone(this.root, name) : null
+    if (current && !['planning', 'reviewing'].includes(current.status)) throw err.conflict('MILESTONE_LOCKED', '当前迭代状态不允许更改平台关联')
+    const platform = milestones.normalizePlatform(input.platform)
+    const old = current?.external
+    if (old?.syncedAt && (!platform || platform.projectId !== Number(old.projectId) || platform.sprintId !== Number(old.sprintId))) {
+      throw err.conflict('MILESTONE_PLATFORM_BOUND', '已同步的迭代不能更换项目或冲刺，请新建迭代')
+    }
+    if (!platform) return { ...input, platform: null, external: null }
+    return this.#withAssessAdapter(false, async (adapter, config) => {
+      const project = (await adapter.listProjects()).find((item) => Number(item.id) === platform.projectId)
+      if (!project) throw err.bad('ASSESS_PROJECT_INVALID', '项目不存在或不可访问')
+      const version = platform.versionId ? await adapter.getVersion(platform.versionId) : null
+      const sprint = platform.sprintId ? await adapter.getSprint(platform.sprintId) : null
+      for (const item of [version, sprint].filter(Boolean)) {
+        if (Number(item.projectId) !== platform.projectId) throw err.bad('MILESTONE_PLATFORM_MISMATCH', '所选版本或冲刺不属于当前项目')
+      }
+      if (sprint && milestones.listMilestones(this.root).some((item) => item.name !== name &&
+          item.external?.server === config.server?.id && Number(item.external?.sprintId) === sprint.id)) {
+        throw err.conflict('MILESTONE_SPRINT_BOUND', '该冲刺已经关联另一条迭代')
+      }
+      const owner = platform.ownerId ? (await adapter.listMembers()).find((member) => member.id === platform.ownerId) : null
+      if (platform.ownerId && !owner) {
+        throw err.bad('MILESTONE_OWNER_INVALID', '负责人不是当前项目成员')
+      }
+      return { ...input, platform: { ...platform, server: config.server?.id || '', projectName: project.name,
+        versionName: version?.name || '', sprintName: sprint?.name || '', ownerName: owner?.name || '' },
+        external: sprint ? { ...(Number(old?.sprintId) === sprint.id ? old : {}), provider: 'assess-task',
+          server: config.server?.id, projectId: platform.projectId, sprintId: sprint.id, revision: sprint.revision, remoteStatus: sprint.status } : null }
+    }, { platform })
+  }
+
   createMilestone(input) {
     this.#assertWritable('创建迭代')
     if (input.contextual) milestones.validateAssignment(this.root, input.items)
@@ -606,7 +671,11 @@ export class Hub {
 
   updateMilestone(name, patch) {
     this.#assertWritable('编辑迭代')
+    const previous = milestones.readMilestone(this.root, name)
     const item = milestones.updateMilestone(this.root, name, patch)
+    const changed = ['title', 'versionNo', 'goal', 'startAt', 'endAt', 'requirements', 'items', 'platform'].some(key => patch[key] !== undefined && JSON.stringify(previous[key]) !== JSON.stringify(item[key]))
+    const journal = item.project && changed ? readMilestoneSyncJournal(this.root, name) : null
+    if (journal) writeMilestoneSyncJournal(this.root, name, { ...journal, status: 'stale', updatedAt: item.updatedAt })
     this.#log(null, null, 'MILESTONE_UPDATE', `编辑迭代 ${item.name}`)
     return item
   }
@@ -674,11 +743,11 @@ export class Hub {
     const capability = info.config.capabilities.milestones
     const server = info.config.servers.find((entry) => entry.id === capability?.server)
     if (capability?.enabled && server?.type === 'stdio' && server.adapter === 'assess-task') {
-      const options = capability.options || {}
-      if (!Number(capability.project)) integrationProblems.push({ code: 'ASSESS_PROJECT_REQUIRED', message: '尚未配置平台项目 ID' })
+      const options = { ...(capability.options || {}), ...(item.platform || {}) }
+      if (!Number(item.platform?.projectId || item.external?.projectId || capability.project)) integrationProblems.push({ code: 'ASSESS_PROJECT_REQUIRED', message: '尚未配置平台项目 ID' })
       if (!Number(options.ownerId)) integrationProblems.push({ code: 'SPRINT_OWNER_REQUIRED', message: '尚未配置平台冲刺负责人' })
       if (!Number(options.taskType)) integrationProblems.push({ code: 'TASK_TYPE_REQUIRED', message: '尚未配置平台默认任务类型' })
-      for (const code of new Set(item.items.map((entry) => entry.requirement))) {
+      for (const code of milestones.milestoneRequirementCodes(item)) {
         const requirement = reqx.readRequirement(this.root, code)
         if (requirement.priority && options.priorities?.[requirement.priority] === undefined) {
           integrationProblems.push({ code: 'TASK_PRIORITY_UNMAPPED', message: `${code} 的优先级 ${requirement.priority} 尚未映射` })
@@ -692,7 +761,7 @@ export class Hub {
   }
 
   async planMilestoneSync(name, input = {}) {
-    return this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, input, adapter, config))
+    return this.#withAssessAdapter(false, (adapter, config) => this.#buildMilestoneSyncPlan(name, input, adapter, config), milestones.readMilestone(this.root, name))
   }
 
   async milestoneExecutionSummary(name) {
@@ -723,7 +792,7 @@ export class Hub {
           byStatus
         }
       }
-    })
+    }, item)
   }
 
   async executeMilestoneSync(name, input = {}) {
@@ -743,7 +812,7 @@ export class Hub {
       })
       this.#log(null, null, 'MILESTONE_SYNC_EXECUTE', `执行迭代 ${name} 同步计划 ${plan.hash}`)
       return result
-    })
+    }, milestones.readMilestone(this.root, name))
   }
 
   async resumeMilestoneSync(name, input = {}) {
@@ -758,7 +827,7 @@ export class Hub {
       })
       this.#log(null, null, 'MILESTONE_SYNC_RESUME', `恢复迭代 ${name} 同步`)
       return result
-    })
+    }, milestones.readMilestone(this.root, name))
   }
 
   milestoneSyncJournal(name) {
@@ -1991,21 +2060,23 @@ export class Hub {
     if (!selected || selected === 'none') {
       throw err.bad('REQUIREMENT_PROVIDER_MISSING', '请先配置需求池接入方式')
     }
-    const config = this.requirementConfig(selected, overrides)
+    const config = { ...this.requirementConfig(selected, overrides), hubpoolCache: new Map() }
     const items = reqx.listRequirements(this.root)
       .filter((item) => item.external && item.external.provider === selected)
     const excluded = new Set(reqx.listRequirements(this.root, { includeDeleted: true }).filter(item => item.deletedAt).map(item => item.code))
     const candidates = new Map(items.map((item) => [item.code, item]))
     const warnings = []
+    const projects = []
+    const sourceExcluded = new Set()
     if (config.capability?.options?.protocol === 'hubpool') {
-      const remoteItems = await reqIntegration.searchRequirements(selected, { ...config, limit: 500 }, '')
+      const remoteItems = await reqIntegration.searchRequirements(selected, { ...config, limit: 500, onWarning: message => warnings.push(message), onProject: project => projects.push(project), onExcluded: id => sourceExcluded.add(id) }, '')
       for (const item of remoteItems) {
         if (!excluded.has(item.code) && !candidates.has(item.code)) candidates.set(item.code, { code: item.code })
       }
-      if (remoteItems.length >= 500) warnings.push('HubPooL 单次最多返回 500 条需求，可能还有需求未同步')
+      for (const project of projects.filter(project => !project.ok)) warnings.push(`${project.name}：项目查询失败，${project.error}`)
     }
     if (options.codes) for (const code of candidates.keys()) if (!options.codes.includes(code)) candidates.delete(code)
-    const result = { provider: selected, total: candidates.size, updated: 0, imported: 0, failed: [], warnings, preview: !!options.preview, changes: [] }
+    const result = { provider: selected, total: candidates.size, updated: 0, imported: 0, failed: [], warnings, projects, removed: 0, excluded: sourceExcluded.size, preview: !!options.preview, changes: [] }
     for (const item of candidates.values()) {
       try {
         const key = item.external?.key || item.code
@@ -2023,7 +2094,7 @@ export class Hub {
         if (previous?.external?.status !== input.external.status) fields.push({ field: 'external.status', before: previous?.external?.status || '', after: input.external.status || '' })
         const token = crypto.createHash('sha256').update(JSON.stringify({ previous, fields })).digest('hex')
         if (!options.preview && options.expected && options.expected[item.code] !== token) throw err.conflict('REQUIREMENT_PREVIEW_STALE', '预览后数据已变化，请重新预览后同步')
-        result.changes.push({ code: item.code, title: input.title, fields, imported: !exists, token })
+        result.changes.push({ code: item.code, title: input.title, project: remote.project, projectId: remote.projectId, fields, imported: !exists, token })
         if (options.preview) continue
         if (exists) reqx.updateRequirement(this.root, item.code, input)
         else {
@@ -2032,10 +2103,23 @@ export class Hub {
         }
         result.updated++
       } catch (e) {
+        if (e.code === 'REQUIREMENT_SOURCE_TRASHED') {
+          const previous = reqx.requirementExists(this.root, item.code) ? reqx.readRequirement(this.root, item.code) : null
+          if (!previous || previous.deletedAt || previous.external?.provider !== selected) continue
+          const fields = [{ field: 'deletedAt', before: '', after: e.sourceTrashedAt }]
+          const token = crypto.createHash('sha256').update(JSON.stringify({ previous, fields })).digest('hex')
+          if (!options.preview && options.expected && options.expected[item.code] !== token) {
+            result.failed.push({ code: item.code, message: '回收站状态在预览后变化，请重新预览后同步' })
+            continue
+          }
+          result.changes.push({ code: item.code, title: previous.title, project: previous.project, action: 'delete', fields, token })
+          if (!options.preview) { reqx.requirementLifecycle(this.root, item.code, 'delete', currentUser()); result.removed++ }
+          continue
+        }
         result.failed.push({ code: item.code, message: e.message })
       }
     }
-    if (!options.preview) this.#log(null, null, 'REQUIREMENT_SYNC', `同步需求池 ${result.updated}/${result.total} 条`)
+    if (!options.preview) this.#log(null, null, 'REQUIREMENT_SYNC', `同步需求池 ${result.updated}/${result.total} 条，源回收站排除 ${result.excluded} 条，本地移入回收站 ${result.removed} 条`)
     return { ...result, items: reqx.listRequirements(this.root) }
   }
 
@@ -2114,12 +2198,18 @@ export class Hub {
 
   // ==================== 内部 ====================
 
-  async #withAssessAdapter(write, fn, { closure = false } = {}) {
+  async #withAssessAdapter(write, fn, milestone = null) {
+    const closure = milestone?.closure === true
+    const scope = (value) => {
+      const project = milestone?.platform?.projectId || milestone?.external?.projectId || value.project
+      if (milestone?.platform?.server && milestone.platform.server !== value.server?.id) throw err.bad('MILESTONE_SERVER_CHANGED', '迭代绑定的 MCP 服务已变更')
+      return { ...value, project, capability: { ...value.capability, options: { ...(value.capability?.options || {}), ...(milestone?.platform || {}) } } }
+    }
     if (this.assessAdapter) {
       const config = this.assessConfig || { server: { id: 'assess-task-test' }, project: '', capability: { options: {} } }
-      return fn(this.assessAdapter, config)
+      return fn(this.assessAdapter, scope(config))
     }
-    const config = mcpConfig.resolveCapability(this.root, 'milestones')
+    const config = scope(mcpConfig.resolveCapability(this.root, 'milestones'))
     if (config.transport !== 'stdio' || config.adapter !== 'assess-task') {
       throw err.bad('ASSESS_MCP_NOT_CONFIGURED', '迭代能力尚未绑定 Assess Task stdio MCP')
     }
@@ -2160,8 +2250,15 @@ export class Hub {
       : milestones.normalizeMilestoneItems(this.root, input.scopeItems)
     if (scopeItems && storedMilestone.status !== 'active') throw err.conflict('MILESTONE_SCOPE_CHANGE_INVALID', '只有进行中的迭代使用范围变更流程')
     if (scopeItems && !String(input.reason || '').trim()) throw err.bad('MILESTONE_REASON_REQUIRED', '进行中范围变更必须填写原因')
-    const milestone = scopeItems ? { ...storedMilestone, items: scopeItems } : storedMilestone
-    const codes = [...new Set(milestone.items.map((item) => item.requirement))]
+    const scopeRequirements = input.scopeRequirements === undefined ? null : input.scopeRequirements
+    if (scopeRequirements !== null && (!Array.isArray(scopeRequirements) || storedMilestone.project === undefined)) throw err.bad('MILESTONE_REQUIREMENTS_INVALID', '需求范围格式不正确')
+    if (scopeRequirements !== null && storedMilestone.status !== 'active') throw err.conflict('MILESTONE_SCOPE_CHANGE_INVALID', '只有进行中的迭代使用范围变更流程')
+    if (scopeRequirements !== null && !String(input.reason || '').trim()) throw err.bad('MILESTONE_REASON_REQUIRED', '范围变更必须填写原因')
+    const milestone = { ...storedMilestone, ...(scopeItems ? { items: scopeItems } : {}), ...(scopeRequirements !== null ? {
+      requirements: scopeRequirements, items: (scopeItems || storedMilestone.items).filter(entry => scopeRequirements.includes(entry.requirement))
+    } : {}) }
+    milestones.validateIterationScope(this.root, milestone)
+    const codes = milestones.milestoneRequirementCodes(milestone)
     const requirementItems = codes.map((code) => {
       const item = reqx.requirementDetail(this.root, code)
       const specFile = store.paths.requirementSpec(this.root, code)
@@ -2176,6 +2273,7 @@ export class Hub {
     }
     const sprintId = Number(milestone.external?.sprintId || 0)
     const remoteSprint = sprintId ? await adapter.getSprint(sprintId) : null
+    if (remoteSprint && Number(remoteSprint.projectId) !== mapping.projectId) throw err.bad('MILESTONE_PLATFORM_MISMATCH', '平台冲刺不属于当前迭代项目')
     const remoteTasks = sprintId ? await adapter.listTasks({ sprintId }) : []
     const known = new Set(remoteTasks.map((item) => Number(item.id)))
     for (const requirement of requirementItems) {
@@ -2202,7 +2300,8 @@ export class Hub {
       mapping,
       action: input.action || null,
       scopeItems,
-      scopeChangeReason: scopeItems ? String(input.reason).trim() : '',
+      scopeRequirements,
+      scopeChangeReason: scopeItems || scopeRequirements !== null ? String(input.reason).trim() : '',
       resolutions: input.resolutions || {}
     })
   }
