@@ -64,7 +64,7 @@ jobs:
           test -f web/dist/index.html || { echo "::error::工作台构建产物缺失"; exit 1; }
           du -sh web/dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web/dist
